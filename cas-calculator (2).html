@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.2/math.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mathlive/0.98.6/mathlive.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/mathlive@0.98.6/dist/mathlive.min.js" crossorigin="anonymous"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,300&family=Syne:wght@400;600;700;800&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet"/>
 <style>
@@ -95,7 +95,7 @@ header{position:relative;z-index:100;height:48px;flex-shrink:0;background:var(--
 .wchip:hover{color:var(--a1);border-color:var(--a0);background:var(--glow2);}
 
 /* CELLS */
-.cell{border-radius:var(--r2);overflow:hidden;border:1px solid var(--b0);background:var(--s0);animation:cIn .2s ease;transition:border-color .15s;}
+.cell{flex-shrink:0;border-radius:var(--r2);overflow:hidden;border:1px solid var(--b0);background:var(--s0);animation:cIn .2s ease;transition:border-color .15s;}
 .cell:hover{border-color:var(--b1);}
 .cell.textcell{background:var(--s1);}
 @keyframes cIn{from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:translateY(0);}}
