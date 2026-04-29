@@ -390,7 +390,7 @@ function normalise(raw) {
     .replace(/\bLog\s*\(/g, 'log(')          // capital Log
     .replace(/\bLn\s*\(/g,  'log(')          // capital Ln
     .replace(/\barc(sin|cos|tan|sinh|cosh|tanh)\b/gi, (m,fn)=>'a'+fn.toLowerCase())
-    .replace(/(\d)\s*°/g,   '$1 deg')        // degree symbol
+    .replace(/°/g,          ' deg')          // degree symbol
     .replace(/\bτ\b/g,      'tau')
     .replace(/×/g, '*').replace(/÷/g, '/');
 }
@@ -400,15 +400,24 @@ function normalise(raw) {
 function wrapTrigForDeg(expr) {
   if (angleMode === 'rad') return expr;
   // Replace sin/cos/tan/sec/csc/cot(x) → sin/cos/tan...(x * pi/180)
-  // But NOT asin/acos etc. (those output angles)
-  return expr.replace(/\b(sin|cos|tan|sec|csc|cot|sinh|cosh|tanh)\s*\(/g, (m, fn) => {
+  expr = expr.replace(/\b(sin|cos|tan|sec|csc|cot)\s*\(/g, (m, fn) => {
     return fn + '((pi/180)*';
   });
+  // Wrap inverse trig to return degrees
+  expr = expr.replace(/\b(asin|acos|atan|atan2)\s*\(/g, (m, fn) => {
+    return '(180/pi)*' + fn + '(';
+  });
+  return expr;
 }
 
 // ── EXACT / APPROX OUTPUT ────────────────────────────
 function applyExactMode(result, texStr) {
-  if (exactMode) return texStr; // return symbolic
+  if (exactMode) {
+    try {
+      const node = math.parse(String(result));
+      return math.simplify(node, {}, {exactFractions: true}).toTex();
+    } catch { return texStr; }
+  }
   // Evaluate numerically
   try {
     const n = typeof result === 'number' ? result : math.evaluate(String(result), scope);
@@ -1004,9 +1013,9 @@ function evalSolve(expr){
     // If we found roots, substitute them back into any other expressions
     const tex=roots.length
       ? roots.map((r,i)=>`${v}_{${i+1}}=${fmtN(r)}`).join(',\\quad ')
-      : `\\text{No real roots in }[-100,100]`;
+      : `\\text{No real roots in }[-10000,10000]`;
     return{type:'sym',out:tex,plain:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'No roots found',
-      steps:[{d:'Rewrite f(x)=0',e:`${lhs}-(${rhs})=0`},{d:'Bisection on [-100,100]',e:roots.length+' root(s) found'},{d:'Roots',e:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'none'}]};
+      steps:[{d:'Rewrite f(x)=0',e:`${lhs}-(${rhs})=0`},{d:'Bisection on [-10000,10000]',e:roots.length+' root(s) found'},{d:'Roots',e:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'none'}]};
   }
   return evalGeneric(expr);
 }
@@ -1032,15 +1041,15 @@ function symbolicSolve(lhs, rhs, v, freeVars) {
     if (!d2.toString().includes(v)) {
       // ax^2 + bx + c = 0 form
       const a_node = math.simplify(d2);
-      const b_node = math.simplify(math.parse(`(${dfStr})-(${d2.toString()})*${v}`));
-      const c_node = math.simplify(math.parse(f.replace(new RegExp(`\\b${v}\\b`,'g'), '0')));
+      const b_node = math.simplify(math.parse(`(${dfStr})-(${a_node.toString()})*${v}`));
+      const c_node = math.simplify(node.transform(n => (n.isSymbolNode && n.name === v) ? new math.ConstantNode(0) : n));
       const aS = a_node.toString(), bS = b_node.toString(), cS = c_node.toString();
       // Quadratic formula symbolically
-      const disc = `((${bS})^2 - 4*(${aS})*(${cS}))`;
-      const r1 = math.simplify(math.parse(`(-(${bS}) + sqrt(${disc})) / (2*(${aS}))`));
-      const r2 = math.simplify(math.parse(`(-(${bS}) - sqrt(${disc})) / (2*(${aS}))`));
+      const disc = `((${bS})^2 - 2*(${aS})*(${cS}))`;
+      const r1 = math.simplify(math.parse(`(-(${bS}) + sqrt(${disc})) / (${aS})`));
+      const r2 = math.simplify(math.parse(`(-(${bS}) - sqrt(${disc})) / (${aS})`));
       return {
-        tex: `\\frac{-(${b_node.toTex()}) \\pm \\sqrt{(${b_node.toTex()})^2 - 4(${a_node.toTex()})(${c_node.toTex()})}}{2(${a_node.toTex()})}`,
+        tex: `\\frac{-(${b_node.toTex()}) \\pm \\sqrt{(${b_node.toTex()})^2 - 2(${a_node.toTex()})(${c_node.toTex()})}}{${a_node.toTex()}}`,
         plain: `(${r1}) or (${r2})`
       };
     }
@@ -1165,7 +1174,7 @@ async function renderCell(id,res,expr,mode){
     plain=`${res.name} = ${fmtR(res.value)}`;
     html=`<div class="mjrender">\\[${latex}\\]</div>`;
   } else if(res.type==='sym'||res.type==='val'){
-    latex=res.out; plain=res.plain||res.out;
+    latex=applyExactMode(res.plain||res.out, res.out); plain=res.plain||res.out;
     html=`<div class="mjrender">\\[${latex}\\]</div>`;
   } else if(res.type==='unit'){
     html=`<span style="color:var(--a0);font-size:15px;font-weight:500;">${res.out} <span class="ubadge">UNIT</span></span>`;
@@ -1525,7 +1534,7 @@ function numInt(fn,v,a,b,n=1000){
 }
 function numLim(f,v,a,eps=1e-7){const fn=math.compile(f),loc=Object.assign({},scope);loc[v]=a+eps;return fn.evaluate(loc);}
 
-function findRoots(f,v,mn=-100,mx=100,steps=2000){
+function findRoots(f,v,mn=-10000,mx=10000,steps=10000){
   const fn=math.compile(f),loc=Object.assign({},scope),roots=[],dx=(mx-mn)/steps;
   let px=mn,ps=null;
   for(let i=0;i<=steps;i++){
@@ -1533,7 +1542,8 @@ function findRoots(f,v,mn=-100,mx=100,steps=2000){
     let y;try{y=fn.evaluate(loc);}catch{continue;}
     if(!isFinite(y)) continue;
     const s=Math.sign(y);
-    if(ps!==null&&s!==0&&ps!==0&&s!==ps){
+    if(s===0){ if(!roots.some(rr=>Math.abs(rr-x)<1e-6)) roots.push(x); }
+    else if(ps!==null&&ps!==0&&s!==ps){
       const r=bisect(fn,v,px,x,Object.assign({},scope));
       if(r!==null&&!roots.some(rr=>Math.abs(rr-r)<1e-6)) roots.push(r);
     }
@@ -1789,6 +1799,12 @@ renderModeUI();
 buildWelcomeChips();
 buildConsts();
 renderDefs();
+document.getElementById('mf').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    runCell();
+  }
+});
 </script>
 </body>
 </html>
