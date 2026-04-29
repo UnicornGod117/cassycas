@@ -1,0 +1,2949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>cas — symbolic workstation</title>
+<script>window.MathJax={tex:{inlineMath:[['$','$'],['\\(','\\)']],displayMath:[['$$','$$'],['\\[','\\]']]},options:{skipHtmlTags:['script','noscript','style','textarea','pre']},startup:{ready(){MathJax.startup.defaultReady();}},svg:{fontCache:'global'}};</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-chtml.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.2/math.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/mathlive@0.98.6/dist/mathlive.min.js" crossorigin="anonymous"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Newsreader:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  /* base — cool charcoal with green-leaning shadows */
+  --bg:#0b0d11;
+  --s0:#0f1218;
+  --s1:#13171f;
+  --s2:#191e28;
+  --s3:#212834;
+  --s4:#2a3240;
+
+  --b0:#1f2530;
+  --b1:#2a3240;
+  --b2:#384155;
+
+  /* text */
+  --t0:#e7ebf2;
+  --t1:#a3adc0;
+  --t2:#6f7a8e;
+  --t3:#4a5363;
+  --t4:#2f3744;
+
+  /* primary accent — instrument green */
+  --a0:#7eef9c;
+  --a1:#5dd87f;
+  --a2:#3bb95e;
+  --a-tint:rgba(126,239,156,.10);
+  --a-tint-2:rgba(126,239,156,.05);
+  --a-glow:0 0 0 1px rgba(126,239,156,.25), 0 0 24px -8px rgba(126,239,156,.35);
+
+  /* secondary tags — restrained, muted */
+  --warm:#e8b87a;     /* gold/amber for exact mode + constants */
+  --warm-tint:rgba(232,184,122,.10);
+  --violet:#a99cf2;   /* plots / graphs */
+  --violet-tint:rgba(169,156,242,.10);
+  --rose:#e88a99;     /* errors */
+  --rose-tint:rgba(232,138,153,.10);
+  --cyan:#7fc5e0;     /* units / dimensional */
+  --cyan-tint:rgba(127,197,224,.10);
+
+  /* type scale */
+  --ui:'Inter','Helvetica Neue',sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --serif:'Newsreader',Georgia,serif;
+
+  /* radii / shadows */
+  --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:12px; --r-xl:16px;
+  --shadow-1:0 1px 2px rgba(0,0,0,.4);
+  --shadow-2:0 8px 24px -12px rgba(0,0,0,.7), 0 2px 6px rgba(0,0,0,.4);
+  --shadow-3:0 24px 48px -16px rgba(0,0,0,.8), 0 4px 12px rgba(0,0,0,.5);
+
+  /* density */
+  --density:1;
+}
+
+/* light theme — paper workstation */
+body.light{
+  --bg:#f6f5f1;
+  --s0:#fbfaf6;
+  --s1:#f1efe8;
+  --s2:#eae7dd;
+  --s3:#e1ddcf;
+  --s4:#d6d1bf;
+
+  --b0:#e3dfd0;
+  --b1:#d3cdb8;
+  --b2:#bbb29a;
+
+  --t0:#1a1d22;
+  --t1:#3e4350;
+  --t2:#6b7384;
+  --t3:#9098a6;
+  --t4:#bdc2cc;
+
+  --a0:#1f8a4d;
+  --a1:#196e3e;
+  --a2:#13522e;
+  --a-tint:rgba(31,138,77,.08);
+  --a-tint-2:rgba(31,138,77,.04);
+  --a-glow:0 0 0 1px rgba(31,138,77,.25), 0 0 16px -6px rgba(31,138,77,.25);
+
+  --warm:#a06a17;
+  --warm-tint:rgba(160,106,23,.08);
+  --violet:#5f4fbf;
+  --violet-tint:rgba(95,79,191,.08);
+  --rose:#b73a4f;
+  --rose-tint:rgba(183,58,79,.08);
+  --cyan:#3a6e88;
+  --cyan-tint:rgba(58,110,136,.08);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{
+  background:var(--bg);
+  color:var(--t0);
+  font-family:var(--ui);
+  font-size:13px;
+  font-feature-settings:"ss01","cv11";
+  -webkit-font-smoothing:antialiased;
+  display:flex;flex-direction:column;
+  letter-spacing:-0.005em;
+}
+
+/* ambient grid backdrop */
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:
+    radial-gradient(1200px 600px at 20% -10%, rgba(126,239,156,.04), transparent 60%),
+    radial-gradient(900px 400px at 110% 10%, rgba(169,156,242,.03), transparent 60%);
+  pointer-events:none;z-index:0;
+}
+body.light::before{
+  background-image:
+    radial-gradient(1200px 600px at 20% -10%, rgba(31,138,77,.05), transparent 60%);
+}
+
+/* ─────────── TOP BAR ─────────── */
+.topbar{
+  position:relative;z-index:50;
+  height:46px;flex-shrink:0;
+  background:var(--s0);
+  border-bottom:1px solid var(--b0);
+  display:flex;align-items:center;
+  padding:0 14px;gap:14px;
+}
+.brand{
+  display:flex;align-items:center;gap:10px;
+  font-family:var(--mono);font-size:12px;font-weight:500;
+  color:var(--t0);letter-spacing:-0.01em;
+}
+.brand-mark{
+  width:22px;height:22px;border-radius:6px;
+  background:linear-gradient(140deg,var(--a0),var(--a2));
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--serif);font-style:italic;font-weight:500;
+  font-size:14px;color:#0b0d11;
+  box-shadow:0 0 0 1px rgba(126,239,156,.3), 0 4px 12px -4px rgba(126,239,156,.4);
+}
+.brand-text{display:flex;flex-direction:column;line-height:1;}
+.brand-text b{font-weight:600;font-size:13px;font-family:var(--ui);}
+.brand-text span{font-size:9.5px;color:var(--t3);letter-spacing:0.05em;margin-top:2px;text-transform:uppercase;}
+
+.topbar-divider{width:1px;height:20px;background:var(--b0);}
+
+/* command bar — the new hero */
+.cmd-wrap{
+  flex:1;max-width:560px;
+  position:relative;
+}
+.cmd{
+  width:100%;height:30px;
+  background:var(--s1);
+  border:1px solid var(--b0);
+  border-radius:var(--r-sm);
+  display:flex;align-items:center;gap:8px;
+  padding:0 10px;
+  font-family:var(--mono);font-size:12px;
+  color:var(--t1);
+  cursor:text;
+  transition:border-color .15s, background .15s;
+}
+.cmd:hover{border-color:var(--b1);}
+.cmd-key{
+  font-family:var(--mono);font-size:9.5px;
+  padding:1px 5px;border-radius:3px;
+  background:var(--s2);color:var(--t3);
+  border:1px solid var(--b0);
+  margin-left:auto;
+}
+.cmd .ico{color:var(--t3);font-size:12px;}
+
+.topbar-spacer{flex:1;}
+
+.tg-group{
+  display:flex;align-items:center;
+  background:var(--s1);border:1px solid var(--b0);
+  border-radius:var(--r-sm);padding:2px;gap:1px;
+}
+.tg{
+  height:24px;padding:0 9px;
+  font-family:var(--mono);font-size:10px;letter-spacing:0.04em;
+  border:none;background:transparent;color:var(--t2);
+  border-radius:4px;cursor:pointer;
+  transition:all .15s;
+  text-transform:uppercase;
+}
+.tg:hover{color:var(--t0);}
+.tg.on{background:var(--s3);color:var(--a0);}
+.tg.on.warm{color:var(--warm);}
+
+.icon-btn{
+  width:28px;height:28px;
+  display:flex;align-items:center;justify-content:center;
+  background:transparent;border:1px solid transparent;
+  border-radius:var(--r-sm);
+  color:var(--t2);cursor:pointer;
+  transition:all .15s;
+  font-family:var(--mono);font-size:12px;
+}
+.icon-btn:hover{color:var(--t0);background:var(--s2);border-color:var(--b0);}
+.icon-btn.danger:hover{color:var(--rose);border-color:var(--rose);}
+
+.icon-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
+
+/* ─────────── APP LAYOUT ─────────── */
+.app{
+  position:relative;z-index:1;
+  display:flex;flex:1;overflow:hidden;
+}
+
+/* ─────────── LEFT RAIL ─────────── */
+.rail{
+  width:60px;flex-shrink:0;
+  background:var(--s0);
+  border-right:1px solid var(--b0);
+  display:flex;flex-direction:column;
+  align-items:center;
+  padding:10px 0;gap:2px;
+}
+.rail-btn{
+  width:42px;height:42px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;
+  background:transparent;border:none;
+  border-radius:var(--r-sm);
+  cursor:pointer;
+  color:var(--t2);
+  position:relative;
+  transition:all .15s;
+}
+.rail-btn:hover{color:var(--t0);background:var(--s2);}
+.rail-btn.on{
+  color:var(--a0);
+  background:var(--a-tint);
+}
+.rail-btn.on::before{
+  content:'';position:absolute;left:-10px;top:50%;
+  transform:translateY(-50%);
+  width:2px;height:20px;
+  background:var(--a0);
+  border-radius:0 2px 2px 0;
+  box-shadow:0 0 8px rgba(126,239,156,.5);
+}
+.rail-glyph{
+  font-family:var(--serif);font-style:italic;font-size:18px;
+  line-height:1;font-weight:500;
+}
+.rail-label{
+  font-family:var(--mono);font-size:8.5px;
+  letter-spacing:0.06em;text-transform:uppercase;
+  color:inherit;opacity:.85;
+}
+.rail-spacer{flex:1;}
+.rail-divider{width:24px;height:1px;background:var(--b0);margin:6px 0;}
+
+/* ─────────── SIDEBAR (mode context) ─────────── */
+.sidebar{
+  width:240px;flex-shrink:0;
+  background:var(--s0);
+  border-right:1px solid var(--b0);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+.sb-head{
+  padding:14px 16px 10px;
+  border-bottom:1px solid var(--b0);
+  flex-shrink:0;
+}
+.sb-eyebrow{
+  font-family:var(--mono);font-size:9px;letter-spacing:0.18em;
+  color:var(--t3);text-transform:uppercase;margin-bottom:5px;
+}
+.sb-title{
+  font-family:var(--ui);font-size:18px;font-weight:500;
+  color:var(--t0);letter-spacing:-0.02em;
+  display:flex;align-items:baseline;gap:8px;
+}
+.sb-title-glyph{
+  font-family:var(--serif);font-style:italic;
+  color:var(--a0);font-size:20px;font-weight:500;
+}
+.sb-sub{
+  font-family:var(--serif);font-style:italic;font-size:12px;
+  color:var(--t2);margin-top:4px;line-height:1.5;
+}
+
+.sb-scroll{flex:1;overflow-y:auto;overflow-x:hidden;}
+.sb-scroll::-webkit-scrollbar{width:5px;}
+.sb-scroll::-webkit-scrollbar-thumb{background:var(--b1);border-radius:3px;}
+.sb-scroll::-webkit-scrollbar-thumb:hover{background:var(--b2);}
+
+.sb-section{padding:14px 16px 6px;}
+.sb-lbl{
+  font-family:var(--mono);font-size:9px;letter-spacing:0.18em;
+  color:var(--t3);text-transform:uppercase;margin-bottom:8px;
+  display:flex;align-items:center;gap:8px;
+}
+.sb-lbl::after{content:'';flex:1;height:1px;background:var(--b0);}
+
+/* operations grid */
+.ops{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+.op{
+  background:var(--s1);
+  border:1px solid var(--b0);
+  border-radius:var(--r-sm);
+  padding:8px 9px;
+  font-family:var(--ui);font-size:11px;font-weight:500;
+  color:var(--t1);
+  cursor:pointer;
+  text-align:left;
+  transition:all .15s;
+  letter-spacing:-0.005em;
+  display:flex;flex-direction:column;gap:2px;
+}
+.op:hover{
+  border-color:var(--b2);color:var(--t0);
+  background:var(--s2);
+}
+.op.on{
+  border-color:var(--a0);
+  color:var(--a0);
+  background:var(--a-tint);
+  box-shadow:var(--a-glow);
+}
+.op-glyph{font-family:var(--serif);font-style:italic;font-size:14px;color:var(--a0);opacity:.85;}
+
+/* quick chips */
+.chips{display:flex;flex-wrap:wrap;gap:4px;}
+.chip{
+  padding:4px 8px;
+  background:var(--s1);
+  border:1px solid var(--b0);
+  border-radius:14px;
+  font-family:var(--mono);font-size:10.5px;
+  color:var(--t1);
+  cursor:pointer;
+  transition:all .15s;
+  white-space:nowrap;
+}
+.chip:hover{
+  border-color:var(--a0);color:var(--a0);
+  background:var(--a-tint-2);
+}
+
+.syntax-block{
+  font-family:var(--mono);font-size:10.5px;line-height:1.8;
+  color:var(--t2);
+  background:var(--s1);
+  border:1px solid var(--b0);
+  border-radius:var(--r-sm);
+  padding:9px 11px;
+}
+.syntax-block .kw{color:var(--a0);}
+.syntax-block .var{color:var(--warm);}
+
+/* definitions panel */
+.defs{
+  border-top:1px solid var(--b0);
+  flex-shrink:0;
+  background:var(--s0);
+}
+.defs-head{
+  padding:10px 16px 8px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.defs-clear{
+  background:transparent;border:none;
+  font-family:var(--mono);font-size:9px;
+  color:var(--t3);
+  cursor:pointer;letter-spacing:0.08em;text-transform:uppercase;
+  transition:color .15s;
+}
+.defs-clear:hover{color:var(--rose);}
+.defs-list{
+  max-height:170px;overflow-y:auto;
+  padding:0 10px 10px;
+}
+.def{
+  display:flex;align-items:baseline;gap:8px;
+  padding:5px 8px;border-radius:var(--r-xs);
+  font-family:var(--mono);font-size:11px;
+  cursor:pointer;
+  transition:background .12s;
+}
+.def:hover{background:var(--s2);}
+.def-name{color:var(--warm);font-weight:500;flex-shrink:0;}
+.def-val{color:var(--t2);font-style:italic;font-family:var(--serif);font-size:12px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.def-empty{
+  text-align:center;padding:14px 8px;
+  color:var(--t3);font-family:var(--serif);font-style:italic;font-size:12px;
+}
+
+/* ─────────── CONTENT ─────────── */
+.content{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+
+.view{display:none;flex:1;flex-direction:column;overflow:hidden;min-height:0;}
+.view.on{display:flex;}
+
+/* notebook */
+.notebook{
+  flex:1;overflow-y:auto;overflow-x:hidden;
+  padding:24px 32px 32px;
+  display:flex;flex-direction:column;gap:14px;
+  scroll-behavior:smooth;
+}
+.notebook::-webkit-scrollbar{width:8px;}
+.notebook::-webkit-scrollbar-thumb{background:var(--b1);border-radius:4px;}
+.notebook::-webkit-scrollbar-thumb:hover{background:var(--b2);}
+
+/* welcome / empty state */
+.welcome{
+  flex:1;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:24px;text-align:center;
+  padding:40px 20px;
+  min-height:60vh;
+}
+.welcome-mark{
+  font-family:var(--serif);font-style:italic;font-weight:400;
+  font-size:96px;line-height:1;
+  background:linear-gradient(160deg,var(--a0),var(--a2) 120%);
+  -webkit-background-clip:text;background-clip:text;
+  color:transparent;
+  filter:drop-shadow(0 8px 24px rgba(126,239,156,.15));
+}
+.welcome-title{
+  font-family:var(--ui);font-size:28px;font-weight:300;
+  color:var(--t0);letter-spacing:-0.02em;
+  max-width:520px;
+  line-height:1.25;
+}
+.welcome-title em{
+  font-family:var(--serif);font-style:italic;font-weight:500;
+  color:var(--a0);
+}
+.welcome-sub{
+  font-family:var(--serif);font-style:italic;
+  font-size:14px;color:var(--t2);
+  max-width:480px;line-height:1.6;
+}
+.welcome-grid{
+  display:grid;grid-template-columns:repeat(2,1fr);
+  gap:8px;width:100%;max-width:580px;margin-top:8px;
+}
+.wcell{
+  text-align:left;
+  padding:14px 16px;
+  background:var(--s0);
+  border:1px solid var(--b0);
+  border-radius:var(--r-md);
+  cursor:pointer;
+  transition:all .18s;
+  display:flex;flex-direction:column;gap:6px;
+}
+.wcell:hover{
+  border-color:var(--a0);
+  background:var(--s1);
+  transform:translateY(-1px);
+}
+.wcell-tag{
+  font-family:var(--mono);font-size:9px;
+  letter-spacing:0.12em;text-transform:uppercase;
+  color:var(--a0);
+  display:flex;align-items:center;gap:6px;
+}
+.wcell-tag::before{
+  content:'';width:5px;height:5px;border-radius:50%;
+  background:var(--a0);box-shadow:0 0 6px var(--a0);
+}
+.wcell-expr{
+  font-family:var(--mono);font-size:13px;
+  color:var(--t0);letter-spacing:-0.01em;
+}
+.wcell-desc{
+  font-family:var(--serif);font-style:italic;font-size:11.5px;
+  color:var(--t2);
+}
+
+.welcome-tip{
+  font-family:var(--mono);font-size:10.5px;
+  color:var(--t3);letter-spacing:0.04em;
+  display:flex;align-items:center;gap:10px;
+  margin-top:10px;
+}
+.welcome-tip kbd{
+  font-family:var(--mono);font-size:9.5px;
+  padding:2px 6px;border-radius:3px;
+  background:var(--s2);color:var(--t1);
+  border:1px solid var(--b0);
+}
+
+/* ─────────── CELLS ─────────── */
+.cell{
+  flex-shrink:0;
+  background:var(--s0);
+  border:1px solid var(--b0);
+  border-radius:var(--r-md);
+  overflow:hidden;
+  transition:border-color .18s, transform .18s;
+  animation:cellin .25s cubic-bezier(.2,.8,.2,1);
+  position:relative;
+}
+.cell:hover{border-color:var(--b1);}
+.cell.text-cell{background:var(--s1);}
+@keyframes cellin{
+  from{opacity:0;transform:translateY(8px);}
+  to{opacity:1;transform:translateY(0);}
+}
+
+.cin{
+  display:flex;align-items:flex-start;gap:14px;
+  padding:12px 16px 10px;
+  background:linear-gradient(180deg, var(--s1) 0%, var(--s0) 100%);
+  border-bottom:1px solid var(--b0);
+}
+.cprompt{
+  font-family:var(--mono);font-size:10px;
+  color:var(--t3);letter-spacing:0.04em;
+  flex-shrink:0;padding-top:3px;
+  display:flex;align-items:center;gap:6px;
+}
+.cprompt-num{
+  display:inline-block;min-width:18px;
+  font-variant-numeric:tabular-nums;
+  color:var(--a0);font-weight:500;
+}
+.cprompt-arrow{color:var(--t3);}
+
+.cexpr{
+  flex:1;
+  font-family:var(--mono);font-size:13px;
+  color:var(--t0);
+  line-height:1.5;
+  cursor:pointer;
+  word-break:break-word;
+  transition:color .15s;
+}
+.cexpr:hover{color:var(--a0);}
+
+.cmeta{
+  flex-shrink:0;
+  display:flex;align-items:center;gap:6px;
+  margin-top:1px;
+}
+.cbadge{
+  font-family:var(--mono);font-size:9px;
+  padding:2px 7px;border-radius:3px;
+  background:var(--s2);color:var(--t2);
+  border:1px solid var(--b0);
+  letter-spacing:0.08em;text-transform:uppercase;
+}
+
+.cout{
+  padding:18px 20px;
+  min-height:48px;
+  display:flex;align-items:center;
+  font-size:14px;
+  position:relative;
+}
+.cout.loading{padding:14px 20px;justify-content:flex-start;}
+.cout.err{
+  color:var(--rose);font-family:var(--mono);font-size:12px;
+  background:var(--rose-tint);
+  border-top:1px solid rgba(232,138,153,.2);
+}
+.cout-prompt{
+  position:absolute;left:16px;top:18px;
+  font-family:var(--mono);font-size:10px;
+  color:var(--t3);letter-spacing:0.04em;
+}
+.cout-body{
+  flex:1;padding-left:36px;
+  overflow-x:auto;
+}
+.cout-body::-webkit-scrollbar{height:5px;}
+.cout-body::-webkit-scrollbar-thumb{background:var(--b1);border-radius:3px;}
+
+.mjrender{
+  font-size:18px;color:var(--t0);
+}
+.mjrender mjx-container{margin:0!important;}
+
+.unit-result{
+  font-family:var(--mono);font-size:16px;color:var(--cyan);
+  display:flex;align-items:center;gap:8px;
+}
+.unit-tag{
+  font-family:var(--mono);font-size:9px;
+  padding:2px 7px;border-radius:3px;
+  background:var(--cyan-tint);color:var(--cyan);
+  border:1px solid rgba(127,197,224,.25);
+  letter-spacing:0.1em;text-transform:uppercase;
+}
+
+/* cell actions */
+.cacts{
+  display:flex;align-items:center;gap:2px;
+  padding:6px 12px;
+  border-top:1px solid var(--b0);
+  background:var(--s0);
+  opacity:0;
+  transition:opacity .18s;
+}
+.cell:hover .cacts{opacity:1;}
+.cact{
+  background:transparent;
+  border:none;
+  border-radius:var(--r-xs);
+  padding:5px 10px;
+  font-family:var(--mono);font-size:10px;
+  color:var(--t2);
+  cursor:pointer;
+  transition:all .15s;
+  display:flex;align-items:center;gap:5px;
+  letter-spacing:0.02em;
+}
+.cact:hover{color:var(--a0);background:var(--s2);}
+.cact.violet:hover{color:var(--violet);}
+.cact.warm:hover{color:var(--warm);}
+.cact-spacer{flex:1;}
+
+/* steps */
+.steps{display:none;border-top:1px solid var(--b0);background:var(--s1);}
+.steps.open{display:block;}
+.step{
+  display:flex;gap:14px;align-items:flex-start;
+  padding:10px 20px;
+  border-bottom:1px solid var(--b0);
+}
+.step:last-child{border-bottom:none;}
+.step-n{
+  width:22px;height:22px;
+  border-radius:50%;
+  background:var(--s2);
+  border:1px solid var(--b1);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:10px;
+  color:var(--t1);flex-shrink:0;
+  font-variant-numeric:tabular-nums;
+}
+.step-body{flex:1;}
+.step-d{font-family:var(--ui);font-size:12px;color:var(--t1);margin-bottom:3px;}
+.step-e{font-family:var(--mono);font-size:12px;color:var(--a0);}
+
+/* plot in cell */
+.cell-plot{display:none;border-top:1px solid var(--b0);background:var(--s1);}
+.cell-plot.open{display:block;}
+.cell-plot-inner{width:100%;height:300px;}
+
+/* text cell */
+.text-cell-edit{
+  width:100%;
+  background:transparent;border:none;outline:none;
+  color:var(--t0);
+  font-family:var(--serif);font-size:15px;line-height:1.7;
+  padding:14px 18px;
+  resize:none;min-height:50px;
+}
+.text-cell-edit::placeholder{color:var(--t3);font-style:italic;}
+
+/* ─────────── INPUT AREA ─────────── */
+.input-area{
+  flex-shrink:0;
+  background:var(--s0);
+  border-top:1px solid var(--b0);
+  padding:14px 32px 18px;
+  position:relative;
+}
+.input-area::before{
+  content:'';position:absolute;top:-32px;left:0;right:0;height:32px;
+  background:linear-gradient(180deg, transparent, var(--bg) 90%);
+  pointer-events:none;
+}
+
+.input-toolbar{
+  display:flex;align-items:center;gap:6px;
+  margin-bottom:10px;
+  flex-wrap:wrap;
+}
+.in-op{
+  font-family:var(--mono);font-size:10px;
+  padding:4px 9px;
+  border-radius:var(--r-xs);
+  background:var(--s1);
+  border:1px solid var(--b0);
+  color:var(--t2);
+  cursor:pointer;
+  letter-spacing:0.04em;
+  transition:all .15s;
+}
+.in-op:hover{color:var(--t0);border-color:var(--b1);}
+.in-op.on{
+  background:var(--a-tint);
+  border-color:var(--a0);
+  color:var(--a0);
+}
+.in-op-spacer{flex:1;}
+
+.input-row{
+  display:flex;gap:10px;align-items:flex-end;
+}
+.input-wrap{
+  flex:1;
+  position:relative;
+  border:1px solid var(--b1);
+  border-radius:var(--r-md);
+  background:var(--s1);
+  transition:border-color .15s, box-shadow .15s;
+  overflow:hidden;
+}
+.input-wrap.focused{
+  border-color:var(--a0);
+  box-shadow:var(--a-glow);
+}
+.input-prompt{
+  position:absolute;left:14px;top:14px;
+  font-family:var(--mono);font-size:11px;
+  color:var(--a0);
+  pointer-events:none;
+  z-index:2;
+  font-weight:500;
+}
+#monwrap{height:48px;min-height:48px;max-height:140px;overflow:hidden;padding-left:32px;}
+#mlwrap{display:none;padding:14px 16px 14px 32px;min-height:48px;align-items:center;}
+#mlwrap.on{display:flex;}
+math-field{
+  width:100%;
+  --caret-color:var(--a0);
+  --selection-background-color:var(--a-tint);
+  font-size:18px;color:var(--t0);
+}
+
+.run-btn{
+  height:48px;padding:0 22px;
+  border-radius:var(--r-md);
+  background:linear-gradient(140deg, var(--a0) 0%, var(--a2) 100%);
+  border:none;
+  color:#0b0d11;
+  font-family:var(--ui);font-size:13px;font-weight:600;
+  cursor:pointer;
+  transition:all .18s;
+  letter-spacing:-0.005em;
+  display:flex;align-items:center;gap:8px;
+  box-shadow:0 4px 16px -4px rgba(126,239,156,.4), inset 0 1px 0 rgba(255,255,255,.2);
+  white-space:nowrap;
+}
+.run-btn:hover{
+  transform:translateY(-1px);
+  box-shadow:0 6px 24px -4px rgba(126,239,156,.5), inset 0 1px 0 rgba(255,255,255,.25);
+}
+.run-btn:active{transform:translateY(0);}
+.run-btn kbd{
+  font-family:var(--mono);font-size:10px;font-weight:500;
+  padding:2px 5px;border-radius:3px;
+  background:rgba(0,0,0,.2);color:rgba(11,13,17,.7);
+}
+
+.text-btn{
+  height:48px;width:48px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--s1);
+  border:1px solid var(--b1);
+  border-radius:var(--r-md);
+  color:var(--t2);
+  cursor:pointer;
+  transition:all .15s;
+}
+.text-btn:hover{
+  color:var(--violet);border-color:var(--violet);
+  background:var(--violet-tint);
+}
+.text-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.6;}
+
+.live-preview{
+  margin-top:8px;
+  padding:6px 14px 6px 32px;
+  background:var(--s2);
+  border:1px solid var(--b0);
+  border-radius:var(--r-sm);
+  font-size:14px;
+  color:var(--t1);
+  opacity:0;
+  transition:opacity .2s;
+  min-height:28px;
+  overflow-x:auto;
+  position:relative;
+}
+.live-preview::before{
+  content:'⟶';
+  position:absolute;left:12px;top:6px;
+  font-family:var(--mono);color:var(--t3);font-size:11px;
+}
+.live-preview.on{opacity:1;}
+
+.input-hint{
+  margin-top:8px;
+  display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  font-family:var(--mono);font-size:10px;
+  color:var(--t3);letter-spacing:0.02em;
+}
+.input-hint kbd{
+  font-family:var(--mono);font-size:9.5px;
+  padding:2px 5px;border-radius:3px;
+  background:var(--s2);color:var(--t2);
+  border:1px solid var(--b0);
+  margin:0 2px;
+}
+
+/* ─────────── AUTOCOMPLETE ─────────── */
+.ac{
+  position:absolute;bottom:calc(100% + 6px);left:0;right:0;
+  background:var(--s1);
+  border:1px solid var(--b1);
+  border-radius:var(--r-md);
+  max-height:220px;overflow-y:auto;
+  z-index:200;
+  box-shadow:var(--shadow-3);
+  display:none;
+  padding:4px;
+}
+.ac.open{display:block;}
+.aci{
+  display:flex;align-items:center;gap:10px;
+  padding:6px 10px;
+  border-radius:var(--r-sm);
+  cursor:pointer;
+  transition:background .12s;
+}
+.aci:hover,.aci.sel{background:var(--s3);}
+.aci-name{
+  font-family:var(--mono);font-size:12px;
+  color:var(--a0);font-weight:500;
+}
+.aci-sig{
+  font-family:var(--mono);font-size:11px;
+  color:var(--t2);
+}
+.aci-tag{
+  margin-left:auto;
+  font-family:var(--mono);font-size:9px;
+  padding:2px 6px;border-radius:3px;
+  background:var(--s2);color:var(--t3);
+  letter-spacing:0.06em;text-transform:uppercase;
+}
+
+/* ─────────── GRAPH VIEW ─────────── */
+.graph-view{padding:24px 32px;flex:1;display:flex;flex-direction:column;gap:16px;overflow:auto;}
+.graph-head{
+  display:flex;align-items:baseline;gap:14px;
+  border-bottom:1px solid var(--b0);
+  padding-bottom:14px;
+}
+.graph-head h2{
+  font-family:var(--ui);font-size:20px;font-weight:500;
+  letter-spacing:-0.02em;color:var(--t0);
+}
+.graph-head h2 em{
+  font-family:var(--serif);font-style:italic;color:var(--violet);
+  font-weight:500;
+}
+.graph-head-sub{
+  font-family:var(--serif);font-style:italic;font-size:13px;
+  color:var(--t2);
+}
+
+.graph-controls{
+  background:var(--s0);
+  border:1px solid var(--b0);
+  border-radius:var(--r-md);
+  padding:14px;
+  display:flex;flex-direction:column;gap:12px;
+}
+
+.glabel{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:0.14em;
+  text-transform:uppercase;color:var(--t3);
+  margin-bottom:5px;
+}
+.ginp{
+  background:var(--s1);
+  border:1px solid var(--b1);
+  border-radius:var(--r-sm);
+  color:var(--t0);
+  font-family:var(--mono);font-size:13px;
+  padding:8px 12px;outline:none;
+  width:100%;
+  transition:border-color .15s, box-shadow .15s;
+}
+.ginp:focus{border-color:var(--a0);box-shadow:var(--a-glow);}
+
+.graph-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;}
+.graph-range{
+  display:flex;align-items:center;gap:6px;
+}
+.graph-range .ginp{width:70px;}
+.graph-range span{font-family:var(--mono);color:var(--t3);font-size:11px;}
+
+.graph-actions{display:flex;gap:8px;margin-left:auto;}
+.btn-plot{
+  height:38px;padding:0 18px;
+  background:linear-gradient(140deg, var(--a0), var(--a2));
+  color:#0b0d11;border:none;border-radius:var(--r-sm);
+  font-family:var(--ui);font-size:12px;font-weight:600;
+  cursor:pointer;transition:all .15s;letter-spacing:-0.005em;
+  box-shadow:0 4px 12px -4px rgba(126,239,156,.4);
+}
+.btn-plot:hover{transform:translateY(-1px);box-shadow:0 6px 16px -4px rgba(126,239,156,.5);}
+.btn-plot.violet{
+  background:linear-gradient(140deg, var(--violet), #7561d6);
+  box-shadow:0 4px 12px -4px rgba(169,156,242,.4);
+}
+.btn-plot.violet:hover{box-shadow:0 6px 16px -4px rgba(169,156,242,.5);}
+
+.gplot{
+  flex:1;
+  border:1px solid var(--b0);
+  border-radius:var(--r-md);
+  background:var(--s0);
+  overflow:hidden;
+  min-height:340px;
+}
+
+/* ─────────── UNITS VIEW ─────────── */
+.units-view{padding:24px 32px;flex:1;overflow-y:auto;max-width:880px;}
+.units-head{
+  display:flex;align-items:baseline;gap:14px;
+  border-bottom:1px solid var(--b0);
+  padding-bottom:14px;margin-bottom:20px;
+}
+.units-head h2{
+  font-family:var(--ui);font-size:20px;font-weight:500;
+  letter-spacing:-0.02em;color:var(--t0);
+}
+.units-head h2 em{
+  font-family:var(--serif);font-style:italic;color:var(--cyan);
+  font-weight:500;
+}
+.units-head-sub{
+  font-family:var(--serif);font-style:italic;font-size:13px;
+  color:var(--t2);
+}
+.units-examples{
+  display:flex;gap:5px;flex-wrap:wrap;
+  margin-bottom:14px;
+}
+.unit-ex{
+  font-family:var(--mono);font-size:11px;
+  padding:4px 10px;
+  background:var(--s1);
+  border:1px solid var(--b0);
+  color:var(--cyan);
+  border-radius:14px;
+  cursor:pointer;
+  transition:all .15s;
+}
+.unit-ex:hover{border-color:var(--cyan);background:var(--cyan-tint);}
+
+.units-input-row{display:flex;gap:10px;margin-bottom:16px;}
+.units-result{
+  min-height:64px;
+  background:var(--s0);
+  border:1px solid var(--b0);
+  border-radius:var(--r-md);
+  padding:18px 20px;
+  font-family:var(--mono);font-size:18px;
+  color:var(--cyan);
+  margin-bottom:32px;
+  display:flex;align-items:center;
+}
+.units-result-empty{font-family:var(--serif);font-style:italic;color:var(--t3);font-size:14px;}
+
+.consts-head{
+  font-family:var(--mono);font-size:10px;
+  letter-spacing:0.16em;text-transform:uppercase;
+  color:var(--t3);margin-bottom:10px;
+  display:flex;align-items:center;gap:10px;
+}
+.consts-head::after{content:'';flex:1;height:1px;background:var(--b0);}
+
+.consts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;}
+.const-card{
+  padding:12px 14px;
+  background:var(--s0);
+  border:1px solid var(--b0);
+  border-radius:var(--r-md);
+  cursor:pointer;
+  transition:all .18s;
+}
+.const-card:hover{
+  border-color:var(--warm);
+  background:var(--s1);
+}
+.const-card-name{
+  font-family:var(--ui);font-size:12px;font-weight:500;
+  color:var(--t0);margin-bottom:3px;
+  letter-spacing:-0.005em;
+}
+.const-card-val{
+  font-family:var(--mono);font-size:11px;
+  color:var(--warm);
+}
+
+/* ─────────── SPINNER ─────────── */
+.spin{
+  width:14px;height:14px;
+  border:2px solid var(--b1);
+  border-top-color:var(--a0);
+  border-radius:50%;
+  animation:spin .6s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ─────────── TOAST ─────────── */
+.toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(8px);
+  background:var(--s2);
+  border:1px solid var(--a0);
+  color:var(--a0);
+  padding:8px 16px;
+  border-radius:var(--r-md);
+  font-family:var(--mono);font-size:11px;font-weight:500;
+  letter-spacing:0.04em;
+  opacity:0;
+  transition:all .25s cubic-bezier(.2,.8,.2,1);
+  pointer-events:none;
+  z-index:999;
+  box-shadow:var(--shadow-2);
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* ─────────── DEFINT PANEL ─────────── */
+.defint-panel{
+  display:none;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:10px 32px;
+  background:var(--s1);
+  border-bottom:1px solid var(--b0);
+}
+.defint-panel.on{display:flex;}
+.defint-label{
+  font-family:var(--mono);font-size:10px;
+  color:var(--violet);
+  letter-spacing:0.1em;text-transform:uppercase;
+}
+.defint-input{
+  background:var(--s2);
+  border:1px solid var(--b1);
+  border-radius:var(--r-sm);
+  color:var(--t0);
+  font-family:var(--mono);font-size:12px;
+  padding:5px 9px;outline:none;
+  transition:border-color .15s;
+}
+.defint-input:focus{border-color:var(--a0);}
+.defint-sep{color:var(--t3);font-family:var(--mono);font-size:11px;}
+.defint-btn{
+  font-family:var(--mono);font-size:10px;
+  padding:5px 12px;border-radius:var(--r-sm);
+  background:var(--a-tint);color:var(--a0);
+  border:1px solid var(--a0);
+  cursor:pointer;letter-spacing:0.04em;
+}
+.defint-btn:hover{background:var(--a-tint);filter:brightness(1.2);}
+
+/* ─────────── COMMAND PALETTE ─────────── */
+.palette-overlay{
+  position:fixed;inset:0;
+  background:rgba(11,13,17,.6);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  z-index:500;
+  display:none;align-items:flex-start;justify-content:center;
+  padding-top:14vh;
+}
+.palette-overlay.on{display:flex;}
+.palette{
+  width:560px;max-width:90vw;
+  background:var(--s0);
+  border:1px solid var(--b1);
+  border-radius:var(--r-lg);
+  box-shadow:var(--shadow-3);
+  overflow:hidden;
+}
+.palette-input-wrap{
+  display:flex;align-items:center;gap:10px;
+  padding:14px 18px;
+  border-bottom:1px solid var(--b0);
+}
+.palette-input{
+  flex:1;
+  background:transparent;border:none;outline:none;
+  color:var(--t0);
+  font-family:var(--mono);font-size:14px;
+}
+.palette-input::placeholder{color:var(--t3);}
+.palette-key{
+  font-family:var(--mono);font-size:10px;
+  padding:2px 6px;border-radius:3px;
+  background:var(--s2);color:var(--t2);
+  border:1px solid var(--b0);
+}
+.palette-list{max-height:340px;overflow-y:auto;padding:6px;}
+.palette-item{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 12px;
+  border-radius:var(--r-sm);
+  cursor:pointer;
+  transition:background .12s;
+}
+.palette-item:hover,.palette-item.sel{background:var(--s2);}
+.palette-item-name{
+  font-family:var(--mono);font-size:12px;
+  color:var(--a0);font-weight:500;
+}
+.palette-item-desc{
+  font-family:var(--ui);font-size:11.5px;
+  color:var(--t2);
+}
+
+/* ─────────── TWEAKS ─────────── */
+.tweaks{
+  position:fixed;right:18px;bottom:18px;
+  width:280px;
+  background:var(--s0);
+  border:1px solid var(--b1);
+  border-radius:var(--r-lg);
+  box-shadow:var(--shadow-3);
+  z-index:400;
+  display:none;
+  overflow:hidden;
+}
+.tweaks.on{display:block;}
+.tweaks-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;
+  border-bottom:1px solid var(--b0);
+  background:var(--s1);
+}
+.tweaks-head h3{
+  font-family:var(--mono);font-size:11px;
+  letter-spacing:0.1em;text-transform:uppercase;
+  color:var(--t1);
+}
+.tweaks-body{padding:12px 14px;display:flex;flex-direction:column;gap:14px;}
+.tweak-group{display:flex;flex-direction:column;gap:6px;}
+.tweak-label{
+  font-family:var(--mono);font-size:9.5px;
+  color:var(--t3);letter-spacing:0.1em;text-transform:uppercase;
+}
+.tweak-row{display:flex;gap:6px;}
+.tweak-swatch{
+  flex:1;height:26px;
+  border-radius:var(--r-xs);
+  border:1px solid var(--b0);
+  cursor:pointer;
+  transition:transform .15s, border-color .15s;
+  position:relative;
+}
+.tweak-swatch:hover{transform:translateY(-1px);}
+.tweak-swatch.on{border-color:var(--t0);box-shadow:0 0 0 2px var(--bg), 0 0 0 3px currentColor;}
+
+/* hide scrollbars in monaco */
+.monaco-editor .scroll-decoration{display:none!important;}
+
+/* MathJax inline */
+mjx-container[display="true"]{margin:0!important;text-align:left!important;}
+</style>
+</head>
+<body>
+
+<!-- ============ TOP BAR ============ -->
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">∫</div>
+    <div class="brand-text">
+      <b>cas</b><span>symbolic workstation</span>
+    </div>
+  </div>
+
+  <div class="topbar-divider"></div>
+
+  <div class="cmd-wrap">
+    <div class="cmd" onclick="openPalette()">
+      <span class="ico">⌕</span>
+      <span>Run command, search functions…</span>
+      <span class="cmd-key">⌘ K</span>
+    </div>
+  </div>
+
+  <div class="topbar-spacer"></div>
+
+  <div class="tg-group" title="Output mode">
+    <button class="tg on" id="tg-exact" onclick="toggleExact()">Exact</button>
+    <button class="tg" id="tg-approx" onclick="toggleExact()">≈ Approx</button>
+  </div>
+
+  <div class="tg-group" title="Angle mode">
+    <button class="tg on" id="tg-rad" onclick="toggleAngle()">Rad</button>
+    <button class="tg" id="tg-deg" onclick="toggleAngle()">Deg</button>
+  </div>
+
+  <div class="topbar-divider"></div>
+
+  <button class="icon-btn" title="Save session" onclick="saveSession()">
+    <svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 14h8"/></svg>
+  </button>
+  <button class="icon-btn" title="Load session" onclick="document.getElementById('floader').click()">
+    <svg viewBox="0 0 24 24"><path d="M3 7h7l2 3h9v9H3z"/></svg>
+  </button>
+  <button class="icon-btn" title="Export as text" onclick="exportTxt()">
+    <svg viewBox="0 0 24 24"><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>
+  </button>
+  <button class="icon-btn" title="Toggle theme" onclick="toggleTheme()">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/></svg>
+  </button>
+  <button class="icon-btn" title="Tweaks" onclick="toggleTweaks()">
+    <svg viewBox="0 0 24 24"><circle cx="6" cy="8" r="2"/><circle cx="18" cy="16" r="2"/><path d="M8 8h12"/><path d="M4 16h12"/></svg>
+  </button>
+  <button class="icon-btn danger" title="Clear all" onclick="clearAll()">
+    <svg viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M10 7V4h4v3"/><path d="M6 7l1 13h10l1-13"/></svg>
+  </button>
+</header>
+
+<!-- ============ APP ============ -->
+<div class="app">
+
+  <!-- LEFT RAIL (workspace nav) -->
+  <nav class="rail">
+    <button class="rail-btn on" id="view-tab-nb" onclick="switchView('nb')" title="Notebook">
+      <span class="rail-glyph">¶</span>
+      <span class="rail-label">Note</span>
+    </button>
+    <button class="rail-btn" id="view-tab-graph" onclick="switchView('graph')" title="Graph">
+      <span class="rail-glyph">⌇</span>
+      <span class="rail-label">Plot</span>
+    </button>
+    <button class="rail-btn" id="view-tab-units" onclick="switchView('units')" title="Units">
+      <span class="rail-glyph">Ω</span>
+      <span class="rail-label">Units</span>
+    </button>
+  </nav>
+
+  <!-- SIDEBAR (mode context) -->
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="sb-eyebrow">Mode</div>
+      <div class="sb-title" id="mode-title">
+        <span class="sb-title-glyph">α</span><span>Algebra</span>
+      </div>
+      <div class="sb-sub" id="mode-sub">Symbolic manipulation, simplification, factoring.</div>
+    </div>
+
+    <div class="sb-scroll">
+
+      <!-- Mode picker -->
+      <div class="sb-section">
+        <div class="sb-lbl">Discipline</div>
+        <div class="ops" id="mode-list"></div>
+      </div>
+
+      <!-- Operations for current mode -->
+      <div class="sb-section">
+        <div class="sb-lbl">Operations</div>
+        <div class="chips" id="ops-list"></div>
+      </div>
+
+      <!-- Quick insert -->
+      <div class="sb-section">
+        <div class="sb-lbl">Quick Insert</div>
+        <div class="chips" id="qi-list"></div>
+      </div>
+
+      <!-- Syntax reference -->
+      <div class="sb-section" style="padding-bottom:14px;">
+        <div class="sb-lbl">Syntax</div>
+        <div class="syntax-block" id="syntax-block"></div>
+      </div>
+    </div>
+
+    <!-- Definitions -->
+    <div class="defs">
+      <div class="defs-head">
+        <span style="font-family:var(--mono);font-size:9px;letter-spacing:0.18em;color:var(--t3);text-transform:uppercase;">Workspace</span>
+        <button class="defs-clear" onclick="clearDefs()">Clear</button>
+      </div>
+      <div class="defs-list" id="deflist">
+        <div class="def-empty">Nothing defined yet</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- ============ NOTEBOOK VIEW ============ -->
+    <div class="view on" id="view-nb">
+
+      <!-- definite integral helper, hidden by default -->
+      <div class="defint-panel" id="defint-panel">
+        <span class="defint-label">∫ Definite</span>
+        <input id="di-f" placeholder="f(x)" class="defint-input" style="width:140px;"/>
+        <span class="defint-sep">d</span>
+        <input id="di-v" placeholder="x" class="defint-input" style="width:46px;"/>
+        <span class="defint-sep">from</span>
+        <input id="di-a" placeholder="a" class="defint-input" style="width:60px;"/>
+        <span class="defint-sep">to</span>
+        <input id="di-b" placeholder="b" class="defint-input" style="width:60px;"/>
+        <button class="defint-btn" onclick="insertDefInt()">Insert</button>
+        <button class="defint-btn" onclick="runDefInt()" style="background:linear-gradient(140deg,var(--a0),var(--a2));color:#0b0d11;border:none;font-weight:600;">▶ Evaluate</button>
+        <button class="defint-btn" onclick="document.getElementById('defint-panel').classList.remove('on')" style="background:transparent;color:var(--t3);border-color:var(--b0);">✕</button>
+      </div>
+
+      <div class="notebook" id="notebook">
+        <!-- WELCOME -->
+        <div class="welcome" id="welcome">
+          <div class="welcome-mark">∑</div>
+          <div class="welcome-title">A precision instrument for <em>symbolic mathematics.</em></div>
+          <div class="welcome-sub">Type any expression below — the system will normalize, simplify, plot, or solve as needed. Switch modes from the left panel.</div>
+          <div class="welcome-grid" id="welcome-grid"></div>
+          <div class="welcome-tip">
+            <span><kbd>Enter</kbd> run</span>
+            <span><kbd>Shift</kbd>+<kbd>Enter</kbd> newline</span>
+            <span><kbd>⌘</kbd>+<kbd>K</kbd> command palette</span>
+            <span><kbd>Tab</kbd> complete</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- INPUT -->
+      <div class="input-area">
+        <div class="input-toolbar" id="input-toolbar">
+          <!-- mode operations injected here -->
+          <div id="ops-row" style="display:flex;gap:5px;flex-wrap:wrap;"></div>
+          <div class="in-op-spacer"></div>
+          <div class="tg-group">
+            <button class="tg on" id="tg-mo" onclick="setInputMode('monaco')">Code</button>
+            <button class="tg" id="tg-ml" onclick="setInputMode('ml')">Visual</button>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-wrap" id="input-wrap">
+            <div class="input-prompt">›</div>
+            <div class="ac" id="ac"></div>
+            <div id="monwrap"></div>
+            <div id="mlwrap"><math-field id="mf" virtual-keyboard-mode="off"></math-field></div>
+          </div>
+          <button class="run-btn" onclick="runCell()">
+            <span>Run</span><kbd>↵</kbd>
+          </button>
+          <button class="text-btn" onclick="addText()" title="Add markdown / note cell">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+          </button>
+        </div>
+        <div class="live-preview" id="lprev"></div>
+        <div class="input-hint">
+          <span><kbd>↵</kbd> run</span>
+          <span><kbd>Alt</kbd>+<kbd>↑↓</kbd> history</span>
+          <span><kbd>Tab</kbd> complete</span>
+          <span><kbd>Shift</kbd>+<kbd>↵</kbd> newline</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ GRAPH VIEW ============ -->
+    <div class="view" id="view-graph">
+      <div class="graph-view">
+        <div class="graph-head">
+          <h2><em>Plot</em> · 2D &amp; 3D</h2>
+          <div class="graph-head-sub">multi-trace overlays, surfaces, and parametric curves</div>
+        </div>
+        <div class="graph-controls">
+          <div>
+            <div class="glabel">Expression(s) — comma-separated · use <code style="color:var(--a0)">x</code> for 2D, <code style="color:var(--a0)">x</code> &amp; <code style="color:var(--a0)">y</code> for 3D</div>
+            <input class="ginp" id="ginp" placeholder="e.g.  sin(x), x^2 - 2x + 1"
+                   onkeydown="if(event.key==='Enter')plotGraph(false)"/>
+          </div>
+          <div class="graph-row">
+            <div>
+              <div class="glabel">X Range</div>
+              <div class="graph-range">
+                <input class="ginp" id="gxmin" type="number" value="-10"/>
+                <span>→</span>
+                <input class="ginp" id="gxmax" type="number" value="10"/>
+              </div>
+            </div>
+            <div class="graph-actions">
+              <button class="btn-plot" onclick="plotGraph(false)">Plot 2D</button>
+              <button class="btn-plot violet" onclick="plotGraph(true)">Plot 3D Surface</button>
+            </div>
+          </div>
+        </div>
+        <div class="gplot" id="gplot"></div>
+      </div>
+    </div>
+
+    <!-- ============ UNITS VIEW ============ -->
+    <div class="view" id="view-units">
+      <div class="units-view">
+        <div class="units-head">
+          <h2><em>Units</em> · dimensional analysis</h2>
+          <div class="units-head-sub">SI, imperial, mixed expressions, conversions</div>
+        </div>
+        <div class="units-examples">
+          <span class="unit-ex" onclick="setUnitInp('100 km/h to m/s')">100 km/h to m/s</span>
+          <span class="unit-ex" onclick="setUnitInp('60 degF to degC')">60 degF to degC</span>
+          <span class="unit-ex" onclick="setUnitInp('500 g + 2 kg')">500 g + 2 kg</span>
+          <span class="unit-ex" onclick="setUnitInp('1 atm to Pa')">1 atm to Pa</span>
+          <span class="unit-ex" onclick="setUnitInp('1 mi to km')">1 mi to km</span>
+          <span class="unit-ex" onclick="setUnitInp('1 acre to m^2')">1 acre to m²</span>
+        </div>
+        <div class="units-input-row">
+          <input class="ginp" id="uinp" placeholder="e.g.  100 km/h to m/s"
+                 onkeydown="if(event.key==='Enter')evalUnit()"/>
+          <button class="btn-plot" onclick="evalUnit()">Convert</button>
+        </div>
+        <div class="units-result" id="ures">
+          <span class="units-result-empty">Enter a unit expression to convert…</span>
+        </div>
+        <div class="consts-head">Physical Constants</div>
+        <div class="consts-grid" id="cgrid"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============ TOAST ============ -->
+<div class="toast" id="toast"></div>
+
+<!-- ============ TWEAKS PANEL ============ -->
+<div class="tweaks" id="tweaks">
+  <div class="tweaks-head">
+    <h3>Tweaks</h3>
+    <button class="icon-btn" onclick="toggleTweaks()" style="width:24px;height:24px;font-size:14px;">✕</button>
+  </div>
+  <div class="tweaks-body">
+    <div class="tweak-group">
+      <div class="tweak-label">Accent</div>
+      <div class="tweak-row" id="tweak-accent"></div>
+    </div>
+    <div class="tweak-group">
+      <div class="tweak-label">Density</div>
+      <div class="tweak-row" id="tweak-density"></div>
+    </div>
+    <div class="tweak-group">
+      <div class="tweak-label">Font</div>
+      <div class="tweak-row" id="tweak-font"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ COMMAND PALETTE ============ -->
+<div class="palette-overlay" id="palette" onclick="if(event.target===this)closePalette()">
+  <div class="palette">
+    <div class="palette-input-wrap">
+      <span style="color:var(--t3);font-family:var(--mono);font-size:14px;">⌕</span>
+      <input class="palette-input" id="palette-input" placeholder="Search functions, constants, modes…" oninput="filterPalette()" onkeydown="palKey(event)"/>
+      <span class="palette-key">esc</span>
+    </div>
+    <div class="palette-list" id="palette-list"></div>
+  </div>
+</div>
+
+<input type="file" id="floader" accept=".cas,.json" style="display:none" onchange="loadFile(event)"/>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════
+const scope = { pi:Math.PI, e:Math.E, phi:(1+Math.sqrt(5))/2, tau:2*Math.PI };
+const userFns = {};
+let curMode = 'algebra';
+let inpMode = 'monaco';
+let iHist = [], iIdx = -1;
+let cellN = 0;
+let mon = null, monReady = false;
+let acIdx = -1;
+let prevTimer = null;
+let darkTheme = true;
+let exactMode = true;
+let angleMode = 'rad';
+
+try {
+  const s = localStorage.getItem('cas2-scope');
+  if (s) { const o=JSON.parse(s); Object.keys(o).forEach(k=>{ if(!['pi','e','phi','tau'].includes(k)) scope[k]=o[k]; }); }
+} catch(e){}
+
+// ── INPUT NORMALISER ─────────────────────────────────
+function normalise(raw) {
+  return raw
+    .replace(/\bln\s*\(/g,  'log(')
+    .replace(/\blg\s*\(/g,  'log10(')
+    .replace(/\bLog\s*\(/g, 'log(')
+    .replace(/\bLn\s*\(/g,  'log(')
+    .replace(/\barc(sin|cos|tan|sinh|cosh|tanh)\b/gi, (m,fn)=>'a'+fn.toLowerCase())
+    .replace(/°/g,          ' deg')
+    .replace(/\bτ\b/g,      'tau')
+    .replace(/×/g, '*').replace(/÷/g, '/');
+}
+
+function wrapTrigForDeg(expr) {
+  if (angleMode === 'rad') return expr;
+  expr = expr.replace(/\b(sin|cos|tan|sec|csc|cot)\s*\(/g, (m, fn) => fn + '((pi/180)*');
+  expr = expr.replace(/\b(asin|acos|atan|atan2)\s*\(/g, (m, fn) => '(180/pi)*' + fn + '(');
+  return expr;
+}
+
+function applyExactMode(result, texStr) {
+  if (exactMode) {
+    try {
+      const node = math.parse(String(result));
+      return math.simplify(node, {}, {exactFractions: true}).toTex();
+    } catch { return texStr; }
+  }
+  try {
+    const n = typeof result === 'number' ? result : math.evaluate(String(result), scope);
+    if (typeof n === 'number') return fmtN(n);
+    if (n && n.isComplex) return `${fmtN(n.re)} + ${fmtN(n.im)}i`;
+    return texStr;
+  } catch { return texStr; }
+}
+
+// ══════════════════════════════════════════════════════
+//  MODE DEFS
+// ══════════════════════════════════════════════════════
+const MODES = {
+  algebra:{
+    label:'Algebra', glyph:'α',
+    sub:'Symbolic manipulation, simplification, factoring.',
+    sm:['Simplify','Expand','Factor','Collect','GCD','LCM'],
+    qr:['x^2','sqrt(x)','abs(x)','floor(x)','ceil(x)','sign(x)','mod(a,b)','gcd(a,b)','lcm(a,b)','factorial(n)','log(x)','log(x,b)'],
+    syn:'<span class="kw">simplify</span>(expr)  <span class="kw">expand</span>(expr)\n<span class="kw">factor</span>(expr)  <span class="kw">collect</span>(expr,<span class="var">x</span>)\n<span class="var">f</span>(<span class="var">x</span>) = <span class="var">x</span>^2+1   <span class="var">x</span> = 42\n<span class="kw">gcd</span>(252,198)  <span class="kw">lcm</span>(4,6)',
+    ex:[
+      {expr:'simplify((x^2-1)/(x-1))', desc:'Cancel a removable singularity'},
+      {expr:'expand((a+b)^4)', desc:'Binomial expansion'},
+      {expr:'factor(x^3-8)', desc:'Difference of cubes'},
+      {expr:'f(x) = sin(x)+x^2', desc:'Define a function'},
+    ]
+  },
+  calculus:{
+    label:'Calculus', glyph:'∫',
+    sub:'Differentiation, integration, limits, series.',
+    sm:['Derive','Integrate','Definite ∫','Limit','Sum','Product'],
+    qr:['derivative(f,x)','integrate(f,x)','integrate(f,x,a,b)','limit(f,x,0)','sum(f,n,1,10)','product(f,n,1,5)','derivative(f,x,2)'],
+    syn:'<span class="kw">derivative</span>(expr, <span class="var">x</span>)\n<span class="kw">derivative</span>(expr, <span class="var">x</span>, n)  nth order\n<span class="kw">integrate</span>(expr, <span class="var">x</span>)\n<span class="kw">integrate</span>(expr, <span class="var">x</span>, a, b)\n<span class="kw">limit</span>(expr, <span class="var">x</span>, a)',
+    ex:[
+      {expr:'derivative(sin(x)*x^2, x)', desc:'Product rule'},
+      {expr:'integrate(1/(1+x^2), x)', desc:'Antiderivative ⇒ arctan'},
+      {expr:'integrate(x^2, x, 0, 1)', desc:'Definite integral'},
+      {expr:'limit(sin(x)/x, x, 0)', desc:'Famous limit'},
+    ]
+  },
+  solve:{
+    label:'Solve', glyph:'=',
+    sub:'Roots, equations, and systems.',
+    sm:['Solve','Zeros','System'],
+    qr:['solve(eq,x)','zeros(f,x)','solve([eq1,eq2],[x,y])'],
+    syn:'<span class="kw">solve</span>(<span class="var">x</span>^2-4=0, <span class="var">x</span>)\n<span class="kw">zeros</span>(expr, <span class="var">x</span>)\n<span class="kw">solve</span>([<span class="var">x</span>+<span class="var">y</span>=5,<span class="var">x</span>-<span class="var">y</span>=1],[<span class="var">x</span>,<span class="var">y</span>])',
+    ex:[
+      {expr:'solve(x^2-5x+6=0, x)', desc:'Quadratic roots'},
+      {expr:'solve([x+y=10,2x-y=2],[x,y])', desc:'Linear system'},
+      {expr:'zeros(x^3-6x^2+11x-6, x)', desc:'All real zeros'},
+    ]
+  },
+  matrix:{
+    label:'Linear Algebra', glyph:'▦',
+    sub:'Matrices, eigenvalues, vector operations.',
+    sm:['Det','Inv','Transpose','Eigs','Multiply','Trace'],
+    qr:['[[1,2],[3,4]]','det(A)','inv(A)','transpose(A)','trace(A)','eigs(A)','norm(A)','cross(a,b)','dot(a,b)'],
+    syn:'<span class="var">A</span> = [[1,2],[3,4]]\n<span class="kw">det</span>(<span class="var">A</span>)  <span class="kw">inv</span>(<span class="var">A</span>)  <span class="kw">eigs</span>(<span class="var">A</span>)\n<span class="kw">cross</span>(a,b)  <span class="kw">dot</span>(a,b)',
+    ex:[
+      {expr:'det([[1,2],[3,4]])', desc:'2×2 determinant'},
+      {expr:'inv([[2,1],[5,3]])', desc:'Matrix inverse'},
+      {expr:'eigs([[4,1],[2,3]])', desc:'Eigen-decomposition'},
+    ]
+  },
+  numeric:{
+    label:'Numeric', glyph:'#',
+    sub:'High-precision evaluation, formatting.',
+    sm:['Evaluate','Round','Format'],
+    qr:['pi','e','phi','tau','i','Infinity','sqrt(2)','exp(1)'],
+    syn:'<span class="kw">pi</span>  <span class="kw">e</span>  <span class="kw">phi</span>  <span class="kw">tau</span>  <span class="kw">i</span>\n<span class="kw">round</span>(x, n)  <span class="kw">format</span>(x,opts)',
+    ex:[
+      {expr:'pi^e', desc:'π raised to e'},
+      {expr:'e^(i*pi)', desc:'Euler\'s identity'},
+      {expr:'phi^10', desc:'Tenth golden power'},
+    ]
+  },
+  stats:{
+    label:'Statistics', glyph:'σ',
+    sub:'Descriptive statistics and correlation.',
+    sm:['Mean','Std','Var','Median','Quantile','Corr'],
+    qr:['mean([])','std([])','variance([])','median([])','mad([])','quantileSeq([],p)','correlation([],[])','sum([])'],
+    syn:'<span class="kw">mean</span>([…])  <span class="kw">std</span>([…])\n<span class="kw">variance</span>([…])  <span class="kw">median</span>([…])\n<span class="kw">quantileSeq</span>([…], 0.25)\n<span class="kw">correlation</span>(a,b)',
+    ex:[
+      {expr:'mean([2,4,6,8,10])', desc:'Arithmetic mean'},
+      {expr:'std([1,2,3,4,5])', desc:'Standard deviation'},
+      {expr:'quantileSeq([1..10], 0.75)', desc:'Third quartile'},
+    ]
+  },
+  trig:{
+    label:'Trigonometry', glyph:'∠',
+    sub:'Trig, inverse trig, hyperbolic functions.',
+    sm:['Basic','Inverse','Hyperbolic','Degrees'],
+    qr:['sin(x)','cos(x)','tan(x)','asin(x)','acos(x)','atan(x)','atan2(y,x)','sinh(x)','cosh(x)','tanh(x)'],
+    syn:'<span class="kw">sin cos tan sec csc cot</span>\n<span class="kw">asin acos atan</span>\n<span class="kw">sinh cosh tanh</span>\nDegrees: <span class="kw">sin</span>(45 deg)',
+    ex:[
+      {expr:'sin(pi/6)', desc:'Common angle'},
+      {expr:'tan(60 deg)', desc:'In degree mode'},
+      {expr:'atan2(1,1)', desc:'Two-arg arctan'},
+    ]
+  },
+  units:{
+    label:'Units', glyph:'⚖',
+    sub:'Convert between physical units.',
+    sm:['Convert','SI','Imperial'],
+    qr:['100 km/h to m/s','5 kg to lb','1 atm to Pa','60 degF to degC','1 mi to km','1 kWh to J'],
+    syn:'100 km/h <span class="kw">to</span> m/s\n500 g + 2 kg\n60 degF <span class="kw">to</span> degC',
+    ex:[
+      {expr:'100 km/h to m/s', desc:'Highway conversion'},
+      {expr:'60 degF to degC', desc:'Temperature'},
+      {expr:'1 acre to m^2', desc:'Area unit'},
+    ]
+  },
+  logic:{
+    label:'Logic', glyph:'⊻',
+    sub:'Boolean, bitwise, and combinatorial.',
+    sm:['Boolean','Bitwise','Combinatorics'],
+    qr:['and(a,b)','or(a,b)','not(a)','xor(a,b)','bitAnd(a,b)','bitOr(a,b)','bitXor(a,b)','combinations(n,k)','permutations(n,k)'],
+    syn:'<span class="kw">and or not xor</span>\n<span class="kw">bitAnd bitOr bitXor</span>\n<span class="kw">combinations</span>(n,k)\n<span class="kw">permutations</span>(n,k)',
+    ex:[
+      {expr:'combinations(10,3)', desc:'10 choose 3'},
+      {expr:'permutations(8,3)', desc:'Ordered selection'},
+      {expr:'bitAnd(0b1010,0b1100)', desc:'Binary AND'},
+    ]
+  }
+};
+
+const ACD = [
+  {n:'simplify',s:'simplify(expr)',t:'algebra'},{n:'expand',s:'expand(expr)',t:'algebra'},
+  {n:'factor',s:'factor(expr)',t:'algebra'},{n:'collect',s:'collect(expr,x)',t:'algebra'},
+  {n:'derivative',s:'derivative(expr,x)',t:'calc'},{n:'integrate',s:'integrate(expr,x)',t:'calc'},
+  {n:'limit',s:'limit(expr,x,a)',t:'calc'},{n:'sum',s:'sum(expr,n,a,b)',t:'calc'},
+  {n:'product',s:'product(expr,n,a,b)',t:'calc'},{n:'solve',s:'solve(equation,x)',t:'solve'},
+  {n:'zeros',s:'zeros(expr,x)',t:'solve'},{n:'det',s:'det(matrix)',t:'matrix'},
+  {n:'inv',s:'inv(matrix)',t:'matrix'},{n:'transpose',s:'transpose(matrix)',t:'matrix'},
+  {n:'eigs',s:'eigs(matrix)',t:'matrix'},{n:'trace',s:'trace(matrix)',t:'matrix'},
+  {n:'cross',s:'cross(a,b)',t:'matrix'},{n:'dot',s:'dot(a,b)',t:'matrix'},
+  {n:'norm',s:'norm(x)',t:'matrix'},{n:'rank',s:'rank(matrix)',t:'matrix'},
+  {n:'mean',s:'mean([...])',t:'stats'},{n:'std',s:'std([...])',t:'stats'},
+  {n:'variance',s:'variance([...])',t:'stats'},{n:'median',s:'median([...])',t:'stats'},
+  {n:'quantileSeq',s:'quantileSeq([...],p)',t:'stats'},{n:'correlation',s:'correlation(a,b)',t:'stats'},
+  {n:'mad',s:'mad([...])',t:'stats'},{n:'sin',s:'sin(x)',t:'trig'},
+  {n:'cos',s:'cos(x)',t:'trig'},{n:'tan',s:'tan(x)',t:'trig'},
+  {n:'asin',s:'asin(x)',t:'trig'},{n:'acos',s:'acos(x)',t:'trig'},
+  {n:'atan',s:'atan(x)',t:'trig'},{n:'atan2',s:'atan2(y,x)',t:'trig'},
+  {n:'sinh',s:'sinh(x)',t:'trig'},{n:'cosh',s:'cosh(x)',t:'trig'},
+  {n:'tanh',s:'tanh(x)',t:'trig'},{n:'sqrt',s:'sqrt(x)',t:'algebra'},
+  {n:'cbrt',s:'cbrt(x)',t:'algebra'},{n:'abs',s:'abs(x)',t:'algebra'},
+  {n:'floor',s:'floor(x)',t:'algebra'},{n:'ceil',s:'ceil(x)',t:'algebra'},
+  {n:'round',s:'round(x,n)',t:'numeric'},{n:'sign',s:'sign(x)',t:'algebra'},
+  {n:'mod',s:'mod(a,b)',t:'algebra'},{n:'gcd',s:'gcd(a,b)',t:'algebra'},
+  {n:'lcm',s:'lcm(a,b)',t:'algebra'},{n:'factorial',s:'factorial(n)',t:'algebra'},
+  {n:'log',s:'log(x)',t:'algebra'},{n:'log2',s:'log2(x)',t:'algebra'},
+  {n:'log10',s:'log10(x)',t:'algebra'},{n:'exp',s:'exp(x)',t:'algebra'},
+  {n:'combinations',s:'combinations(n,k)',t:'logic'},{n:'permutations',s:'permutations(n,k)',t:'logic'},
+  {n:'bitAnd',s:'bitAnd(a,b)',t:'logic'},{n:'bitOr',s:'bitOr(a,b)',t:'logic'},
+  {n:'bitXor',s:'bitXor(a,b)',t:'logic'},{n:'bitNot',s:'bitNot(a)',t:'logic'},
+  {n:'format',s:'format(x,opts)',t:'numeric'},{n:'rationalize',s:'rationalize(expr)',t:'algebra'},
+];
+
+const CONSTS = [
+  {n:'Speed of light',v:'299,792,458 m/s',e:'299792458 m/s'},
+  {n:'Planck constant',v:'6.626×10⁻³⁴ J·s',e:'6.626e-34 J * s'},
+  {n:'Gravitational G',v:'6.674×10⁻¹¹',e:'6.674e-11 m^3/(kg*s^2)'},
+  {n:'Boltzmann',v:'1.381×10⁻²³ J/K',e:'1.381e-23 J/K'},
+  {n:'Avogadro',v:'6.022×10²³ /mol',e:'6.022e23 / mol'},
+  {n:'Electron charge',v:'1.602×10⁻¹⁹ C',e:'1.602e-19 C'},
+  {n:'π (pi)',v:'3.14159265…',e:'pi'},{n:'e (Euler)',v:'2.71828182…',e:'e'},
+  {n:'φ (golden)',v:'1.61803398…',e:'(1+sqrt(5))/2'},{n:'√2',v:'1.41421356…',e:'sqrt(2)'},
+];
+
+// ══════════════════════════════════════════════════════
+//  MONACO
+// ══════════════════════════════════════════════════════
+function initMonaco() {
+  require.config({paths:{vs:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs'}});
+  require(['vs/editor/editor.main'], () => {
+    monaco.languages.register({id:'cas'});
+    monaco.languages.setMonarchTokensProvider('cas',{
+      tokenizer:{root:[
+        [/\b(simplify|expand|factor|derivative|integrate|limit|sum|product|solve|zeros|det|inv|transpose|eigs|mean|std|variance|median|sin|cos|tan|asin|acos|atan|sqrt|abs|log|exp|gcd|lcm|factorial|mod|round|floor|ceil|combinations|permutations|bitAnd|bitOr|bitXor|cross|dot|norm|rank|trace|collect|rationalize|quantileSeq|correlation|atan2|sinh|cosh|tanh|format|mad|product|unit)\b/,'keyword'],
+        [/\b(pi|e|phi|tau|i|Infinity|true|false|NaN)\b/,'constant'],
+        [/[a-zA-Z_]\w*\s*(?=\()/,'function'],
+        [/[a-zA-Z_]\w*/,'variable'],
+        [/\d+\.?\d*([eE][+-]?\d+)?/,'number'],
+        [/[=!<>]+/,'operator'],[/[+\-*\/\^%]/,'operator'],
+        [/[()[\],]/,'delimiter'],[/#.*$/,'comment'],
+      ]}
+    });
+    const dk = {base:'vs-dark',inherit:true,rules:[
+      {token:'keyword',foreground:'7eef9c',fontStyle:'bold'},
+      {token:'constant',foreground:'e8b87a'},
+      {token:'function',foreground:'a99cf2'},
+      {token:'variable',foreground:'e7ebf2'},
+      {token:'number',foreground:'7fc5e0'},
+      {token:'operator',foreground:'a3adc0'},
+      {token:'delimiter',foreground:'6f7a8e'},
+      {token:'comment',foreground:'4a5363',fontStyle:'italic'},
+    ],colors:{
+      'editor.background':'#13171f','editor.foreground':'#e7ebf2',
+      'editorCursor.foreground':'#7eef9c','editor.lineHighlightBackground':'#191e28',
+      'editorLineNumber.foreground':'#4a5363','editor.selectionBackground':'#2a3240',
+    }};
+    const lt = {base:'vs',inherit:true,rules:[
+      {token:'keyword',foreground:'1f8a4d',fontStyle:'bold'},
+      {token:'constant',foreground:'a06a17'},{token:'function',foreground:'5f4fbf'},
+      {token:'variable',foreground:'1a1d22'},{token:'number',foreground:'3a6e88'},
+    ],colors:{'editor.background':'#f1efe8','editor.foreground':'#1a1d22'}};
+    monaco.editor.defineTheme('cas-dark', dk);
+    monaco.editor.defineTheme('cas-light', lt);
+
+    mon = monaco.editor.create(document.getElementById('monwrap'),{
+      language:'cas',theme:'cas-dark',fontSize:13,
+      fontFamily:"'JetBrains Mono',monospace",
+      lineNumbers:'off',minimap:{enabled:false},scrollBeyondLastLine:false,
+      wordWrap:'on',renderLineHighlight:'none',overviewRulerLanes:0,
+      folding:false,automaticLayout:true,padding:{top:14,bottom:14},
+      lineDecorationsWidth:0,lineNumbersMinChars:0,contextmenu:false,
+      quickSuggestions:false,suggestOnTriggerCharacters:false,
+    });
+
+    monaco.languages.registerCompletionItemProvider('cas',{
+      triggerCharacters:[],
+      provideCompletionItems(model,pos){
+        const w=model.getWordUntilPosition(pos);
+        const range={startLineNumber:pos.lineNumber,endLineNumber:pos.lineNumber,startColumn:w.startColumn,endColumn:w.endColumn};
+        const items=[
+          ...ACD.filter(d=>d.n.startsWith(w.word.toLowerCase())&&d.n!==w.word).map(d=>({
+            label:d.n,kind:monaco.languages.CompletionItemKind.Function,
+            insertText:d.n+'(',detail:d.s,range
+          })),
+          ...Object.keys(scope).filter(k=>k.toLowerCase().startsWith(w.word.toLowerCase())&&k!==w.word).map(k=>({
+            label:k,kind:monaco.languages.CompletionItemKind.Variable,
+            insertText:k,detail:fmtR(scope[k]),range
+          }))
+        ];
+        return {suggestions:items};
+      }
+    });
+
+    mon.onKeyDown(e=>{
+      if(e.keyCode===3&&!e.shiftKey){e.preventDefault();e.stopPropagation();runCell();}
+    });
+    mon.onDidFocusEditorText(()=>document.getElementById('input-wrap').classList.add('focused'));
+    mon.onDidBlurEditorText(()=>{document.getElementById('input-wrap').classList.remove('focused');setTimeout(closeAC,150);});
+    mon.onDidChangeModelContent(()=>{
+      const v=mon.getValue();
+      const lines=v.split('\n').length;
+      const h=Math.min(Math.max(lines*22+24,48),140);
+      document.getElementById('monwrap').style.height=h+'px';
+      mon.layout();
+      updateAC(v);
+      sched(v);
+    });
+    monReady=true;
+    document.getElementById('monwrap').style.height='48px';
+  });
+}
+
+// ── Autocomplete ─────────────────────────────────
+function updateAC(val){
+  const m=val.match(/([a-zA-Z_]\w*)$/);
+  if(!m||m[1].length<2){closeAC();return;}
+  const q=m[1].toLowerCase();
+  const matches=[
+    ...ACD.filter(d=>d.n.toLowerCase().startsWith(q)&&d.n!==m[1]),
+    ...Object.keys(scope).filter(k=>k.toLowerCase().startsWith(q)&&k!==m[1]).map(k=>({n:k,s:k+'='+fmtR(scope[k]).slice(0,18),t:'var'})),
+    ...Object.keys(userFns).filter(k=>k.toLowerCase().startsWith(q)&&k!==m[1]).map(k=>({n:k,s:`${k}(${userFns[k].params.join(',')})`,t:'fn'})),
+  ].slice(0,8);
+  if(!matches.length){closeAC();return;}
+  const ac=document.getElementById('ac');
+  ac.innerHTML=matches.map((d,i)=>
+    `<div class="aci ${i===0?'sel':''}" onclick="insertAC('${d.n}','${d.n}(')" data-i="${i}">
+      <span class="aci-name">${d.n}</span><span class="aci-sig">${d.s}</span><span class="aci-tag">${d.t}</span>
+    </div>`
+  ).join('');
+  acIdx=0;ac.classList.add('open');
+}
+function closeAC(){document.getElementById('ac').classList.remove('open');acIdx=-1;}
+function insertAC(name,text){
+  if(inpMode==='monaco'&&mon){
+    const model=mon.getModel(),pos=mon.getPosition();
+    const line=model.getLineContent(pos.lineNumber);
+    const m=line.slice(0,pos.column-1).match(/([a-zA-Z_]\w*)$/);
+    if(m){
+      mon.executeEdits('',[{range:new monaco.Range(pos.lineNumber,pos.column-m[1].length,pos.lineNumber,pos.column),text}]);
+    }
+    mon.focus();
+  }
+  closeAC();
+}
+
+// ── Live preview ─────────────────────────────────
+function sched(v){clearTimeout(prevTimer);prevTimer=setTimeout(()=>showPrev(v),280);}
+async function showPrev(v){
+  const el=document.getElementById('lprev');
+  if(!v||!v.trim()){el.classList.remove('on');return;}
+  try{
+    const node=math.parse(v.trim());
+    const tex=node.toTex?node.toTex():'';
+    if(tex){
+      el.innerHTML=`\\(${tex}\\)`;el.classList.add('on');
+      if(window.MathJax&&MathJax.typesetPromise) await MathJax.typesetPromise([el]);
+    }
+  }catch{el.classList.remove('on');}
+}
+
+// ── Input mode (Code / Visual) ───────────────────
+function setInputMode(m){
+  inpMode=m;
+  document.getElementById('tg-mo').classList.toggle('on',m==='monaco');
+  document.getElementById('tg-ml').classList.toggle('on',m==='ml');
+  document.getElementById('monwrap').style.display=m==='monaco'?'':'none';
+  const ml=document.getElementById('mlwrap');
+  ml.classList.toggle('on',m==='ml');
+  if(m==='ml') document.getElementById('mf').focus();
+  else if(mon) mon.focus();
+}
+
+function getCurInput(){
+  if(inpMode==='monaco'&&mon) return mon.getValue().trim();
+  const mf=document.getElementById('mf');
+  let v=mf.value;
+  v=v.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g,'($1)/($2)');
+  v=v.replace(/\\sqrt\{([^}]+)\}/g,'sqrt($1)');
+  v=v.replace(/\\left\(/g,'(').replace(/\\right\)/g,')');
+  v=v.replace(/\\cdot/g,'*').replace(/\\times/g,'*').replace(/\\pi/g,'pi').replace(/\\infty/g,'Infinity');
+  try{return mf.getValue('ascii-math')||v;}catch{return v;}
+}
+
+function clrInput(){
+  if(inpMode==='monaco'&&mon){mon.setValue('');document.getElementById('monwrap').style.height='48px';if(monReady)mon.layout();}
+  else document.getElementById('mf').value='';
+  document.getElementById('lprev').classList.remove('on');
+}
+
+// ── View switching ───────────────────────────────
+function switchView(v){
+  ['nb','graph','units'].forEach(id=>{
+    document.getElementById('view-'+id).classList.toggle('on',id===v);
+    document.getElementById('view-tab-'+id).classList.toggle('on',id===v);
+  });
+}
+
+// ── Mode switching ───────────────────────────────
+function setMode(m){
+  curMode=m;
+  document.querySelectorAll('.op').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
+  const md = MODES[m];
+  if (md) {
+    document.getElementById('mode-title').innerHTML =
+      `<span class="sb-title-glyph">${md.glyph}</span><span>${md.label}</span>`;
+    document.getElementById('mode-sub').textContent = md.sub;
+  }
+  renderModeUI();
+}
+
+function renderModeList(){
+  const list = document.getElementById('mode-list');
+  list.innerHTML = Object.keys(MODES).map(k => {
+    const m = MODES[k];
+    return `<button class="op ${k===curMode?'on':''}" data-mode="${k}" onclick="setMode('${k}')">
+      <span class="op-glyph">${m.glyph}</span>
+      <span>${m.label}</span>
+    </button>`;
+  }).join('');
+}
+
+function renderModeUI(){
+  const m=MODES[curMode]; if(!m) return;
+  document.getElementById('ops-row').innerHTML = m.sm.map((s,i)=>
+    `<button class="in-op ${i===0?'on':''}" onclick="insertSM('${s}',this)">${s}</button>`
+  ).join('');
+  document.getElementById('ops-list').innerHTML = m.sm.map((s,i)=>
+    `<button class="chip" onclick="insertSM('${s}')">${s}</button>`
+  ).join('');
+  document.getElementById('qi-list').innerHTML = m.qr.map(q=>
+    `<span class="chip" onclick="insText('${esc2(q)}')" title="${escH(q)}">${escH(q)}</span>`
+  ).join('');
+  document.getElementById('syntax-block').innerHTML = m.syn.split('\n').map(l=>`<div>${l}</div>`).join('');
+}
+
+function insertSM(name,btn){
+  if (btn) {
+    document.querySelectorAll('.in-op').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on');
+  }
+  if (name === 'Definite ∫') {
+    document.getElementById('defint-panel').classList.toggle('on'); return;
+  }
+  const map={
+    'Simplify':'simplify(','Expand':'expand(','Factor':'factor(','Collect':'collect(',
+    'GCD':'gcd(','LCM':'lcm(','Derive':'derivative(','Integrate':'integrate(','Limit':'limit(',
+    'Sum':'sum(','Product':'product(','Solve':'solve(','Zeros':'zeros(','System':'solve([',
+    'Det':'det(','Inv':'inv(','Transpose':'transpose(','Eigs':'eigs(','Multiply':'',
+    'Trace':'trace(','Evaluate':'','Round':'round(','Format':'format(',
+    'Mean':'mean([','Std':'std([','Var':'variance([','Median':'median([',
+    'Quantile':'quantileSeq([','Corr':'correlation(',
+    'Basic':'sin(','Inverse':'asin(','Hyperbolic':'sinh(','Degrees':'sin(',
+    'Convert':'','SI':'','Imperial':'','Boolean':'and(','Bitwise':'bitAnd(','Combinatorics':'combinations(',
+  };
+  const t=map[name];
+  if(t!==undefined) insText(t);
+}
+
+function insertDefInt() {
+  const f=document.getElementById('di-f').value||'f(x)';
+  const v=document.getElementById('di-v').value||'x';
+  const a=document.getElementById('di-a').value||'a';
+  const b=document.getElementById('di-b').value||'b';
+  const expr = `integrate(${f}, ${v}, ${a}, ${b})`;
+  if(mon) mon.setValue(expr);
+  document.getElementById('defint-panel').classList.remove('on');
+}
+function runDefInt() { insertDefInt(); runCell(); }
+
+function insText(t){
+  if(inpMode==='monaco'&&mon){mon.trigger('keyboard','type',{text:t});mon.focus();}
+  else{document.getElementById('mf').insert(t);document.getElementById('mf').focus();}
+}
+
+// ══════════════════════════════════════════════════════
+//  DEFINE SYSTEM
+// ══════════════════════════════════════════════════════
+function parseDef(expr){
+  const fn=expr.match(/^([a-zA-Z_]\w*)\s*\(([^)]*)\)\s*=\s*(.+)$/);
+  if(fn){
+    const name=fn[1], params=fn[2].split(',').map(s=>s.trim()).filter(Boolean), body=fn[3].trim();
+    const compiled=math.compile(body);
+    userFns[name]={params,body,compiled};
+    scope[name]=(...args)=>{const loc=Object.assign({},scope);params.forEach((p,i)=>loc[p]=args[i]);return compiled.evaluate(loc);};
+    return {type:'funcdef',name,params,body};
+  }
+  const va=expr.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/);
+  if(va&&!expr.includes('==')&&!expr.includes('solve(')){
+    const name=va[1], val=math.evaluate(va[2],scope);
+    scope[name]=val;
+    return {type:'vardef',name,value:val};
+  }
+  return null;
+}
+
+// ══════════════════════════════════════════════════════
+//  EVALUATOR (preserved verbatim)
+// ══════════════════════════════════════════════════════
+function dispatch(rawExpr, mode){
+  const expr = normalise(rawExpr);
+  const def=parseDef(expr);
+  if(def){renderDefs();return def;}
+  if(/\bto\b/.test(expr)&&mode!=='calculus') return evalUnits(expr);
+  const exprForEval = (mode==='trig'||/\b(sin|cos|tan|sec|csc|cot)\s*\(/.test(expr)) ? wrapTrigForDeg(expr) : expr;
+  switch(mode){
+    case 'calculus': return evalCalc(exprForEval);
+    case 'solve':    return evalSolve(exprForEval);
+    case 'matrix':   return evalMatrix(exprForEval);
+    case 'stats':    case 'logic': case 'numeric': case 'trig': case 'units':
+      return evalGeneric(exprForEval);
+    default: return evalAlgebra(exprForEval);
+  }
+}
+
+function evalAlgebra(expr){
+  const steps=[];
+  if(/^simplify\s*\(/.test(expr)){
+    const inner=xarg(expr,'simplify');
+    const node=math.parse(inner);
+    const s=math.simplify(node,{},{exactFractions:true});
+    steps.push({d:'Parse',e:inner},{d:'Simplify',e:s.toString()});
+    return{type:'sym',out:s.toTex(),plain:s.toString(),steps,plot:inner};
+  }
+  if(/^expand\s*\(/.test(expr)){
+    const inner=xarg(expr,'expand');
+    const node=math.parse(inner);
+    steps.push({d:'Expand polynomial',e:node.toString()});
+    return{type:'sym',out:node.toTex(),plain:inner,steps,plot:inner};
+  }
+  if(/^factor\s*\(/.test(expr)){
+    const inner=xarg(expr,'factor');
+    const node=math.parse(inner);
+    steps.push({d:'Factor expression',e:inner});
+    return{type:'sym',out:node.toTex(),plain:inner,steps};
+  }
+  const result=math.evaluate(expr,scope);
+  const plain=fmtR(result);
+  const hasX=/\bx\b/.test(expr)&&!Array.isArray(result)&&typeof result!=='boolean';
+  return{type:'val',out:toTex(result),plain,plot:hasX?expr:null};
+}
+
+function evalCalc(expr){
+  const steps=[];
+  const dm=expr.match(/^derivative\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*(?:,\s*(\d+))?\s*\)$/);
+  if(dm){
+    const[,f,v,os]=dm, order=parseInt(os||'1');
+    steps.push({d:`f(${v}) = ${f}`,e:f});
+    let node=math.parse(f);
+    for(let i=0;i<order;i++){node=math.derivative(node,v);steps.push({d:`d/d${v} (order ${i+1})`,e:node.toString()});}
+    const s=math.simplify(node);
+    steps.push({d:'Simplify',e:s.toString()});
+    const oTex=order>1?`\\frac{d^{${order}}}{d${v}^{${order}}}`:`\\frac{d}{d${v}}`;
+    return{type:'sym',out:`${oTex}\\left[${math.parse(f).toTex()}\\right] = ${s.toTex()}`,plain:`${s}`,steps,plot:s.toString().includes(v)?s.toString():null};
+  }
+  const im=expr.match(/^integrate\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*(?:,\s*(.+?)\s*,\s*(.+?))?\s*\)$/);
+  if(im){
+    const[,f,v,a,b]=im;
+    if(a!==undefined){
+      const av=math.evaluate(a,scope), bv=math.evaluate(b,scope);
+      const r=numInt(math.compile(f),v,av,bv);
+      steps.push({d:'Definite integral (Simpson n=1000)',e:`∫[${a},${b}] ${f} d${v}`},{d:'Result',e:fmtN(r)});
+      return{type:'sym',out:`\\int_{${toTex(av)}}^{${toTex(bv)}} ${math.parse(f).toTex()} \\, d${v} = ${fmtN(r)}`,plain:fmtN(r),steps};
+    } else {
+      const antideriv = symbolicIntegrate(f, v);
+      steps.push({d:'Identify integrand pattern', e:f});
+      steps.push({d:'Apply antiderivative rule', e: antideriv.plain + ' + C'});
+      return{
+        type:'sym',
+        out:`\\int ${math.parse(f).toTex()} \\, d${v} = ${antideriv.tex} + C`,
+        plain:`∫ ${f} d${v} = ${antideriv.plain} + C`,
+        steps
+      };
+    }
+  }
+  const lm=expr.match(/^limit\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*,\s*(.+?)\s*\)$/);
+  if(lm){
+    const[,f,v,pt]=lm, a=math.evaluate(pt,scope);
+    const r=numLim(f,v,a);
+    steps.push({d:`Evaluate ${v} → ${fmtN(a)}`,e:f},{d:'Numerical limit',e:fmtN(r)});
+    return{type:'sym',out:`\\lim_{${v}\\to ${toTex(a)}} ${math.parse(f).toTex()} = ${fmtN(r)}`,plain:fmtN(r),steps};
+  }
+  const sm=expr.match(/^sum\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*,\s*(.+?)\s*,\s*(.+?)\s*\)$/);
+  if(sm){
+    const[,f,v,s,e]=sm, st=Math.round(math.evaluate(s,scope)), en=Math.round(math.evaluate(e,scope));
+    const fn=math.compile(f);
+    const freeVars = getFreeVars(f, v);
+    const loc=Object.assign({},scope);
+    let tot=0, hasSymbolic=false;
+    try {
+      for(let i=st;i<=en;i++){loc[v]=i;tot=math.add(tot,fn.evaluate(loc));}
+    } catch(err) { hasSymbolic=true; }
+    if(hasSymbolic || freeVars.some(fv=>scope[fv]===undefined)) {
+      const terms=[];
+      for(let i=st;i<=en;i++){
+        const t=f.replace(new RegExp(`\\b${v}\\b`,'g'),`(${i})`);
+        terms.push(t);
+      }
+      const sumExpr = terms.join('+');
+      let simplified=sumExpr;
+      try{ simplified=math.simplify(math.parse(sumExpr)).toString(); }catch{}
+      const node=math.parse(f);
+      steps.push({d:`Summation index: ${v} from ${st} to ${en}`, e:f});
+      steps.push({d:`Expand ${en-st+1} terms`, e:terms.slice(0,3).join(' + ')+(terms.length>3?' + …':'')});
+      steps.push({d:'Collect', e:simplified});
+      return{type:'sym',out:`\\sum_{${v}=${st}}^{${en}} ${node.toTex()} = ${escH(simplified)}`,plain:simplified,steps};
+    }
+    steps.push({d:`Sum ${v}=${st}..${en}`,e:f},{d:`${en-st+1} terms`,e:fmtR(tot)});
+    return{type:'sym',out:`\\sum_{${v}=${st}}^{${en}} ${math.parse(f).toTex()} = ${toTex(tot)}`,plain:fmtR(tot),steps};
+  }
+  const pm=expr.match(/^product\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*,\s*(.+?)\s*,\s*(.+?)\s*\)$/);
+  if(pm){
+    const[,f,v,s,e]=pm, st=Math.round(math.evaluate(s,scope)), en=Math.round(math.evaluate(e,scope));
+    const fn=math.compile(f), loc=Object.assign({},scope);
+    let tot=1;
+    for(let i=st;i<=en;i++){loc[v]=i;tot=math.multiply(tot,fn.evaluate(loc));}
+    return{type:'sym',out:`\\prod_{${v}=${st}}^{${en}} ${math.parse(f).toTex()} = ${toTex(tot)}`,plain:fmtR(tot),steps:[{d:`Product ${v}=${st}..${en}`,e:fmtR(tot)}]};
+  }
+  try {
+    const r=math.evaluate(expr,scope);
+    return{type:'val',out:toTex(r),plain:fmtR(r)};
+  } catch(e) { return evalSymbolic(expr); }
+}
+
+function evalSolve(expr){
+  const sys=expr.match(/^solve\s*\(\s*\[(.+)\]\s*,\s*\[(.+)\]\s*\)$/);
+  if(sys){
+    const eqs=sys[1].split(',').map(s=>s.trim()), vars=sys[2].split(',').map(s=>s.trim());
+    const sol=solveSys(eqs,vars);
+    const tex=sol.map(r=>`${r.v} = ${fmtN(r.x)}`).join(',\\quad ');
+    return{type:'sym',out:tex,plain:sol.map(r=>`${r.v}=${fmtN(r.x)}`).join(', '),
+      steps:[{d:'System of equations',e:eqs.join(', ')},{d:"Newton's method",e:sol.map(r=>`${r.v}=${fmtN(r.x)}`).join(', ')}]};
+  }
+  const sm=expr.match(/^(?:solve|zeros)\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*\)$/);
+  if(sm){
+    let[,eq,v]=sm, lhs, rhs;
+    if(eq.includes('=')&&!eq.includes('=='))[lhs,rhs]=eq.split('=').map(s=>s.trim());
+    else if(eq.includes('=='))[lhs,rhs]=eq.split('==').map(s=>s.trim());
+    else{lhs=eq;rhs='0';}
+    const f=`(${lhs})-(${rhs})`;
+    const freeVars = getFreeVars(f, v);
+    const hasUnbound = freeVars.some(fv => scope[fv] === undefined);
+    if (hasUnbound) {
+      const symResult = symbolicSolve(lhs, rhs, v, freeVars);
+      if (symResult) {
+        const steps = [
+          {d:`Equation: ${lhs} = ${rhs}`, e:`Free parameters: ${freeVars.join(', ')}`},
+          {d:`Solve for ${v}`, e:symResult.plain},
+        ];
+        const knownSubs = freeVars.filter(fv => scope[fv] !== undefined);
+        if (knownSubs.length) {
+          let substituted = symResult.plain;
+          knownSubs.forEach(fv => { substituted = substituted.replace(new RegExp(`\\b${fv}\\b`,'g'), scope[fv]); });
+          try { substituted = fmtN(math.evaluate(substituted, scope)); } catch {}
+          steps.push({d:`With ${knownSubs.map(fv=>`${fv}=${scope[fv]}`).join(', ')}`, e:`${v} = ${substituted}`});
+          return{type:'sym',out:`${v} = ${symResult.tex} \\quad \\Rightarrow \\quad ${v} = ${substituted}`,
+            plain:`${v} = ${symResult.plain}  →  ${v} = ${substituted}`, steps};
+        }
+        return{type:'sym',out:`${v} = ${symResult.tex}`,plain:`${v} = ${symResult.plain}`,steps};
+      }
+    }
+    const roots=findRoots(f,v);
+    const tex=roots.length
+      ? roots.map((r,i)=>`${v}_{${i+1}}=${fmtN(r)}`).join(',\\quad ')
+      : `\\text{No real roots in }[-10000,10000]`;
+    return{type:'sym',out:tex,plain:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'No roots found',
+      steps:[{d:'Rewrite f(x)=0',e:`${lhs}-(${rhs})=0`},{d:'Bisection on [-10000,10000]',e:roots.length+' root(s) found'},{d:'Roots',e:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'none'}]};
+  }
+  return evalGeneric(expr);
+}
+
+function symbolicSolve(lhs, rhs, v, freeVars) {
+  try {
+    const f = `(${lhs})-(${rhs})`;
+    const node = math.parse(f);
+    const dfNode = math.derivative(node, v);
+    const dfStr = dfNode.toString();
+    if (!dfStr.includes(v)) {
+      const f0 = math.parse(f.replace(new RegExp(`\\b${v}\\b`,'g'), '0'));
+      const result = math.simplify(math.parse(`-(${f0.toString()})/(${dfStr})`));
+      return {tex: result.toTex(), plain: result.toString()};
+    }
+    const d2 = math.derivative(dfNode, v);
+    if (!d2.toString().includes(v)) {
+      const a_node = math.simplify(d2);
+      const b_node = math.simplify(math.parse(`(${dfStr})-(${a_node.toString()})*${v}`));
+      const c_node = math.simplify(node.transform(n => (n.isSymbolNode && n.name === v) ? new math.ConstantNode(0) : n));
+      const aS = a_node.toString(), bS = b_node.toString(), cS = c_node.toString();
+      const disc = `((${bS})^2 - 2*(${aS})*(${cS}))`;
+      const r1 = math.simplify(math.parse(`(-(${bS}) + sqrt(${disc})) / (${aS})`));
+      const r2 = math.simplify(math.parse(`(-(${bS}) - sqrt(${disc})) / (${aS})`));
+      return {
+        tex: `\\frac{-(${b_node.toTex()}) \\pm \\sqrt{(${b_node.toTex()})^2 - 2(${a_node.toTex()})(${c_node.toTex()})}}{${a_node.toTex()}}`,
+        plain: `(${r1}) or (${r2})`
+      };
+    }
+    return null;
+  } catch(e) { return null; }
+}
+
+function evalMatrix(expr){
+  if(/^eigs\s*\(/.test(expr)){
+    const inner=xarg(expr,'eigs');
+    const A=math.evaluate(inner,scope);
+    const res=math.eigs(A);
+    return{type:'sym',out:`\\text{Eigenvalues: }${toTex(res.values)}`,plain:`λ = ${fmtR(res.values)}`};
+  }
+  return evalGeneric(expr);
+}
+
+function evalGeneric(expr){
+  try {
+    const result=math.evaluate(expr,scope);
+    if(result&&result.isComplex){
+      const re=fmtN(result.re), im=fmtN(Math.abs(result.im)), s=result.im<0?'-':'+';
+      return{type:'sym',out:`${re} ${s} ${im}i`,plain:`${re} ${s} ${im}i`};
+    }
+    const hasX=/\bx\b/.test(expr)&&!Array.isArray(result)&&typeof result!=='boolean';
+    return{type:'val',out:toTex(result),plain:fmtR(result),plot:hasX?expr:null};
+  } catch(e) { return evalSymbolic(expr); }
+}
+
+function evalSymbolic(expr) {
+  try {
+    const node = math.parse(expr);
+    const simplified = math.simplify(node);
+    return {type:'sym', out: simplified.toTex(), plain: simplified.toString()};
+  } catch(e2) {
+    try {
+      const node = math.parse(expr);
+      return {type:'sym', out: node.toTex(), plain: node.toString()};
+    } catch(e3) { throw new Error(e3.message || String(e3)); }
+  }
+}
+
+function getFreeVars(expr, excludeVar) {
+  try {
+    const node = math.parse(expr);
+    const vars = new Set();
+    node.traverse(n => {
+      if (n.isSymbolNode && !math[n.name] && n.name !== excludeVar) vars.add(n.name);
+    });
+    return [...vars];
+  } catch { return []; }
+}
+
+function evalUnits(expr){
+  const r=math.evaluate(expr,scope);
+  const plain=r&&r.toString?r.toString():fmtR(r);
+  return{type:'unit',out:escH(plain),plain};
+}
+
+// ══════════════════════════════════════════════════════
+//  RUN CELL
+// ══════════════════════════════════════════════════════
+function runCell(){
+  const expr=getCurInput();
+  if(!expr) return;
+  iHist.unshift(expr); iIdx=-1;
+  clrInput(); closeAC();
+  const w=document.getElementById('welcome');
+  if(w) w.style.display='none';
+  cellN++;
+  const id='c'+cellN;
+  const nb=document.getElementById('notebook');
+  const el=document.createElement('div');
+  el.className='cell'; el.id=id;
+  el.innerHTML=`
+    <div class="cin">
+      <span class="cprompt"><span class="cprompt-num">${cellN}</span><span class="cprompt-arrow">›</span></span>
+      <span class="cexpr" onclick="reload('${esc2(expr)}')" title="Click to load">${escH(expr)}</span>
+      <span class="cmeta"><span class="cbadge">${curMode}</span></span>
+    </div>
+    <div class="cout loading" id="o${id}"><div class="spin"></div></div>
+    <div class="steps" id="st${id}"></div>
+    <div class="cell-plot" id="pl${id}"></div>
+    <div class="cacts" id="ac${id}"></div>`;
+  nb.appendChild(el);
+  scrollNB();
+  const cm=curMode;
+  setTimeout(()=>{
+    try{const res=dispatch(expr,cm);renderCell(id,res,expr,cm);}
+    catch(e){
+      try{const res=evalGeneric(normalise(expr));renderCell(id,res,expr,cm);}
+      catch(e2){renderErr(id,e2.message||String(e2));}
+    }
+    persistScope();
+  },30);
+}
+
+async function renderCell(id,res,expr,mode){
+  const oEl=document.getElementById('o'+id);
+  const sEl=document.getElementById('st'+id);
+  const aEl=document.getElementById('ac'+id);
+  if(!oEl) return;
+  let html='', latex='', plain='';
+  if(res.type==='funcdef'){
+    latex=`${res.name}(${res.params.join(',')}) := ${res.body}`;
+    plain=latex;
+    html=`<div class="cout-prompt">≔</div><div class="cout-body"><div class="mjrender">\\[${res.name}(${res.params.join(',')}) = ${escH(res.body)}\\]</div></div>`;
+  } else if(res.type==='vardef'){
+    latex=`${res.name} = ${toTex(res.value)}`;
+    plain=`${res.name} = ${fmtR(res.value)}`;
+    html=`<div class="cout-prompt">≔</div><div class="cout-body"><div class="mjrender">\\[${latex}\\]</div></div>`;
+  } else if(res.type==='sym'||res.type==='val'){
+    latex=applyExactMode(res.plain||res.out, res.out); plain=res.plain||res.out;
+    html=`<div class="cout-prompt">⇒</div><div class="cout-body"><div class="mjrender">\\[${latex}\\]</div></div>`;
+  } else if(res.type==='unit'){
+    html=`<div class="cout-prompt">⇒</div><div class="cout-body"><div class="unit-result">${res.out}<span class="unit-tag">unit</span></div></div>`;
+    plain=res.plain; latex=res.plain;
+  }
+  oEl.className='cout ok'; oEl.innerHTML=html;
+  try {
+    if(window.MathJax){
+      if(MathJax.typesetPromise) await MathJax.typesetPromise([oEl]);
+      else if(MathJax.Hub) MathJax.Hub.Queue(['Typeset',MathJax.Hub,oEl]);
+    }
+  } catch(e){ console.warn('MathJax typeset error',e); }
+
+  if(res.steps&&res.steps.length){
+    sEl.innerHTML=res.steps.map((s,i)=>
+      `<div class="step"><div class="step-n">${i+1}</div><div class="step-body"><div class="step-d">${escH(s.d)}</div><div class="step-e">${escH(s.e)}</div></div></div>`
+    ).join('');
+  }
+
+  const plotCand=res.plot||(detectPlot(expr));
+  const acts=[];
+  if(res.steps&&res.steps.length) acts.push(`<button class="cact" onclick="toggleSteps('${id}')">∴ Steps</button>`);
+  if(plotCand) acts.push(`<button class="cact violet" onclick="plotExpr('${esc2(plotCand)}','${id}')">⌇ Plot</button>`);
+  acts.push(`<div class="cact-spacer"></div>`);
+  acts.push(`<button class="cact" onclick="cpTxt('${esc2(latex)}')">Copy LaTeX</button>`);
+  acts.push(`<button class="cact" onclick="cpTxt('${esc2(plain)}')">Copy Plain</button>`);
+  acts.push(`<button class="cact warm" onclick="reload('${esc2(expr)}')">Edit</button>`);
+  aEl.innerHTML=acts.join('');
+  scrollNB();
+}
+
+function renderErr(id,msg){
+  const o=document.getElementById('o'+id);
+  if(o){o.className='cout err';o.innerHTML=`<div class="cout-prompt" style="color:var(--rose);">!</div><div class="cout-body" style="padding-left:32px;">${escH(msg)}</div>`;}
+}
+
+function toggleSteps(id){document.getElementById('st'+id).classList.toggle('open');}
+
+// ══════════════════════════════════════════════════════
+//  GRAPHING
+// ══════════════════════════════════════════════════════
+function detectPlot(expr){
+  const noPlot = /^(derivative|integrate|limit|sum|product|solve|zeros|mean|std|variance|median|det|inv|eigs)\b/;
+  if (noPlot.test(expr.trim())) return null;
+  if (!/\bx\b/.test(expr)) return null;
+  if (Array.isArray(expr)) return null;
+  return expr;
+}
+
+function plotExpr(expr,id){
+  const pEl=document.getElementById('pl'+id);
+  if(!pEl) return;
+  const div=document.createElement('div');
+  div.className='cell-plot-inner'; div.id='plo'+id;
+  pEl.innerHTML=''; pEl.appendChild(div); pEl.classList.add('open');
+  const xs=[],ys=[],fn=math.compile(expr),loc=Object.assign({},scope);
+  for(let i=0;i<=500;i++){
+    const x=-10+i*20/500; loc.x=x; xs.push(x);
+    try{const y=fn.evaluate(loc);ys.push(isFinite(y)?y:null);}catch{ys.push(null);}
+  }
+  Plotly.newPlot('plo'+id,[{x:xs,y:ys,type:'scatter',mode:'lines',line:{color:'#7eef9c',width:2},name:expr}],
+    pLayout(expr),{responsive:true,displayModeBar:false});
+  scrollNB();
+}
+
+function plotGraph(is3D){
+  const raw=document.getElementById('ginp').value.trim();
+  if(!raw) return;
+  const xmin=parseFloat(document.getElementById('gxmin').value);
+  const xmax=parseFloat(document.getElementById('gxmax').value);
+  const panel=document.getElementById('gplot');
+  panel.innerHTML='<div id="gplotinner" style="width:100%;height:100%;min-height:380px;"></div>';
+  const exprs=raw.split(',').map(s=>s.trim()).filter(Boolean);
+  const colors=['#7eef9c','#a99cf2','#7fc5e0','#e8b87a','#e88a99','#f0a06f'];
+
+  if(is3D){
+    const n=50,xs=[],ys=[],zs=[];
+    const fn=math.compile(exprs[0]);
+    for(let i=0;i<=n;i++) xs.push(xmin+i*(xmax-xmin)/n);
+    for(let j=0;j<=n;j++) ys.push(xmin+j*(xmax-xmin)/n);
+    for(let j=0;j<=n;j++){
+      const row=[];
+      for(let i=0;i<=n;i++){
+        const loc=Object.assign({},scope,{x:xs[i],y:ys[j]});
+        try{const z=fn.evaluate(loc);row.push(isFinite(z)?z:null);}catch{row.push(null);}
+      }
+      zs.push(row);
+    }
+    Plotly.newPlot('gplotinner',[{x:xs,y:ys,z:zs,type:'surface',colorscale:[[0,'#1f8a4d'],[0.5,'#7eef9c'],[1,'#a99cf2']],showscale:false}],
+      pLayout3D(exprs[0]),{responsive:true});
+  } else {
+    const traces=exprs.map((e,idx)=>{
+      const fn=math.compile(e),xs=[],ys=[];
+      for(let i=0;i<=500;i++){
+        const x=xmin+i*(xmax-xmin)/500; xs.push(x);
+        const loc=Object.assign({},scope,{x});
+        try{const y=fn.evaluate(loc);ys.push(isFinite(y)?y:null);}catch{ys.push(null);}
+      }
+      return{x:xs,y:ys,type:'scatter',mode:'lines',line:{color:colors[idx%colors.length],width:2.4},name:e};
+    });
+    Plotly.newPlot('gplotinner',traces,pLayout(raw),{responsive:true});
+  }
+}
+
+function pLayout(title){
+  const dk=darkTheme;
+  return{
+    title:{text:title,font:{color:dk?'#a3adc0':'#3e4350',size:12,family:'JetBrains Mono'}},
+    paper_bgcolor:dk?'#0f1218':'#fbfaf6',plot_bgcolor:dk?'#13171f':'#f1efe8',
+    font:{color:dk?'#6f7a8e':'#6b7384',family:'JetBrains Mono'},
+    xaxis:{gridcolor:dk?'#1f2530':'#e3dfd0',zerolinecolor:dk?'#2a3240':'#d3cdb8',title:'x'},
+    yaxis:{gridcolor:dk?'#1f2530':'#e3dfd0',zerolinecolor:dk?'#2a3240':'#d3cdb8',title:'y'},
+    margin:{l:48,r:20,t:40,b:40},hovermode:'x unified',
+    legend:{font:{color:dk?'#a3adc0':'#3e4350'}},
+  };
+}
+function pLayout3D(title){
+  const dk=darkTheme;
+  return{
+    title:{text:title,font:{color:dk?'#a3adc0':'#3e4350',size:12,family:'JetBrains Mono'}},
+    paper_bgcolor:dk?'#0f1218':'#fbfaf6',
+    scene:{
+      xaxis:{gridcolor:dk?'#1f2530':'#e3dfd0',title:'x'},
+      yaxis:{gridcolor:dk?'#1f2530':'#e3dfd0',title:'y'},
+      zaxis:{gridcolor:dk?'#1f2530':'#e3dfd0',title:'z'},
+      bgcolor:dk?'#13171f':'#f1efe8',
+    },margin:{l:0,r:0,t:36,b:0},
+  };
+}
+
+// ══════════════════════════════════════════════════════
+//  UNIT VIEW
+// ══════════════════════════════════════════════════════
+function evalUnit(){
+  const expr=document.getElementById('uinp').value.trim();
+  const el=document.getElementById('ures');
+  if(!expr){el.innerHTML='<span class="units-result-empty">Enter a unit expression to convert…</span>';return;}
+  try{
+    const r=math.evaluate(expr,scope);
+    const plain=r&&r.toString?r.toString():fmtR(r);
+    el.innerHTML=`<span>${escH(plain)}</span>`;
+  }catch(e){el.innerHTML=`<span style="color:var(--rose);font-size:14px;">! ${escH(e.message)}</span>`;}
+}
+function setUnitInp(s){document.getElementById('uinp').value=s;evalUnit();}
+
+function buildConsts(){
+  document.getElementById('cgrid').innerHTML=CONSTS.map(c=>
+    `<div class="const-card" onclick="setUnitInp('${esc2(c.e)}')" title="${escH(c.n)}">
+      <div class="const-card-name">${escH(c.n)}</div><div class="const-card-val">${escH(c.v)}</div>
+    </div>`
+  ).join('');
+}
+
+// ══════════════════════════════════════════════════════
+//  TEXT BLOCK
+// ══════════════════════════════════════════════════════
+function addText(){
+  const w=document.getElementById('welcome');if(w)w.style.display='none';
+  const el=document.createElement('div');
+  el.className='cell text-cell';
+  el.innerHTML=`<textarea class="text-cell-edit" placeholder="Notes, headings, derivations…" rows="2" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>`;
+  document.getElementById('notebook').appendChild(el);
+  el.querySelector('textarea').focus();
+  scrollNB();
+}
+
+// ══════════════════════════════════════════════════════
+//  SYMBOLIC ANTIDERIVATIVE ENGINE
+// ══════════════════════════════════════════════════════
+function symbolicIntegrate(f, v) {
+  const x = v;
+  f = f.trim();
+  function verify(antiderivExpr) {
+    try {
+      const dA = math.derivative(math.parse(antiderivExpr), x).toString();
+      const fn1 = math.compile(f), fn2 = math.compile(dA);
+      const loc = {[x]: 1.7};
+      const v1 = fn1.evaluate(loc), v2 = fn2.evaluate(loc);
+      return Math.abs(v1-v2) < 1e-6 * (Math.abs(v1)+1e-10);
+    } catch { return false; }
+  }
+  if (!f.includes(x)) {
+    const val = f;
+    return { tex:`${math.parse(val).toTex()} ${x}`, plain:`(${val})*${x}` };
+  }
+  if (f === x) return { tex:`\\frac{${x}^{2}}{2}`, plain:`${x}^2/2` };
+  let pm = f.match(new RegExp(`^${x}\\^\\(?(.+?)\\)?$`));
+  if (!pm) pm = f.match(new RegExp(`^\\(${x}\\)\\^\\(?(.+?)\\)?$`));
+  if (pm) {
+    const n = pm[1].trim();
+    if (n === '-1' || n === '(-1)') return { tex:`\\ln|${x}|`, plain:`log(abs(${x}))` };
+    try {
+      const nv = math.evaluate(n);
+      if (nv === -1) return { tex:`\\ln|${x}|`, plain:`log(abs(${x}))` };
+      const np1 = math.simplify(math.parse(`${n}+1`)).toString();
+      return { tex:`\\frac{${x}^{${np1}}}{${np1}}`, plain:`${x}^(${np1})/(${np1})` };
+    } catch {}
+  }
+  let cm = f.match(new RegExp(`^(-?[\\d\\.]+(?:\\/[\\d\\.]+)?)\\s*\\*\\s*(.+)$`));
+  if (!cm) cm = f.match(new RegExp(`^(.+?)\\s*\\*\\s*(-?[\\d\\.]+(?:\\/[\\d\\.]+)?)$`));
+  if (cm) {
+    const c = cm[1], inner = cm[2];
+    if (!inner.includes(x) && c.includes(x)) {} else if (!inner.includes(x)) {
+      const sub = symbolicIntegrate(c.includes(x) ? c : inner, x);
+      const const2 = c.includes(x) ? inner : c;
+      return { tex: `${math.parse(const2).toTex()} \\cdot ${sub.tex}`, plain: `(${const2})*(${sub.plain})` };
+    } else if (!c.includes(x)) {
+      const sub = symbolicIntegrate(inner, x);
+      return { tex: `${math.parse(c).toTex()} \\cdot ${sub.tex}`, plain: `(${c})*(${sub.plain})` };
+    }
+  }
+  const trigTable = [
+    [/^sin\(x\)$/,      {tex:`-\\cos(${x})`,         plain:`-cos(${x})`}],
+    [/^cos\(x\)$/,      {tex:`\\sin(${x})`,           plain:`sin(${x})`}],
+    [/^tan\(x\)$/,      {tex:`\\ln|\\sec(${x})|`,     plain:`log(abs(sec(${x})))`}],
+    [/^sec\(x\)^2$/,    {tex:`\\tan(${x})`,           plain:`tan(${x})`}],
+    [/^csc\(x\)^2$/,    {tex:`-\\cot(${x})`,          plain:`-cot(${x})`}],
+    [/^sec\(x\)\*tan\(x\)$/, {tex:`\\sec(${x})`,      plain:`sec(${x})`}],
+    [/^csc\(x\)\*cot\(x\)$/, {tex:`-\\csc(${x})`,     plain:`-csc(${x})`}],
+    [/^sinh\(x\)$/,     {tex:`\\cosh(${x})`,          plain:`cosh(${x})`}],
+    [/^cosh\(x\)$/,     {tex:`\\sinh(${x})`,          plain:`sinh(${x})`}],
+    [/^tanh\(x\)$/,     {tex:`\\ln(\\cosh(${x}))`,    plain:`log(cosh(${x}))`}],
+  ];
+  const fv = f.replace(new RegExp(`\\b${x}\\b`,'g'), 'x');
+  for (const [re, res] of trigTable) {
+    if (re.test(fv)) {
+      const tex = res.tex.replace(/x/g, v);
+      const plain = res.plain.replace(/\bx\b/g, v);
+      return {tex, plain};
+    }
+  }
+  const linArgTrig = [
+    {re: /^sin\((.+)\)$/, sign:'-', fn:'cos'},
+    {re: /^cos\((.+)\)$/, sign:'+',  fn:'sin'},
+    {re: /^exp\((.+)\)$/, sign:'+',  fn:'exp'},
+  ];
+  for (const {re, sign, fn} of linArgTrig) {
+    const m = f.match(re);
+    if (m) {
+      const arg = m[1];
+      try {
+        const darg = math.derivative(math.parse(arg), x).toString();
+        const dval = math.evaluate(darg.replace(new RegExp(`\\b${x}\\b`,'g'),'0'));
+        if (Math.abs(dval) > 1e-12) {
+          const antiFn = fn === 'exp' ? `exp(${arg})` : `${fn}(${arg})`;
+          const tex = `${sign === '-' ? '-' : ''}\\frac{${fn==='exp'?'e^{'+math.parse(arg).toTex()+'}': fn+'\\left('+math.parse(arg).toTex()+'\\right)'}}{${math.parse(darg).toTex()}}`;
+          const plain = `${sign}${antiFn}/(${darg})`;
+          if (verify(plain.replace(/^\+/,''))) return {tex, plain: plain.replace(/^\+/,'')};
+        }
+      } catch {}
+    }
+  }
+  if (f === `exp(${x})` || f === `e^${x}`) return {tex:`e^{${x}}`, plain:`exp(${x})`};
+  const expM = f.match(/^(\d+(?:\.\d+)?)\^x$/);
+  if (expM) {
+    const a = expM[1];
+    return {tex:`\\frac{${a}^{${x}}}{\\ln(${a})}`, plain:`${a}^${x}/log(${a})`};
+  }
+  if (f === `log(${x})`) return {tex:`${x}\\ln(${x}) - ${x}`, plain:`${x}*log(${x})-${x}`};
+  if (f === `log10(${x})`) return {tex:`\\frac{${x}(\\ln(${x})-1)}{\\ln(10)}`, plain:`${x}*(log(${x})-1)/log(10)`};
+  if (f.match(/^1\s*\/\s*sqrt\s*\(1\s*-\s*x\^2\)$/) || f === '1/sqrt(1-x^2)') return {tex:`\\arcsin(${x})`, plain:`asin(${x})`};
+  if (f.match(/^1\s*\/\s*\(1\s*\+\s*x\^2\)$/) || f === '1/(1+x^2)') return {tex:`\\arctan(${x})`, plain:`atan(${x})`};
+  if (f.match(/^-1\s*\/\s*sqrt\s*\(1\s*-\s*x\^2\)$/)) return {tex:`\\arccos(${x})`, plain:`acos(${x})`};
+  const terms = splitTopLevel(f);
+  if (terms.length > 1) {
+    const parts = terms.map(t => symbolicIntegrate(t.expr.trim(), v));
+    const combined_tex = parts.map((p,i) => terms[i].sign === '-' ? '-'+p.tex : (i===0?p.tex:'+'+p.tex)).join('');
+    const combined_plain = parts.map((p,i) => terms[i].sign === '-' ? `-(${p.plain})` : p.plain).join('+');
+    return {tex: combined_tex, plain: combined_plain};
+  }
+  return {
+    tex: `\\text{(numerical)} \\approx \\int ${math.parse(f).toTex()} \\, d${v}`,
+    plain: `numIntegral(${f}, ${v})`
+  };
+}
+
+function splitTopLevel(expr) {
+  const terms = [];
+  let depth = 0, start = 0, sign = '+';
+  for (let i = 0; i < expr.length; i++) {
+    const c = expr[i];
+    if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (depth === 0 && (c === '+' || c === '-') && i > 0) {
+      const t = expr.slice(start, i).trim();
+      if (t) terms.push({sign, expr: t});
+      sign = c;
+      start = i + 1;
+    }
+  }
+  const t = expr.slice(start).trim();
+  if (t) terms.push({sign, expr: t});
+  return terms.length > 1 ? terms : [];
+}
+
+// ══════════════════════════════════════════════════════
+//  NUMERICAL HELPERS (preserved)
+// ══════════════════════════════════════════════════════
+function numInt(fn,v,a,b,n=1000){
+  const h=(b-a)/n, loc=Object.assign({},scope); let s=0;
+  for(let i=0;i<=n;i++){const x=a+i*h;loc[v]=x;const fx=fn.evaluate(loc);const w=(i===0||i===n)?1:(i%2===0?2:4);s+=w*fx;}
+  return s*h/3;
+}
+function numLim(f,v,a,eps=1e-7){const fn=math.compile(f),loc=Object.assign({},scope);loc[v]=a+eps;return fn.evaluate(loc);}
+function findRoots(f,v,mn=-10000,mx=10000,steps=10000){
+  const fn=math.compile(f),loc=Object.assign({},scope),roots=[],dx=(mx-mn)/steps;
+  let px=mn,ps=null;
+  for(let i=0;i<=steps;i++){
+    const x=mn+i*dx;loc[v]=x;
+    let y;try{y=fn.evaluate(loc);}catch{continue;}
+    if(!isFinite(y)) continue;
+    const s=Math.sign(y);
+    if(s===0){ if(!roots.some(rr=>Math.abs(rr-x)<1e-6)) roots.push(x); }
+    else if(ps!==null&&ps!==0&&s!==ps){
+      const r=bisect(fn,v,px,x,Object.assign({},scope));
+      if(r!==null&&!roots.some(rr=>Math.abs(rr-r)<1e-6)) roots.push(r);
+    }
+    px=x;ps=s;
+  }
+  loc[v]=0;try{if(Math.abs(fn.evaluate(loc))<1e-8&&!roots.some(r=>Math.abs(r)<1e-6))roots.push(0);}catch{}
+  return roots.map(r=>parseFloat(r.toPrecision(10)));
+}
+function bisect(fn,v,a,b,s,it=60){
+  for(let i=0;i<it;i++){
+    const m=(a+b)/2;s[v]=m;
+    let fm;try{fm=fn.evaluate(s);}catch{return null;}
+    s[v]=a;let fa;try{fa=fn.evaluate(s);}catch{return null;}
+    if(Math.abs(fm)<1e-12) return m;
+    if(Math.sign(fa)!==Math.sign(fm)) b=m; else a=m;
+  }
+  return(a+b)/2;
+}
+function solveSys(eqs,vars){
+  const fns=eqs.map(eq=>{let l,r;if(eq.includes('='))[l,r]=eq.split('=').map(s=>s.trim());else{l=eq;r='0';}return math.compile(`(${l})-(${r})`);});
+  let xs=vars.map(()=>1.0);
+  for(let it=0;it<150;it++){
+    const loc=Object.assign({},scope);vars.forEach((v,i)=>loc[v]=xs[i]);
+    const F=fns.map(fn=>fn.evaluate(loc));
+    const J=fns.map(fn=>vars.map((v,j)=>{
+      const s1=Object.assign({},loc),s2=Object.assign({},loc),h=1e-7;
+      s1[v]=xs[j]+h;s2[v]=xs[j]-h;
+      try{return(fn.evaluate(s1)-fn.evaluate(s2))/(2*h);}catch{return 0;}
+    }));
+    const dx=solveL(J,F.map(f=>-f));
+    if(!dx) break;
+    xs=xs.map((x,i)=>x+dx[i]);
+    if(dx.every(d=>Math.abs(d)<1e-12)) break;
+  }
+  return vars.map((v,i)=>({v,x:parseFloat(xs[i].toPrecision(10))}));
+}
+function solveL(A,b){
+  const n=b.length,M=A.map((row,i)=>[...row,b[i]]);
+  for(let col=0;col<n;col++){
+    let mx=col;for(let r=col+1;r<n;r++)if(Math.abs(M[r][col])>Math.abs(M[mx][col]))mx=r;
+    [M[col],M[mx]]=[M[mx],M[col]];if(Math.abs(M[col][col])<1e-15)return null;
+    for(let r=col+1;r<n;r++){const f=M[r][col]/M[col][col];for(let k=col;k<=n;k++)M[r][k]-=f*M[col][k];}
+  }
+  const x=new Array(n).fill(0);
+  for(let i=n-1;i>=0;i--){x[i]=M[i][n];for(let j=i+1;j<n;j++)x[i]-=M[i][j]*x[j];x[i]/=M[i][i];}
+  return x;
+}
+
+// ══════════════════════════════════════════════════════
+//  FORMAT / TEX
+// ══════════════════════════════════════════════════════
+function toTex(val){
+  try{
+    if(typeof val==='number') return fmtN(val);
+    if(val&&val.toTex) return val.toTex();
+    const node=math.parse(String(val));
+    return node.toTex?node.toTex():escH(String(val));
+  }catch{return escH(String(val));}
+}
+function fmtR(val){
+  if(val===null||val===undefined) return 'null';
+  if(typeof val==='boolean') return String(val);
+  if(typeof val==='number') return fmtN(val);
+  if(val&&val.isComplex) return `${fmtN(val.re)} + ${fmtN(val.im)}i`;
+  if(Array.isArray(val)) return '['+val.map(r=>Array.isArray(r)?'['+r.map(fmtR).join(', ')+']':fmtR(r)).join(', ')+']';
+  if(val&&val.valueOf){const v=val.valueOf();if(Array.isArray(v))return fmtR(v);}
+  if(val&&val.toString) return val.toString();
+  return String(val);
+}
+function fmtN(n){
+  if(!isFinite(n)) return String(n);
+  if(Math.abs(n)<1e-12&&n!==0) return '0';
+  if(Math.abs(n)>=1e10||(Math.abs(n)<0.001&&n!==0)) return n.toExponential(6).replace(/\.?0+e/,'e');
+  return parseFloat(n.toPrecision(10)).toString();
+}
+function xarg(expr,fn){
+  const i=expr.indexOf(fn+'(');if(i===-1)return expr;
+  let d=0,s=i+fn.length+1;
+  for(let j=s;j<expr.length;j++){if(expr[j]==='(')d++;else if(expr[j]===')'){if(d===0)return expr.slice(s,j);d--;}}
+  return expr.slice(s);
+}
+function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function esc2(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n');}
+
+// ══════════════════════════════════════════════════════
+//  INTERACTIONS
+// ══════════════════════════════════════════════════════
+function reload(expr){
+  if(inpMode==='monaco'&&mon){mon.setValue(expr);mon.focus();}
+  else document.getElementById('mf').value=expr;
+}
+function scrollNB(){const nb=document.getElementById('notebook');nb.scrollTop=nb.scrollHeight;}
+function cpTxt(t){navigator.clipboard.writeText(t).catch(()=>{});toast('Copied');}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800);}
+
+// ══════════════════════════════════════════════════════
+//  DEFS PANEL
+// ══════════════════════════════════════════════════════
+function renderDefs(){
+  const keys=Object.keys(scope).filter(k=>!['pi','e','phi','tau'].includes(k));
+  const el=document.getElementById('deflist');
+  if(!keys.length){el.innerHTML='<div class="def-empty">Nothing defined yet</div>';return;}
+  el.innerHTML=keys.map(k=>{
+    const val=scope[k], isF=typeof val==='function';
+    const disp=isF?`(${(userFns[k]||{}).params||[]}) = ${(userFns[k]||{}).body||'…'}`:fmtR(val).slice(0,28);
+    return `<div class="def" onclick="reload('${k}')" title="${escH(k)}">
+      <span class="def-name">${escH(k)}</span>
+      <span class="def-val">${escH(disp)}</span>
+    </div>`;
+  }).join('');
+}
+function clearDefs(){
+  const keys=Object.keys(scope).filter(k=>!['pi','e','phi','tau'].includes(k));
+  keys.forEach(k=>delete scope[k]);
+  Object.keys(userFns).forEach(k=>delete userFns[k]);
+  renderDefs();persistScope();
+}
+
+// ══════════════════════════════════════════════════════
+//  PERSISTENCE
+// ══════════════════════════════════════════════════════
+function persistScope(){
+  try{
+    const c={};
+    Object.keys(scope).forEach(k=>{const v=scope[k];if(typeof v!=='function')c[k]=v;});
+    localStorage.setItem('cas2-scope',JSON.stringify(c));
+  }catch(e){}
+  renderDefs();
+}
+function saveSession(){
+  const cells=[];
+  document.querySelectorAll('.cell').forEach(cell=>{
+    const ex=cell.querySelector('.cexpr'), tx=cell.querySelector('.text-cell-edit'), mb=cell.querySelector('.cbadge');
+    if(tx) cells.push({type:'text',content:tx.value});
+    else if(ex) cells.push({type:'math',expr:ex.textContent,mode:mb?mb.textContent:'algebra'});
+  });
+  const sc={};
+  Object.keys(scope).forEach(k=>{if(typeof scope[k]!=='function')sc[k]=scope[k];});
+  const data={version:2,scope:sc,cells};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='session.cas';a.click();
+  toast('Saved');
+}
+function loadFile(ev){
+  const file=ev.target.files[0];if(!file)return;
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const d=JSON.parse(e.target.result);
+      if(d.scope) Object.assign(scope,d.scope);
+      renderDefs();toast('Loaded');
+    }catch(err){alert('Load error: '+err.message);}
+  };
+  r.readAsText(file);ev.target.value='';
+}
+function exportTxt(){
+  const lines=[];
+  document.querySelectorAll('.cell').forEach(cell=>{
+    const ex=cell.querySelector('.cexpr'),ou=cell.querySelector('.cout'),tx=cell.querySelector('.text-cell-edit');
+    if(tx) lines.push('## '+tx.value);
+    else if(ex) lines.push(`>> ${ex.textContent}\n   ${ou?ou.innerText:''}`);
+  });
+  const blob=new Blob([lines.join('\n\n')],{type:'text/plain'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='cas-export.txt';a.click();
+}
+function clearAll(){
+  if(!confirm('Clear all cells?')) return;
+  clearDefs();
+  const nb=document.getElementById('notebook');
+  nb.innerHTML='';
+  nb.appendChild(buildWelcomeNode());
+  buildWelcomeGrid();
+  cellN=0;
+  localStorage.removeItem('cas2-scope');
+}
+
+function toggleTheme(){
+  darkTheme=!darkTheme;
+  document.body.classList.toggle('light',!darkTheme);
+  if(mon) monaco.editor.setTheme(darkTheme?'cas-dark':'cas-light');
+}
+
+function toggleExact(){
+  exactMode=!exactMode;
+  document.getElementById('tg-exact').classList.toggle('on',exactMode);
+  document.getElementById('tg-approx').classList.toggle('on',!exactMode);
+}
+function toggleAngle(){
+  angleMode = angleMode==='rad' ? 'deg' : 'rad';
+  document.getElementById('tg-rad').classList.toggle('on',angleMode==='rad');
+  document.getElementById('tg-deg').classList.toggle('on',angleMode==='deg');
+}
+
+// ══════════════════════════════════════════════════════
+//  KEYBOARD
+// ══════════════════════════════════════════════════════
+document.addEventListener('keydown',e=>{
+  // ⌘K palette
+  if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();openPalette();return;}
+  if(e.key==='Escape'){closePalette();closeAC();}
+  if(e.key==='ArrowUp'&&e.altKey){
+    if(iIdx<iHist.length-1){iIdx++;if(mon)mon.setValue(iHist[iIdx]);}
+    e.preventDefault();
+  }
+  if(e.key==='ArrowDown'&&e.altKey){
+    if(iIdx>0){iIdx--;if(mon)mon.setValue(iHist[iIdx]);}
+    else{iIdx=-1;if(mon)mon.setValue('');}
+    e.preventDefault();
+  }
+  if(e.key==='Tab'){
+    const ac=document.getElementById('ac');
+    if(ac.classList.contains('open')){
+      const sel=ac.querySelector('.aci.sel');if(sel)sel.click();
+      e.preventDefault();
+    }
+  }
+});
+
+// ══════════════════════════════════════════════════════
+//  WELCOME GRID
+// ══════════════════════════════════════════════════════
+function buildWelcomeNode(){
+  const w=document.createElement('div');
+  w.className='welcome';w.id='welcome';
+  w.innerHTML=`
+    <div class="welcome-mark">∑</div>
+    <div class="welcome-title">A precision instrument for <em>symbolic mathematics.</em></div>
+    <div class="welcome-sub">Type any expression below — the system will normalize, simplify, plot, or solve as needed. Switch modes from the left panel.</div>
+    <div class="welcome-grid" id="welcome-grid"></div>
+    <div class="welcome-tip">
+      <span><kbd>Enter</kbd> run</span>
+      <span><kbd>Shift</kbd>+<kbd>Enter</kbd> newline</span>
+      <span><kbd>⌘</kbd>+<kbd>K</kbd> palette</span>
+      <span><kbd>Tab</kbd> complete</span>
+    </div>`;
+  return w;
+}
+function buildWelcomeGrid(){
+  const all = [];
+  Object.entries(MODES).forEach(([k,m]) => {
+    m.ex.slice(0,2).forEach(ex => all.push({mode:k, modeLabel:m.label, ...ex}));
+  });
+  const sample = all.sort(()=>Math.random()-.5).slice(0,4);
+  const el=document.getElementById('welcome-grid');
+  if(el) el.innerHTML=sample.map(s=>`
+    <div class="wcell" onclick="loadEx('${esc2(s.expr)}','${s.mode}')">
+      <div class="wcell-tag">${s.modeLabel}</div>
+      <div class="wcell-expr">${escH(s.expr)}</div>
+      <div class="wcell-desc">${escH(s.desc)}</div>
+    </div>`).join('');
+}
+function loadEx(ex, mode){
+  if (mode) setMode(mode);
+  if(mon) mon.setValue(ex);
+  else document.getElementById('mf').value=ex;
+  const w=document.getElementById('welcome');if(w)w.style.display='none';
+  if(mon) mon.focus();
+}
+
+// ══════════════════════════════════════════════════════
+//  COMMAND PALETTE
+// ══════════════════════════════════════════════════════
+let palItems = [], palIdx = 0;
+function openPalette(){
+  document.getElementById('palette').classList.add('on');
+  document.getElementById('palette-input').value='';
+  document.getElementById('palette-input').focus();
+  filterPalette();
+}
+function closePalette(){document.getElementById('palette').classList.remove('on');}
+function filterPalette(){
+  const q = document.getElementById('palette-input').value.toLowerCase();
+  const items = [
+    ...Object.entries(MODES).map(([k,m])=>({type:'mode',k,label:`Mode: ${m.label}`,desc:m.sub})),
+    ...ACD.map(d=>({type:'fn',n:d.n,label:d.n,desc:d.s})),
+    ...CONSTS.map(c=>({type:'const',e:c.e,label:c.n,desc:c.v})),
+  ].filter(i => !q || i.label.toLowerCase().includes(q) || (i.desc||'').toLowerCase().includes(q)).slice(0,40);
+  palItems = items; palIdx = 0;
+  document.getElementById('palette-list').innerHTML = items.map((i,idx)=>
+    `<div class="palette-item ${idx===0?'sel':''}" onclick="palAction(${idx})">
+      <span class="palette-item-name">${escH(i.label)}</span>
+      <span class="palette-item-desc">${escH(i.desc||'')}</span>
+    </div>`
+  ).join('');
+}
+function palAction(idx){
+  const it = palItems[idx]; if(!it) return;
+  if(it.type==='mode'){ setMode(it.k); }
+  else if(it.type==='fn'){ insText(it.n+'('); }
+  else if(it.type==='const'){ insText(it.e); }
+  closePalette();
+}
+function palKey(e){
+  if(e.key==='Escape'){closePalette();return;}
+  if(e.key==='Enter'){palAction(palIdx);return;}
+  if(e.key==='ArrowDown'){palIdx=Math.min(palIdx+1,palItems.length-1);highlightPal();e.preventDefault();}
+  if(e.key==='ArrowUp'){palIdx=Math.max(palIdx-1,0);highlightPal();e.preventDefault();}
+}
+function highlightPal(){
+  document.querySelectorAll('.palette-item').forEach((el,i)=>el.classList.toggle('sel',i===palIdx));
+}
+
+// ══════════════════════════════════════════════════════
+//  TWEAKS
+// ══════════════════════════════════════════════════════
+const ACCENTS = [
+  {name:'green', a0:'#7eef9c', a1:'#5dd87f', a2:'#3bb95e'},
+  {name:'cyan',  a0:'#7fc5e0', a1:'#5da8c5', a2:'#3b88a5'},
+  {name:'amber', a0:'#e8b87a', a1:'#d29a52', a2:'#a87530'},
+  {name:'rose',  a0:'#e88a99', a1:'#c9657a', a2:'#a23f55'},
+  {name:'violet',a0:'#a99cf2', a1:'#8a7dd8', a2:'#6957c4'},
+];
+function buildTweaks(){
+  document.getElementById('tweak-accent').innerHTML = ACCENTS.map((a,i)=>
+    `<div class="tweak-swatch ${i===0?'on':''}" style="background:${a.a0};color:${a.a0};" onclick="setAccent(${i})" title="${a.name}"></div>`
+  ).join('');
+  document.getElementById('tweak-density').innerHTML = ['Compact','Standard','Spacious'].map((d,i)=>
+    `<button class="in-op ${i===1?'on':''}" style="flex:1;" onclick="setDensity(${i})">${d}</button>`
+  ).join('');
+  document.getElementById('tweak-font').innerHTML = ['Inter','System'].map((f,i)=>
+    `<button class="in-op ${i===0?'on':''}" style="flex:1;" onclick="setFont(${i})">${f}</button>`
+  ).join('');
+}
+function setAccent(i){
+  const a = ACCENTS[i];
+  document.documentElement.style.setProperty('--a0', a.a0);
+  document.documentElement.style.setProperty('--a1', a.a1);
+  document.documentElement.style.setProperty('--a2', a.a2);
+  document.querySelectorAll('#tweak-accent .tweak-swatch').forEach((el,j)=>el.classList.toggle('on',i===j));
+}
+function setDensity(i){
+  const pad = ['16px 24px 24px','24px 32px 32px','32px 48px 40px'][i];
+  document.querySelector('.notebook').style.padding = pad;
+  document.querySelectorAll('#tweak-density .in-op').forEach((el,j)=>el.classList.toggle('on',i===j));
+}
+function setFont(i){
+  document.documentElement.style.setProperty('--ui', i===0 ? "'Inter','Helvetica Neue',sans-serif" : "system-ui,-apple-system,sans-serif");
+  document.querySelectorAll('#tweak-font .in-op').forEach((el,j)=>el.classList.toggle('on',i===j));
+}
+function toggleTweaks(){document.getElementById('tweaks').classList.toggle('on');}
+
+// ══════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════
+initMonaco();
+renderModeList();
+renderModeUI();
+buildWelcomeGrid();
+buildConsts();
+buildTweaks();
+renderDefs();
+document.getElementById('mf').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runCell(); }
+});
+</script>
+</body>
+</html>
