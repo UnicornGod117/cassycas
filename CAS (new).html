@@ -1210,8 +1210,8 @@ mjx-container[display="true"]{margin:0!important;text-align:left!important;}
   </div>
 
   <div class="tg-group" title="Angle mode">
-    <button class="tg on" id="tg-rad" onclick="toggleAngle()">Rad</button>
-    <button class="tg" id="tg-deg" onclick="toggleAngle()">Deg</button>
+    <button class="tg on" id="tg-rad" onclick="toggleAngle()" title="Radian mode: trigonometric inputs are treated as radians (default)">Rad</button>
+    <button class="tg" id="tg-deg" onclick="toggleAngle()" title="Degree mode: trigonometric inputs are treated as degrees">Deg</button>
   </div>
 
   <div class="topbar-divider"></div>
@@ -1401,6 +1401,7 @@ mjx-container[display="true"]{margin:0!important;text-align:left!important;}
             <div class="graph-actions">
               <button class="btn-plot" onclick="plotGraph(false)">Plot 2D</button>
               <button class="btn-plot violet" onclick="plotGraph(true)">Plot 3D Surface</button>
+              <button class="btn-plot" onclick="exportPlot('graph')" style="background:var(--s2);color:var(--t1);border:1px solid var(--b0);">Export PNG</button>
             </div>
           </div>
         </div>
@@ -1484,6 +1485,7 @@ mjx-container[display="true"]{margin:0!important;text-align:left!important;}
 // ══════════════════════════════════════════════════════
 const scope = { pi:Math.PI, e:Math.E, phi:(1+Math.sqrt(5))/2, tau:2*Math.PI };
 const userFns = {};
+let notebookHistory = [];
 let curMode = 'algebra';
 let inpMode = 'monaco';
 let iHist = [], iIdx = -1;
@@ -1768,7 +1770,7 @@ function initMonaco() {
       if(e.keyCode===3&&!e.shiftKey){e.preventDefault();e.stopPropagation();runCell();}
     });
     mon.onDidFocusEditorText(()=>document.getElementById('input-wrap').classList.add('focused'));
-    mon.onDidBlurEditorText(()=>{document.getElementById('input-wrap').classList.remove('focused');setTimeout(closeAC,150);});
+    mon.onDidBlurEditorText(()=>{document.getElementById('input-wrap').classList.remove('focused');});
     mon.onDidChangeModelContent(()=>{
       const v=mon.getValue();
       const lines=v.split('\n').length;
@@ -2250,6 +2252,7 @@ function runCell(){
   nb.appendChild(el);
   scrollNB();
   const cm=curMode;
+  notebookHistory.push({id, expr, mode:cm});
   setTimeout(()=>{
     try{const res=dispatch(expr,cm);renderCell(id,res,expr,cm);}
     catch(e){
@@ -2298,7 +2301,10 @@ async function renderCell(id,res,expr,mode){
   const plotCand=res.plot||(detectPlot(expr));
   const acts=[];
   if(res.steps&&res.steps.length) acts.push(`<button class="cact" onclick="toggleSteps('${id}')">∴ Steps</button>`);
-  if(plotCand) acts.push(`<button class="cact violet" onclick="plotExpr('${esc2(plotCand)}','${id}')">⌇ Plot</button>`);
+  if(plotCand) {
+    acts.push(`<button class="cact violet" onclick="plotExpr('${esc2(plotCand)}','${id}')">⌇ Plot</button>`);
+    acts.push(`<button class="cact" onclick="exportPlot('${id}')" style="display:none;" id="exp${id}">Download Plot</button>`);
+  }
   acts.push(`<div class="cact-spacer"></div>`);
   acts.push(`<button class="cact" onclick="cpTxt('${esc2(latex)}')">Copy LaTeX</button>`);
   acts.push(`<button class="cact" onclick="cpTxt('${esc2(plain)}')">Copy Plain</button>`);
@@ -2338,7 +2344,14 @@ function plotExpr(expr,id){
   }
   Plotly.newPlot('plo'+id,[{x:xs,y:ys,type:'scatter',mode:'lines',line:{color:'#7eef9c',width:2},name:expr}],
     pLayout(expr),{responsive:true,displayModeBar:false});
+  const expBtn = document.getElementById('exp'+id);
+  if(expBtn) expBtn.style.display = 'flex';
   scrollNB();
+}
+function exportPlot(id){
+  const div = document.getElementById('plo'+id) || document.getElementById('gplotinner');
+  if(!div) return;
+  Plotly.downloadImage(div, {format:'png', width:1200, height:800, filename:'cas-plot-'+id});
 }
 
 function plotGraph(is3D){
@@ -2547,7 +2560,7 @@ function symbolicIntegrate(f, v) {
     return {tex: combined_tex, plain: combined_plain};
   }
   return {
-    tex: `\\text{(numerical)} \\approx \\int ${math.parse(f).toTex()} \\, d${v}`,
+    tex: `\\int ${math.parse(f).toTex()} \\, d${v} \\text{ (numerical fallback)}`,
     plain: `numIntegral(${f}, ${v})`
   };
 }
@@ -2581,14 +2594,20 @@ function numInt(fn,v,a,b,n=1000){
 }
 function numLim(f,v,a,eps=1e-7){const fn=math.compile(f),loc=Object.assign({},scope);loc[v]=a+eps;return fn.evaluate(loc);}
 function findRoots(f,v,mn=-10000,mx=10000,steps=10000){
-  const fn=math.compile(f),loc=Object.assign({},scope),roots=[],dx=(mx-mn)/steps;
+  let fn;
+  try { fn = math.compile(f); } catch(e) { return []; }
+  const loc=Object.assign({},scope),roots=[],dx=(mx-mn)/steps;
   let px=mn,ps=null;
   for(let i=0;i<=steps;i++){
     const x=mn+i*dx;loc[v]=x;
-    let y;try{y=fn.evaluate(loc);}catch{continue;}
-    if(!isFinite(y)) continue;
+    let y;
+    try{
+      y=fn.evaluate(loc);
+      if(y && y.isComplex) y = y.re; // handle potential complex results by taking real part
+    }catch{ps=null; continue;}
+    if(typeof y !== 'number' || !isFinite(y)) { ps=null; continue; }
     const s=Math.sign(y);
-    if(s===0){ if(!roots.some(rr=>Math.abs(rr-x)<1e-6)) roots.push(x); }
+    if(s===0 || Math.abs(y) < 1e-12){ if(!roots.some(rr=>Math.abs(rr-x)<1e-6)) roots.push(x); }
     else if(ps!==null&&ps!==0&&s!==ps){
       const r=bisect(fn,v,px,x,Object.assign({},scope));
       if(r!==null&&!roots.some(rr=>Math.abs(rr-r)<1e-6)) roots.push(r);
@@ -2694,14 +2713,16 @@ function renderDefs(){
   if(!keys.length){el.innerHTML='<div class="def-empty">Nothing defined yet</div>';return;}
   el.innerHTML=keys.map(k=>{
     const val=scope[k], isF=typeof val==='function';
+    const typeTag = isF ? '[Fn]' : '[Var]';
     const disp=isF?`(${(userFns[k]||{}).params||[]}) = ${(userFns[k]||{}).body||'…'}`:fmtR(val).slice(0,28);
     return `<div class="def" onclick="reload('${k}')" title="${escH(k)}">
-      <span class="def-name">${escH(k)}</span>
+      <span class="def-name"><small style="opacity:0.5;margin-right:4px;">${typeTag}</small>${escH(k)}</span>
       <span class="def-val">${escH(disp)}</span>
     </div>`;
   }).join('');
 }
 function clearDefs(){
+  if(!confirm('Clear all workspace definitions?')) return;
   const keys=Object.keys(scope).filter(k=>!['pi','e','phi','tau'].includes(k));
   keys.forEach(k=>delete scope[k]);
   Object.keys(userFns).forEach(k=>delete userFns[k]);
@@ -2758,6 +2779,7 @@ function exportTxt(){
 function clearAll(){
   if(!confirm('Clear all cells?')) return;
   clearDefs();
+  notebookHistory = [];
   const nb=document.getElementById('notebook');
   nb.innerHTML='';
   nb.appendChild(buildWelcomeNode());
@@ -2776,16 +2798,30 @@ function toggleExact(){
   exactMode=!exactMode;
   document.getElementById('tg-exact').classList.toggle('on',exactMode);
   document.getElementById('tg-approx').classList.toggle('on',!exactMode);
+  refreshNotebook();
 }
 function toggleAngle(){
   angleMode = angleMode==='rad' ? 'deg' : 'rad';
   document.getElementById('tg-rad').classList.toggle('on',angleMode==='rad');
   document.getElementById('tg-deg').classList.toggle('on',angleMode==='deg');
+  refreshNotebook();
+}
+function refreshNotebook(){
+  notebookHistory.forEach(item => {
+    try {
+      const res = dispatch(item.expr, item.mode);
+      renderCell(item.id, res, item.expr, item.mode);
+    } catch(e) {}
+  });
 }
 
 // ══════════════════════════════════════════════════════
 //  KEYBOARD
 // ══════════════════════════════════════════════════════
+document.addEventListener('mousedown', e => {
+  if (!e.target.closest('#input-wrap')) closeAC();
+});
+
 document.addEventListener('keydown',e=>{
   // ⌘K palette
   if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();openPalette();return;}
@@ -2863,17 +2899,23 @@ function closePalette(){document.getElementById('palette').classList.remove('on'
 function filterPalette(){
   const q = document.getElementById('palette-input').value.toLowerCase();
   const items = [
-    ...Object.entries(MODES).map(([k,m])=>({type:'mode',k,label:`Mode: ${m.label}`,desc:m.sub})),
-    ...ACD.map(d=>({type:'fn',n:d.n,label:d.n,desc:d.s})),
-    ...CONSTS.map(c=>({type:'const',e:c.e,label:c.n,desc:c.v})),
+    ...Object.entries(MODES).map(([k,m])=>({type:'mode',cat:'Modes',k,label:m.label,desc:m.sub})),
+    ...ACD.map(d=>({type:'fn',cat:'Functions',n:d.n,label:d.n,desc:d.s})),
+    ...CONSTS.map(c=>({type:'const',cat:'Constants',e:c.e,label:c.n,desc:c.v})),
   ].filter(i => !q || i.label.toLowerCase().includes(q) || (i.desc||'').toLowerCase().includes(q)).slice(0,40);
   palItems = items; palIdx = 0;
-  document.getElementById('palette-list').innerHTML = items.map((i,idx)=>
-    `<div class="palette-item ${idx===0?'sel':''}" onclick="palAction(${idx})">
+  let html = '', lastCat = '';
+  items.forEach((i,idx) => {
+    if(i.cat !== lastCat){
+      html += `<div style="padding:8px 12px 4px;font-family:var(--mono);font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:0.1em;">${i.cat}</div>`;
+      lastCat = i.cat;
+    }
+    html += `<div class="palette-item ${idx===0?'sel':''}" onclick="palAction(${idx})">
       <span class="palette-item-name">${escH(i.label)}</span>
       <span class="palette-item-desc">${escH(i.desc||'')}</span>
-    </div>`
-  ).join('');
+    </div>`;
+  });
+  document.getElementById('palette-list').innerHTML = html;
 }
 function palAction(idx){
   const it = palItems[idx]; if(!it) return;
