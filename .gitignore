@@ -1,0 +1,20 @@
+# AI / editor context
+.claude/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node (if ever used)
+node_modules/
+npm-debug.log*
+
+# Python cache (test runner)
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Build / dist
+dist/
+build/

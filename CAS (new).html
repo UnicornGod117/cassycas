@@ -1557,14 +1557,14 @@ const MODES = {
   calculus:{
     label:'Calculus', glyph:'∫',
     sub:'Differentiation, integration, limits, series.',
-    sm:['Derive','Integrate','Definite ∫','Limit','Sum','Product'],
-    qr:['derivative(f,x)','integrate(f,x)','integrate(f,x,a,b)','limit(f,x,0)','sum(f,n,1,10)','product(f,n,1,5)','derivative(f,x,2)'],
-    syn:'<span class="kw">derivative</span>(expr, <span class="var">x</span>)\n<span class="kw">derivative</span>(expr, <span class="var">x</span>, n)  nth order\n<span class="kw">integrate</span>(expr, <span class="var">x</span>)\n<span class="kw">integrate</span>(expr, <span class="var">x</span>, a, b)\n<span class="kw">limit</span>(expr, <span class="var">x</span>, a)',
+    sm:['Derive','Integrate','Definite ∫','Limit','Sum','Product','Series'],
+    qr:['derivative(f,x)','integrate(f,x)','integrate(f,x,a,b)','limit(f,x,0)','sum(f,n,1,10)','product(f,n,1,5)','derivative(f,x,2)','series(f,x)','series(f,x,0,8)'],
+    syn:'<span class="kw">derivative</span>(expr, <span class="var">x</span>)\n<span class="kw">derivative</span>(expr, <span class="var">x</span>, n)  nth order\n<span class="kw">integrate</span>(expr, <span class="var">x</span>)\n<span class="kw">integrate</span>(expr, <span class="var">x</span>, a, b)\n<span class="kw">limit</span>(expr, <span class="var">x</span>, a)\n<span class="kw">series</span>(expr, <span class="var">x</span>, a, n)',
     ex:[
       {expr:'derivative(sin(x)*x^2, x)', desc:'Product rule'},
-      {expr:'integrate(1/(1+x^2), x)', desc:'Antiderivative ⇒ arctan'},
+      {expr:'integrate(x*sin(x), x)', desc:'Integration by parts'},
       {expr:'integrate(x^2, x, 0, 1)', desc:'Definite integral'},
-      {expr:'limit(sin(x)/x, x, 0)', desc:'Famous limit'},
+      {expr:'series(sin(x), x, 0, 8)', desc:'Maclaurin series for sin'},
     ]
   },
   solve:{
@@ -1658,7 +1658,8 @@ const ACD = [
   {n:'factor',s:'factor(expr)',t:'algebra'},{n:'collect',s:'collect(expr,x)',t:'algebra'},
   {n:'derivative',s:'derivative(expr,x)',t:'calc'},{n:'integrate',s:'integrate(expr,x)',t:'calc'},
   {n:'limit',s:'limit(expr,x,a)',t:'calc'},{n:'sum',s:'sum(expr,n,a,b)',t:'calc'},
-  {n:'product',s:'product(expr,n,a,b)',t:'calc'},{n:'solve',s:'solve(equation,x)',t:'solve'},
+  {n:'product',s:'product(expr,n,a,b)',t:'calc'},{n:'series',s:'series(expr,x,a,n)',t:'calc'},
+  {n:'solve',s:'solve(equation,x)',t:'solve'},
   {n:'zeros',s:'zeros(expr,x)',t:'solve'},{n:'det',s:'det(matrix)',t:'matrix'},
   {n:'inv',s:'inv(matrix)',t:'matrix'},{n:'transpose',s:'transpose(matrix)',t:'matrix'},
   {n:'eigs',s:'eigs(matrix)',t:'matrix'},{n:'trace',s:'trace(matrix)',t:'matrix'},
@@ -1706,7 +1707,7 @@ function initMonaco() {
     monaco.languages.register({id:'cas'});
     monaco.languages.setMonarchTokensProvider('cas',{
       tokenizer:{root:[
-        [/\b(simplify|expand|factor|derivative|integrate|limit|sum|product|solve|zeros|det|inv|transpose|eigs|mean|std|variance|median|sin|cos|tan|asin|acos|atan|sqrt|abs|log|exp|gcd|lcm|factorial|mod|round|floor|ceil|combinations|permutations|bitAnd|bitOr|bitXor|cross|dot|norm|rank|trace|collect|rationalize|quantileSeq|correlation|atan2|sinh|cosh|tanh|format|mad|product|unit)\b/,'keyword'],
+        [/\b(simplify|expand|factor|collect|rationalize|derivative|integrate|limit|sum|product|series|solve|zeros|det|inv|transpose|eigs|mean|std|variance|median|sin|cos|tan|asin|acos|atan|sqrt|abs|log|exp|gcd|lcm|factorial|mod|round|floor|ceil|combinations|permutations|bitAnd|bitOr|bitXor|cross|dot|norm|rank|trace|quantileSeq|correlation|atan2|sinh|cosh|tanh|format|mad|unit)\b/,'keyword'],
         [/\b(pi|e|phi|tau|i|Infinity|true|false|NaN)\b/,'constant'],
         [/[a-zA-Z_]\w*\s*(?=\()/,'function'],
         [/[a-zA-Z_]\w*/,'variable'],
@@ -1919,7 +1920,7 @@ function insertSM(name,btn){
   const map={
     'Simplify':'simplify(','Expand':'expand(','Factor':'factor(','Collect':'collect(',
     'GCD':'gcd(','LCM':'lcm(','Derive':'derivative(','Integrate':'integrate(','Limit':'limit(',
-    'Sum':'sum(','Product':'product(','Solve':'solve(','Zeros':'zeros(','System':'solve([',
+    'Sum':'sum(','Product':'product(','Series':'series(','Solve':'solve(','Zeros':'zeros(','System':'solve([',
     'Det':'det(','Inv':'inv(','Transpose':'transpose(','Eigs':'eigs(','Multiply':'',
     'Trace':'trace(','Evaluate':'','Round':'round(','Format':'format(',
     'Mean':'mean([','Std':'std([','Var':'variance([','Median':'median([',
@@ -1993,25 +1994,66 @@ function evalAlgebra(expr){
     const inner=xarg(expr,'simplify');
     const node=math.parse(inner);
     const s=math.simplify(node,{},{exactFractions:true});
-    steps.push({d:'Parse',e:inner},{d:'Simplify',e:s.toString()});
-    return{type:'sym',out:s.toTex(),plain:s.toString(),steps,plot:inner};
+    const changed = s.toString() !== node.toString();
+    steps.push({d:'Input', e:inner},{d:changed?'Simplified':'Already simplified', e:s.toString()});
+    return{type:'sym',out:s.toTex(),plain:s.toString(),steps,plot:/\bx\b/.test(inner)?inner:null};
   }
   if(/^expand\s*\(/.test(expr)){
     const inner=xarg(expr,'expand');
-    const node=math.parse(inner);
-    steps.push({d:'Expand polynomial',e:node.toString()});
-    return{type:'sym',out:node.toTex(),plain:inner,steps,plot:inner};
+    try {
+      const expNode = doExpand(inner);
+      const s = math.simplify(expNode, {}, {exactFractions:true});
+      const sStr = s.toString();
+      steps.push({d:'Input', e:inner}, {d:'Expanded & collected', e:sStr});
+      return{type:'sym',out:s.toTex(),plain:sStr,steps,plot:/\bx\b/.test(sStr)?sStr:null};
+    } catch(err) {
+      const node = math.parse(inner);
+      steps.push({d:'Input', e:inner}, {d:'Note', e:'Could not expand — returned as-is'});
+      return{type:'sym',out:node.toTex(),plain:inner,steps};
+    }
   }
   if(/^factor\s*\(/.test(expr)){
     const inner=xarg(expr,'factor');
-    const node=math.parse(inner);
-    steps.push({d:'Factor expression',e:inner});
-    return{type:'sym',out:node.toTex(),plain:inner,steps};
+    steps.push({d:'Input', e:inner});
+    const varSet=new Set();
+    try{math.parse(inner).traverse(n=>{if(n.isSymbolNode&&!math[n.name]&&!['pi','e','phi','tau','i'].includes(n.name))varSet.add(n.name);});}catch{}
+    const fv=[...varSet].filter(k=>typeof scope[k]==='undefined');
+    const fvar=fv.length>=1?fv[0]:'x';
+    const factored=doFactor(inner,fvar);
+    if(factored){
+      try{
+        const fNode=math.parse(factored);
+        steps.push({d:'Factored form', e:factored});
+        return{type:'sym',out:fNode.toTex(),plain:factored,steps};
+      }catch{}
+    }
+    const simplified=math.simplify(math.parse(inner),{},{exactFractions:true});
+    steps.push({d:'No rational factors found — simplified', e:simplified.toString()});
+    return{type:'sym',out:simplified.toTex(),plain:simplified.toString(),steps};
   }
-  const result=math.evaluate(expr,scope);
-  const plain=fmtR(result);
-  const hasX=/\bx\b/.test(expr)&&!Array.isArray(result)&&typeof result!=='boolean';
-  return{type:'val',out:toTex(result),plain,plot:hasX?expr:null};
+  if(/^collect\s*\(/.test(expr)){
+    const args=parseTopLevelArgs(xarg(expr,'collect'));
+    const f=args[0]||'', v=args[1]||'x';
+    try{
+      // Rationalize collects polynomial in v (mathjs)
+      const r=math.rationalize(math.parse(f),{},{exactFractions:true});
+      steps.push({d:`Input`,e:f},{d:`Collected in ${v}`,e:r.toString()});
+      return{type:'sym',out:r.toTex(),plain:r.toString(),steps};
+    }catch{
+      const s=math.simplify(math.parse(f),{},{exactFractions:true});
+      steps.push({d:'Input',e:f},{d:'Simplified (collect fallback)',e:s.toString()});
+      return{type:'sym',out:s.toTex(),plain:s.toString(),steps};
+    }
+  }
+  // General algebra expression — try numeric then fall back to symbolic
+  try {
+    const result=math.evaluate(expr,scope);
+    const plain=fmtR(result);
+    const hasX=/\bx\b/.test(expr)&&!Array.isArray(result)&&typeof result!=='boolean';
+    return{type:'val',out:toTex(result),plain,plot:hasX?expr:null};
+  } catch {
+    return evalSymbolic(expr);
+  }
 }
 
 function evalCalc(expr){
@@ -2037,8 +2079,11 @@ function evalCalc(expr){
       return{type:'sym',out:`\\int_{${toTex(av)}}^{${toTex(bv)}} ${math.parse(f).toTex()} \\, d${v} = ${fmtN(r)}`,plain:fmtN(r),steps};
     } else {
       const antideriv = symbolicIntegrate(f, v);
-      steps.push({d:'Identify integrand pattern', e:f});
-      steps.push({d:'Apply antiderivative rule', e: antideriv.plain + ' + C'});
+      if (antideriv.noForm) {
+        steps.push({d:'Pattern match', e:'No closed form found'},{d:'Tip', e:`Use integrate(${f}, ${v}, a, b) for a numerical result`});
+        return{type:'sym',out:`\\int ${math.parse(f).toTex()} \\, d${v} \\quad \\text{(no closed form)}`,plain:`∫ ${f} d${v} — no closed form. Try integrate(f,x,a,b).`,steps};
+      }
+      steps.push({d:'Integrand', e:f},{d:'Antiderivative', e: antideriv.plain + ' + C'});
       return{
         type:'sym',
         out:`\\int ${math.parse(f).toTex()} \\, d${v} = ${antideriv.tex} + C`,
@@ -2096,6 +2141,47 @@ function evalCalc(expr){
     for(let i=st;i<=en;i++){loc[v]=i;tot=math.multiply(tot,fn.evaluate(loc));}
     return{type:'sym',out:`\\prod_{${v}=${st}}^{${en}} ${math.parse(f).toTex()} = ${toTex(tot)}`,plain:fmtR(tot),steps:[{d:`Product ${v}=${st}..${en}`,e:fmtR(tot)}]};
   }
+  // ── Taylor / Maclaurin series ──────────────────────
+  if(/^series\s*\(/.test(expr)){
+    const args=parseTopLevelArgs(xarg(expr,'series'));
+    if(args.length>=2){
+      const f=args[0], v=args[1];
+      const aStr=args[2]||'0', nOrd=args[3]?Math.min(parseInt(args[3]),20):6;
+      const a=math.evaluate(aStr,scope);
+      const xTerm=Math.abs(a)<1e-12?v:`(${v}-${fmtN(a)})`;
+      let dNode=math.parse(f), factorial=1;
+      const coeffs=[];
+      for(let k=0;k<=nOrd;k++){
+        try{
+          const loc={...scope,[v]:a};
+          const val=math.evaluate(dNode.toString(),loc);
+          coeffs.push(typeof val==='number'?val/factorial:null);
+          steps.push({d:`k=${k}: f${'\''.repeat(k)}(${fmtN(a)})/${factorial}`,e:fmtN(typeof val==='number'?val/factorial:NaN)});
+        }catch{coeffs.push(null);}
+        if(k<nOrd){try{dNode=math.derivative(dNode,v);}catch{break};factorial*=(k+1);}
+      }
+      // Build expression string with exact fractions where possible
+      const termExprs=[];
+      for(let k=0;k<=nOrd;k++){
+        const c=coeffs[k];
+        if(c===null||Math.abs(c)<1e-12) continue;
+        let cStr;
+        try{const fr=math.fraction(c);cStr=fr.d===1?String(fr.s*fr.n):`(${fr.s*fr.n}/${fr.d})`;}
+        catch{cStr=c.toPrecision(8);}
+        if(k===0) termExprs.push(cStr);
+        else if(k===1) termExprs.push(`${cStr}*${xTerm}`);
+        else termExprs.push(`${cStr}*(${xTerm})^${k}`);
+      }
+      const seriesStr=termExprs.join('+')||'0';
+      let texOut=seriesStr, plainOut=seriesStr;
+      try{
+        const sNode=math.simplify(math.parse(seriesStr),{},{exactFractions:true});
+        texOut=sNode.toTex(); plainOut=sNode.toString();
+      }catch{}
+      const orderTex=`O\\!\\left(${xTerm}^{${nOrd+1}}\\right)`;
+      return{type:'sym',out:`${texOut} + ${orderTex}`,plain:`${plainOut} + O(${xTerm}^${nOrd+1})`,steps};
+    }
+  }
   try {
     const r=math.evaluate(expr,scope);
     return{type:'val',out:toTex(r),plain:fmtR(r)};
@@ -2111,7 +2197,24 @@ function evalSolve(expr){
     return{type:'sym',out:tex,plain:sol.map(r=>`${r.v}=${fmtN(r.x)}`).join(', '),
       steps:[{d:'System of equations',e:eqs.join(', ')},{d:"Newton's method",e:sol.map(r=>`${r.v}=${fmtN(r.x)}`).join(', ')}]};
   }
-  const sm=expr.match(/^(?:solve|zeros)\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*\)$/);
+  // Parse solve(eq, var) robustly — split at top-level comma before the last identifier
+  let sm = null;
+  const solveM = expr.match(/^(?:solve|zeros)\s*\(\s*([\s\S]+)\s*\)$/);
+  if (solveM) {
+    const inner = solveM[1].trim();
+    // Find last top-level comma followed by a variable name
+    let depth = 0, splitIdx = -1;
+    for (let i = 0; i < inner.length; i++) {
+      if (inner[i]==='('||inner[i]==='[') depth++;
+      else if (inner[i]===')'||inner[i]===']') depth--;
+      else if (depth === 0 && inner[i] === ',') splitIdx = i;
+    }
+    if (splitIdx !== -1) {
+      const eqPart = inner.slice(0, splitIdx).trim();
+      const varPart = inner.slice(splitIdx + 1).trim();
+      if (/^[a-zA-Z_]\w*$/.test(varPart)) sm = [null, eqPart, varPart];
+    }
+  }
   if(sm){
     let[,eq,v]=sm, lhs, rhs;
     if(eq.includes('=')&&!eq.includes('=='))[lhs,rhs]=eq.split('=').map(s=>s.trim());
@@ -2158,9 +2261,9 @@ function evalSolve(expr){
 
     const tex=roots.length
       ? roots.map((r,i)=>`${v}_{${i+1}}=${fmtN(r)}`).join(',\\quad ')
-      : `\\text{No real roots in }[-10000,10000]`;
-    return{type:'sym',out:tex,plain:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'No roots found',
-      steps:[{d:'Rewrite f(x)=0',e:`${lhs}-(${rhs})=0`},{d:'Root finding',e:roots.length+' root(s) found'},{d:'Roots',e:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'none'}]};
+      : `\\text{No real roots found}`;
+    return{type:'sym',out:tex,plain:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'No real roots found',
+      steps:[{d:'Rewrite as f=0',e:`${lhs}-(${rhs})=0`},{d:'Numerical root search',e:roots.length?roots.length+' root(s) found':'none found in [-100000, 100000]'},{d:'Solutions',e:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'none'}]};
   }
   return evalGeneric(expr);
 }
@@ -2596,9 +2699,38 @@ function symbolicIntegrate(f, v) {
   }
   if (f === `log(${x})`) return {tex:`${x}\\ln(${x}) - ${x}`, plain:`${x}*log(${x})-${x}`};
   if (f === `log10(${x})`) return {tex:`\\frac{${x}(\\ln(${x})-1)}{\\ln(10)}`, plain:`${x}*(log(${x})-1)/log(10)`};
-  if (f.match(/^1\s*\/\s*sqrt\s*\(1\s*-\s*x\^2\)$/) || f === '1/sqrt(1-x^2)') return {tex:`\\arcsin(${x})`, plain:`asin(${x})`};
-  if (f.match(/^1\s*\/\s*\(1\s*\+\s*x\^2\)$/) || f === '1/(1+x^2)') return {tex:`\\arctan(${x})`, plain:`atan(${x})`};
-  if (f.match(/^-1\s*\/\s*sqrt\s*\(1\s*-\s*x\^2\)$/)) return {tex:`\\arccos(${x})`, plain:`acos(${x})`};
+  // Inverse trig patterns
+  const fxN = f.replace(new RegExp(`\\b${x}\\b`,'g'),'x');
+  if (fxN.match(/^1\s*\/\s*sqrt\s*\(1\s*-\s*x\^2\)$/) || fxN === '1/sqrt(1-x^2)') return {tex:`\\arcsin(${x})`, plain:`asin(${x})`};
+  if (fxN.match(/^1\s*\/\s*\(1\s*\+\s*x\^2\)$/) || fxN === '1/(1+x^2)') return {tex:`\\arctan(${x})`, plain:`atan(${x})`};
+  if (fxN.match(/^-1\s*\/\s*sqrt\s*\(1\s*-\s*x\^2\)$/)) return {tex:`\\arccos(${x})`, plain:`acos(${x})`};
+  if (fxN.match(/^1\s*\/\s*\(x\s*\*\s*sqrt\s*\(x\^2\s*-\s*1\)\)$/) || fxN === '1/(x*sqrt(x^2-1))') return {tex:`\\text{arcsec}(${x})`, plain:`acos(1/${x})`};
+  // Integration by parts: x·f(x) patterns
+  if (fxN === `x*exp(x)` || fxN === `exp(x)*x`) return {tex:`(${x}-1)e^{${x}}`, plain:`(${x}-1)*exp(${x})`};
+  if (fxN === `x*sin(x)` || fxN === `sin(x)*x`) return {tex:`\\sin(${x})-${x}\\cos(${x})`, plain:`sin(${x})-${x}*cos(${x})`};
+  if (fxN === `x*cos(x)` || fxN === `cos(x)*x`) return {tex:`\\cos(${x})+${x}\\sin(${x})`, plain:`cos(${x})+${x}*sin(${x})`};
+  if (fxN === `x^2*exp(x)` || fxN === `exp(x)*x^2`) return {tex:`(${x}^{2}-2${x}+2)e^{${x}}`, plain:`(${x}^2-2*${x}+2)*exp(${x})`};
+  if (fxN === `x*log(x)` || fxN === `log(x)*x`) return {tex:`\\frac{${x}^2}{2}\\ln(${x})-\\frac{${x}^2}{4}`, plain:`${x}^2/2*log(${x})-${x}^2/4`};
+  // Half-angle identities
+  if (fxN === `sin(x)^2`) return {tex:`\\frac{${x}}{2}-\\frac{\\sin(2${x})}{4}`, plain:`${x}/2-sin(2*${x})/4`};
+  if (fxN === `cos(x)^2`) return {tex:`\\frac{${x}}{2}+\\frac{\\sin(2${x})}{4}`, plain:`${x}/2+sin(2*${x})/4`};
+  if (fxN === `tan(x)^2`) return {tex:`\\tan(${x})-${x}`, plain:`tan(${x})-${x}`};
+  // 1/(a²+x²) → arctan pattern
+  const arcPat = fxN.match(/^1\s*\/\s*\((\d+(?:\.\d+)?)\s*\+\s*x\^2\)$/);
+  if (arcPat) {
+    const aVal = arcPat[1]; const sqrtA = Math.sqrt(parseFloat(aVal));
+    const sqrtStr = Number.isInteger(sqrtA)?String(sqrtA):`sqrt(${aVal})`;
+    return {tex:`\\frac{1}{${sqrtStr}}\\arctan\\!\\left(\\frac{${x}}{${sqrtStr}}\\right)`, plain:`atan(${x}/${sqrtStr})/${sqrtStr}`};
+  }
+  // sqrt(a²-x²) → arcsin pattern
+  const sqrtArcPat = fxN.match(/^sqrt\s*\((\d+(?:\.\d+)?)\s*-\s*x\^2\)$/);
+  if (sqrtArcPat) {
+    const aVal = sqrtArcPat[1]; const sqrtA = Math.sqrt(parseFloat(aVal));
+    const aStr = Number.isInteger(sqrtA)?String(sqrtA):`sqrt(${aVal})`;
+    return {tex:`\\frac{${x}}{2}\\sqrt{${aVal}-${x}^{2}}+\\frac{${aVal}}{2}\\arcsin\\!\\left(\\frac{${x}}{${aStr}}\\right)`, plain:`${x}/2*sqrt(${aVal}-${x}^2)+${aVal}/2*asin(${x}/${aStr})`};
+  }
+  // abs(x) → x*abs(x)/2 (i.e. sign(x)*x²/2)
+  if (fxN === `abs(x)`) return {tex:`\\frac{${x}|${x}|}{2}`, plain:`${x}*abs(${x})/2`};
   const terms = splitTopLevel(f);
   if (terms.length > 1) {
     const parts = terms.map(t => symbolicIntegrate(t.expr.trim(), v));
@@ -2607,8 +2739,9 @@ function symbolicIntegrate(f, v) {
     return {tex: combined_tex, plain: combined_plain};
   }
   return {
-    tex: `\\int ${math.parse(f).toTex()} \\, d${v} \\text{ (numerical fallback)}`,
-    plain: `numIntegral(${f}, ${v})`
+    tex: `\\int ${math.parse(f).toTex()} \\, d${v}`,
+    plain: `∫ ${f} d${v}  — no closed form found`,
+    noForm: true
   };
 }
 
@@ -2629,6 +2762,133 @@ function splitTopLevel(expr) {
   const t = expr.slice(start).trim();
   if (t) terms.push({sign, expr: t});
   return terms.length > 1 ? terms : [];
+}
+
+function gcdInt(a, b) { a=Math.abs(a); b=Math.abs(b); while(b){[a,b]=[b,a%b];} return a||1; }
+
+// Split "a, b, c" at top-level commas (respects nested parens/brackets)
+function parseTopLevelArgs(inner) {
+  const args = [];
+  let depth = 0, start = 0;
+  for (let i = 0; i <= inner.length; i++) {
+    const c = i < inner.length ? inner[i] : ',';
+    if (c==='('||c==='[') depth++;
+    else if (c===')'||c===']') depth--;
+    else if (c===',' && depth===0) {
+      const arg = inner.slice(start, i).trim();
+      if (arg) args.push(arg);
+      start = i + 1;
+    }
+  }
+  return args;
+}
+
+function doExpand(inner) {
+  function binom(n, k) {
+    let r = 1;
+    for (let i = 0; i < k; i++) r = r * (n - i) / (i + 1);
+    return Math.round(r);
+  }
+  // Handle (a±b)^n via binomial theorem
+  const pm = inner.trim().match(/^\((.+)\)\^(\d+)$/);
+  if (pm) {
+    const base = pm[1], n = parseInt(pm[2]);
+    if (n >= 2 && n <= 15) {
+      const ts = splitTopLevel(base);
+      if (ts.length === 2) {
+        const a = ts[0].expr.trim();
+        const bSign = ts[1].sign === '-' ? '-' : '';
+        const bExpr = ts[1].expr.trim();
+        const termParts = [];
+        for (let k = 0; k <= n; k++) {
+          const c = binom(n, k), ap = n - k, bp = k;
+          let parts = [];
+          if (c !== 1) parts.push(c.toString());
+          if (ap === 1) parts.push(`(${a})`);
+          else if (ap > 1) parts.push(`(${a})^${ap}`);
+          if (bp === 1) parts.push(`(${bSign}${bExpr})`);
+          else if (bp > 1) parts.push(`(${bSign}${bExpr})^${bp}`);
+          termParts.push(parts.length ? parts.join('*') : '1');
+        }
+        try { return math.parse(termParts.join('+')); } catch {}
+      }
+    }
+  }
+  // General: distributive law, applied iteratively
+  const rules = [
+    {l:'n1*(n2+n3)', r:'n1*n2+n1*n3'},
+    {l:'(n1+n2)*n3', r:'n1*n3+n2*n3'},
+    {l:'n1*(n2-n3)', r:'n1*n2-n1*n3'},
+    {l:'(n1-n2)*n3', r:'n1*n3-n2*n3'},
+  ];
+  let node = math.parse(inner), prev = '';
+  for (let i = 0; i < 12; i++) {
+    const s = node.toString();
+    if (s === prev) break;
+    prev = s;
+    try { node = math.simplify(node, rules, {}, {exactFractions:true}); } catch { break; }
+  }
+  return node;
+}
+
+function doFactor(inner, v) {
+  const roots = findRoots(`(${inner})`, v, -100, 100, 8000);
+  if (!roots.length) return null;
+  function toRat(r) {
+    for (let d = 1; d <= 12; d++) {
+      const n = Math.round(r * d);
+      if (Math.abs(r - n/d) < 1e-5) return n/d;
+    }
+    return null;
+  }
+  const ratRoots = [];
+  for (const r of roots) {
+    const rat = toRat(r);
+    if (rat !== null && !ratRoots.some(x => Math.abs(x - rat) < 1e-5)) ratRoots.push(rat);
+  }
+  if (!ratRoots.length) return null;
+  const factors = ratRoots.map(r => {
+    if (Math.abs(r) < 1e-9) return `(${v})`;
+    const isInt = Math.abs(r - Math.round(r)) < 1e-8;
+    if (isInt) {
+      const n = Math.round(r);
+      return n > 0 ? `(${v}-${n})` : `(${v}+${Math.abs(n)})`;
+    }
+    for (let d = 2; d <= 12; d++) {
+      const num = Math.round(r * d);
+      if (Math.abs(r - num/d) < 1e-5) {
+        const g = gcdInt(Math.abs(num), d), p = num/g, q = d/g;
+        return p > 0 ? `(${q}*${v}-${p})` : `(${q}*${v}+${Math.abs(p)})`;
+      }
+    }
+    return `(${v}-(${r.toPrecision(6)}))`;
+  });
+  const factorExpr = factors.join('*');
+  try {
+    for (const t of [5.77, -3.13, 2.31]) {
+      const loc = {...scope, [v]: t};
+      const o = math.evaluate(inner, loc);
+      const f = math.evaluate(factorExpr, loc);
+      if (Math.abs(f) < 1e-8) continue;
+      const lc = o / f;
+      if (!isFinite(lc) || Math.abs(lc) > 1e6) continue;
+      let lcNice = null;
+      for (let d = 1; d <= 12; d++) {
+        const n = Math.round(lc * d);
+        if (Math.abs(lc - n/d) < 1e-4) { lcNice = n/d; break; }
+      }
+      if (lcNice === null) continue;
+      const fullExpr = Math.abs(lcNice - 1) < 1e-8 ? factorExpr
+                     : Math.abs(lcNice + 1) < 1e-8 ? `-(${factorExpr})`
+                     : `(${lcNice})*(${factorExpr})`;
+      const loc2 = {...scope, [v]: 11.17};
+      const o2 = math.evaluate(inner, loc2);
+      const f2 = math.evaluate(fullExpr, loc2);
+      if (Math.abs(o2 - f2) < 1e-4 * (Math.abs(o2) + 1) + 1e-8) return fullExpr;
+      break;
+    }
+  } catch {}
+  return null;
 }
 
 // ══════════════════════════════════════════════════════
