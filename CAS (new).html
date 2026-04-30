@@ -2051,8 +2051,14 @@ function evalCalc(expr){
   if(lm){
     const[,f,v,pt]=lm, a=math.evaluate(pt,scope);
     const r=numLim(f,v,a);
-    steps.push({d:`Evaluate ${v} → ${fmtN(a)}`,e:f},{d:'Numerical limit',e:fmtN(r)});
-    return{type:'sym',out:`\\lim_{${v}\\to ${toTex(a)}} ${math.parse(f).toTex()} = ${fmtN(r)}`,plain:fmtN(r),steps};
+    let rOut = fmtN(r);
+    let rTex = fmtN(r);
+    if (!isFinite(r)) {
+      if (isNaN(r)) { rOut = 'Undefined'; rTex = '\\text{Undefined}'; }
+      else { rOut = r > 0 ? 'Infinity' : '-Infinity'; rTex = r > 0 ? '\\infty' : '-\\infty'; }
+    }
+    steps.push({d:`Evaluate ${v} → ${fmtN(a)}`,e:f},{d:'Numerical limit',e:rOut});
+    return{type:'sym',out:`\\lim_{${v}\\to ${toTex(a)}} ${math.parse(f).toTex()} = ${rTex}`,plain:rOut,steps};
   }
   const sm=expr.match(/^sum\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*,\s*(.+?)\s*,\s*(.+?)\s*\)$/);
   if(sm){
@@ -2133,12 +2139,28 @@ function evalSolve(expr){
         return{type:'sym',out:`${v} = ${symResult.tex}`,plain:`${v} = ${symResult.plain}`,steps};
       }
     }
-    const roots=findRoots(f,v);
+    let roots=findRoots(f,v);
+    // Explicitly handle exact quadratic roots if symbolic solver can evaluate them cleanly
+    const exactSym = symbolicSolve(lhs, rhs, v, []);
+    if (exactSym && exactSym.plain.includes('or')) {
+      const [r1, r2] = exactSym.plain.split(' or ');
+      try {
+        const nr1 = math.evaluate(r1, scope);
+        const nr2 = math.evaluate(r2, scope);
+        if (typeof nr1 === 'number' && typeof nr2 === 'number' && !isNaN(nr1) && !isNaN(nr2)) {
+          roots = [nr1, nr2].sort((a,b) => a-b);
+        }
+      } catch(e) {}
+    }
+
+    // Deduplicate roots just in case
+    roots = roots.filter((r, i, arr) => arr.findIndex(x => Math.abs(x - r) < 1e-6) === i);
+
     const tex=roots.length
       ? roots.map((r,i)=>`${v}_{${i+1}}=${fmtN(r)}`).join(',\\quad ')
       : `\\text{No real roots in }[-10000,10000]`;
     return{type:'sym',out:tex,plain:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'No roots found',
-      steps:[{d:'Rewrite f(x)=0',e:`${lhs}-(${rhs})=0`},{d:'Bisection on [-10000,10000]',e:roots.length+' root(s) found'},{d:'Roots',e:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'none'}]};
+      steps:[{d:'Rewrite f(x)=0',e:`${lhs}-(${rhs})=0`},{d:'Root finding',e:roots.length+' root(s) found'},{d:'Roots',e:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'none'}]};
   }
   return evalGeneric(expr);
 }
@@ -2186,9 +2208,34 @@ function evalGeneric(expr){
   try {
     const result=math.evaluate(expr,scope);
     if(result&&result.isComplex){
-      const re=fmtN(result.re), im=fmtN(Math.abs(result.im)), s=result.im<0?'-':'+';
-      return{type:'sym',out:`${re} ${s} ${im}i`,plain:`${re} ${s} ${im}i`};
+      let re = result.re;
+      let im = result.im;
+
+      // Better formatting for pure imaginary or complex
+      if (Math.abs(re) < 1e-10 && Math.abs(im - 1) < 1e-10) return {type:'sym', out:`i`, plain:`i`};
+      if (Math.abs(re) < 1e-10 && Math.abs(im + 1) < 1e-10) return {type:'sym', out:`-i`, plain:`-i`};
+
+      let outStr = "";
+      if (Math.abs(re) >= 1e-10) {
+        outStr += fmtN(re);
+        if (im > 0) outStr += " + ";
+        else outStr += " - ";
+      } else {
+        if (im < 0) outStr += "-";
+      }
+
+      let absIm = Math.abs(im);
+      if (Math.abs(absIm - 1) >= 1e-10) outStr += fmtN(absIm);
+      outStr += "i";
+
+      return{type:'sym',out:outStr,plain:outStr};
     }
+
+    if (typeof result === 'number') {
+      if (isNaN(result)) return {type:'sym', out:'\\text{Undefined}', plain:'Undefined'};
+      if (!isFinite(result)) return {type:'sym', out:(result > 0 ? '\\infty' : '-\\infty'), plain:(result > 0 ? 'Infinity' : '-Infinity')};
+    }
+
     const hasX=/\bx\b/.test(expr)&&!Array.isArray(result)&&typeof result!=='boolean';
     return{type:'val',out:toTex(result),plain:fmtR(result),plot:hasX?expr:null};
   } catch(e) { return evalSymbolic(expr); }
@@ -2592,8 +2639,21 @@ function numInt(fn,v,a,b,n=1000){
   for(let i=0;i<=n;i++){const x=a+i*h;loc[v]=x;const fx=fn.evaluate(loc);const w=(i===0||i===n)?1:(i%2===0?2:4);s+=w*fx;}
   return s*h/3;
 }
-function numLim(f,v,a,eps=1e-7){const fn=math.compile(f),loc=Object.assign({},scope);loc[v]=a+eps;return fn.evaluate(loc);}
-function findRoots(f,v,mn=-10000,mx=10000,steps=10000){
+function numLim(expr,varName,val){
+  const e=math.compile(expr);
+  const eps1=1e-4, eps2=1e-7;
+  try{
+    const L1=e.evaluate({[varName]:val-eps1,...scope}), R1=e.evaluate({[varName]:val+eps1,...scope});
+    const L2=e.evaluate({[varName]:val-eps2,...scope}), R2=e.evaluate({[varName]:val+eps2,...scope});
+
+    if(L2 > 1e6 && R2 > 1e6 && L2 > L1*10 && R2 > R1*10) return Infinity;
+    if(L2 < -1e6 && R2 < -1e6 && L2 < L1*10 && R2 < R1*10) return -Infinity;
+
+    if(Math.abs(L2-R2)<1e-3) return L2;
+    return NaN;
+  }catch(e){return NaN;}
+}
+function findRoots(f,v,mn=-10000,mx=10000,steps=20000){
   let fn;
   try { fn = math.compile(f); } catch(e) { return []; }
   const loc=Object.assign({},scope),roots=[],dx=(mx-mn)/steps;
