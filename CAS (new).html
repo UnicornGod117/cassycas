@@ -15,1170 +15,657 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Newsreader:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet"/>
 <style>
+/* ══════════════════════════════════════════════
+   CassyCAS — Redesigned UI
+   ══════════════════════════════════════════════ */
 :root{
-  /* base — cool charcoal with green-leaning shadows */
-  --bg:#0b0d11;
-  --s0:#0f1218;
-  --s1:#13171f;
-  --s2:#191e28;
-  --s3:#212834;
-  --s4:#2a3240;
+  /* Surfaces — deep slate */
+  --bg:#0d1117;
+  --s0:#161b22;
+  --s1:#1c2128;
+  --s2:#22272e;
+  --s3:#2d333b;
+  --s4:#373e47;
 
-  --b0:#1f2530;
-  --b1:#2a3240;
-  --b2:#384155;
+  /* Borders */
+  --b0:#30363d;
+  --b1:#444c56;
+  --b2:#545d68;
 
-  /* text */
-  --t0:#e7ebf2;
-  --t1:#a3adc0;
-  --t2:#6f7a8e;
-  --t3:#4a5363;
-  --t4:#2f3744;
+  /* Text */
+  --t0:#e6edf3;
+  --t1:#adbac7;
+  --t2:#768390;
+  --t3:#545d68;
+  --t4:#373e47;
 
-  /* primary accent — instrument green */
-  --a0:#7eef9c;
-  --a1:#5dd87f;
-  --a2:#3bb95e;
-  --a-tint:rgba(126,239,156,.10);
-  --a-tint-2:rgba(126,239,156,.05);
-  --a-glow:0 0 0 1px rgba(126,239,156,.25), 0 0 24px -8px rgba(126,239,156,.35);
+  /* Accent — emerald */
+  --a0:#3fb950;
+  --a1:#2ea043;
+  --a2:#238636;
+  --a-tint:rgba(63,185,80,.12);
+  --a-tint-2:rgba(63,185,80,.06);
+  --a-glow:0 0 0 3px rgba(63,185,80,.15);
 
-  /* secondary tags — restrained, muted */
-  --warm:#e8b87a;     /* gold/amber for exact mode + constants */
-  --warm-tint:rgba(232,184,122,.10);
-  --violet:#a99cf2;   /* plots / graphs */
-  --violet-tint:rgba(169,156,242,.10);
-  --rose:#e88a99;     /* errors */
-  --rose-tint:rgba(232,138,153,.10);
-  --cyan:#7fc5e0;     /* units / dimensional */
-  --cyan-tint:rgba(127,197,224,.10);
+  /* Mode accent colors */
+  --calc-accent:#58a6ff;
+  --solve-accent:#f78166;
+  --matrix-accent:#bc8cff;
+  --stats-accent:#ffa657;
+  --trig-accent:#79c0ff;
+  --logic-accent:#e3b341;
+  --units-accent:#56d364;
+  --algebra-accent:#3fb950;
 
-  /* type scale */
+  /* Semantic colors */
+  --warm:#e3b341;
+  --warm-tint:rgba(227,179,65,.1);
+  --violet:#bc8cff;
+  --violet-tint:rgba(188,140,255,.1);
+  --rose:#f85149;
+  --rose-tint:rgba(248,81,73,.1);
+  --cyan:#79c0ff;
+  --cyan-tint:rgba(121,192,255,.1);
+
+  /* Typography */
   --ui:'Inter','Helvetica Neue',sans-serif;
-  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --mono:'JetBrains Mono',ui-monospace,'Cascadia Code',monospace;
   --serif:'Newsreader',Georgia,serif;
 
-  /* radii / shadows */
-  --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:12px; --r-xl:16px;
-  --shadow-1:0 1px 2px rgba(0,0,0,.4);
-  --shadow-2:0 8px 24px -12px rgba(0,0,0,.7), 0 2px 6px rgba(0,0,0,.4);
-  --shadow-3:0 24px 48px -16px rgba(0,0,0,.8), 0 4px 12px rgba(0,0,0,.5);
-
-  /* density */
-  --density:1;
+  /* Geometry */
+  --r-xs:4px;--r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:20px;
+  --shadow-1:0 1px 3px rgba(1,4,9,.8);
+  --shadow-2:0 8px 24px rgba(1,4,9,.6);
+  --shadow-3:0 16px 40px rgba(1,4,9,.8);
 }
 
-/* light theme — paper workstation */
+/* ── Light Theme ─────────────────────────────── */
 body.light{
-  --bg:#f6f5f1;
-  --s0:#fbfaf6;
-  --s1:#f1efe8;
-  --s2:#eae7dd;
-  --s3:#e1ddcf;
-  --s4:#d6d1bf;
-
-  --b0:#e3dfd0;
-  --b1:#d3cdb8;
-  --b2:#bbb29a;
-
-  --t0:#1a1d22;
-  --t1:#3e4350;
-  --t2:#6b7384;
-  --t3:#9098a6;
-  --t4:#bdc2cc;
-
-  --a0:#1f8a4d;
-  --a1:#196e3e;
-  --a2:#13522e;
-  --a-tint:rgba(31,138,77,.08);
-  --a-tint-2:rgba(31,138,77,.04);
-  --a-glow:0 0 0 1px rgba(31,138,77,.25), 0 0 16px -6px rgba(31,138,77,.25);
-
-  --warm:#a06a17;
-  --warm-tint:rgba(160,106,23,.08);
-  --violet:#5f4fbf;
-  --violet-tint:rgba(95,79,191,.08);
-  --rose:#b73a4f;
-  --rose-tint:rgba(183,58,79,.08);
-  --cyan:#3a6e88;
-  --cyan-tint:rgba(58,110,136,.08);
+  --bg:#f6f8fa;--s0:#ffffff;--s1:#f6f8fa;--s2:#eaeef2;--s3:#d0d7de;--s4:#c9d1d9;
+  --b0:#d0d7de;--b1:#bac1cb;--b2:#a0abb5;
+  --t0:#1f2328;--t1:#454f5a;--t2:#636c76;--t3:#8c959f;--t4:#b1bac4;
+  --a0:#1a7f37;--a1:#116329;--a2:#044f1e;
+  --a-tint:rgba(26,127,55,.1);--a-tint-2:rgba(26,127,55,.05);
+  --a-glow:0 0 0 3px rgba(26,127,55,.15);
+  --rose:#d1242f;--rose-tint:rgba(209,36,47,.08);
+  --warm:#7d4e00;--warm-tint:rgba(125,78,0,.08);
+  --violet:#6639ba;--violet-tint:rgba(102,57,186,.08);
+  --cyan:#0969da;--cyan-tint:rgba(9,105,218,.08);
+  --shadow-1:0 1px 3px rgba(31,35,40,.08);
+  --shadow-2:0 4px 12px rgba(31,35,40,.12);
+  --shadow-3:0 8px 24px rgba(31,35,40,.16);
 }
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;overflow:hidden;}
 body{
-  background:var(--bg);
-  color:var(--t0);
-  font-family:var(--ui);
-  font-size:13px;
-  font-feature-settings:"ss01","cv11";
+  background:var(--bg);color:var(--t0);
+  font-family:var(--ui);font-size:13px;
   -webkit-font-smoothing:antialiased;
   display:flex;flex-direction:column;
   letter-spacing:-0.005em;
 }
 
-/* ambient grid backdrop */
-body::before{
-  content:'';position:fixed;inset:0;
-  background-image:
-    radial-gradient(1200px 600px at 20% -10%, rgba(126,239,156,.04), transparent 60%),
-    radial-gradient(900px 400px at 110% 10%, rgba(169,156,242,.03), transparent 60%);
-  pointer-events:none;z-index:0;
-}
-body.light::before{
-  background-image:
-    radial-gradient(1200px 600px at 20% -10%, rgba(31,138,77,.05), transparent 60%);
-}
-
-/* ─────────── TOP BAR ─────────── */
+/* ── Top Bar ─────────────────────────────────── */
 .topbar{
-  position:relative;z-index:50;
-  height:46px;flex-shrink:0;
-  background:var(--s0);
-  border-bottom:1px solid var(--b0);
-  display:flex;align-items:center;
-  padding:0 14px;gap:14px;
+  position:relative;z-index:50;height:48px;flex-shrink:0;
+  background:var(--s0);border-bottom:1px solid var(--b0);
+  display:flex;align-items:center;padding:0 16px;gap:12px;
 }
-.brand{
-  display:flex;align-items:center;gap:10px;
-  font-family:var(--mono);font-size:12px;font-weight:500;
-  color:var(--t0);letter-spacing:-0.01em;
-}
+.brand{display:flex;align-items:center;gap:9px;text-decoration:none;}
 .brand-mark{
-  width:22px;height:22px;border-radius:6px;
-  background:linear-gradient(140deg,var(--a0),var(--a2));
+  width:26px;height:26px;border-radius:8px;
+  background:var(--a0);
   display:flex;align-items:center;justify-content:center;
-  font-family:var(--serif);font-style:italic;font-weight:500;
-  font-size:14px;color:#0b0d11;
-  box-shadow:0 0 0 1px rgba(126,239,156,.3), 0 4px 12px -4px rgba(126,239,156,.4);
+  font-family:var(--serif);font-style:italic;font-weight:500;font-size:15px;
+  color:#0d1117;flex-shrink:0;
 }
-.brand-text{display:flex;flex-direction:column;line-height:1;}
-.brand-text b{font-weight:600;font-size:13px;font-family:var(--ui);}
-.brand-text span{font-size:9.5px;color:var(--t3);letter-spacing:0.05em;margin-top:2px;text-transform:uppercase;}
-
-.topbar-divider{width:1px;height:20px;background:var(--b0);}
-
-/* command bar — the new hero */
-.cmd-wrap{
-  flex:1;max-width:560px;
-  position:relative;
+.brand-name{
+  font-family:var(--mono);font-size:13px;font-weight:600;color:var(--t0);
+  letter-spacing:-0.02em;
 }
-.cmd{
-  width:100%;height:30px;
-  background:var(--s1);
-  border:1px solid var(--b0);
-  border-radius:var(--r-sm);
-  display:flex;align-items:center;gap:8px;
-  padding:0 10px;
-  font-family:var(--mono);font-size:12px;
-  color:var(--t1);
-  cursor:text;
-  transition:border-color .15s, background .15s;
+.brand-sub{
+  font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:0.06em;text-transform:uppercase;margin-left:6px;
 }
-.cmd:hover{border-color:var(--b1);}
-.cmd-key{
-  font-family:var(--mono);font-size:9.5px;
-  padding:1px 5px;border-radius:3px;
-  background:var(--s2);color:var(--t3);
-  border:1px solid var(--b0);
-  margin-left:auto;
-}
-.cmd .ico{color:var(--t3);font-size:12px;}
-
+.topbar-divider{width:1px;height:18px;background:var(--b0);flex-shrink:0;}
 .topbar-spacer{flex:1;}
-
+.cmd-pill{
+  display:flex;align-items:center;gap:8px;
+  height:30px;padding:0 12px;
+  background:var(--s1);border:1px solid var(--b0);border-radius:var(--r-md);
+  font-family:var(--mono);font-size:11px;color:var(--t2);
+  cursor:pointer;transition:all .15s;white-space:nowrap;
+}
+.cmd-pill:hover{border-color:var(--b1);color:var(--t1);}
+.cmd-pill kbd{
+  font-family:var(--mono);font-size:9px;padding:1px 5px;border-radius:3px;
+  background:var(--s2);color:var(--t3);border:1px solid var(--b0);margin-left:auto;
+}
 .tg-group{
-  display:flex;align-items:center;
-  background:var(--s1);border:1px solid var(--b0);
+  display:flex;background:var(--s1);border:1px solid var(--b0);
   border-radius:var(--r-sm);padding:2px;gap:1px;
 }
 .tg{
-  height:24px;padding:0 9px;
-  font-family:var(--mono);font-size:10px;letter-spacing:0.04em;
-  border:none;background:transparent;color:var(--t2);
-  border-radius:4px;cursor:pointer;
-  transition:all .15s;
+  height:22px;padding:0 8px;font-family:var(--mono);font-size:10px;
+  letter-spacing:0.03em;border:none;background:transparent;
+  color:var(--t2);border-radius:3px;cursor:pointer;transition:all .15s;
   text-transform:uppercase;
 }
 .tg:hover{color:var(--t0);}
 .tg.on{background:var(--s3);color:var(--a0);}
 .tg.on.warm{color:var(--warm);}
-
 .icon-btn{
-  width:28px;height:28px;
-  display:flex;align-items:center;justify-content:center;
-  background:transparent;border:1px solid transparent;
-  border-radius:var(--r-sm);
-  color:var(--t2);cursor:pointer;
-  transition:all .15s;
-  font-family:var(--mono);font-size:12px;
+  width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+  background:transparent;border:1px solid transparent;border-radius:var(--r-sm);
+  color:var(--t2);cursor:pointer;transition:all .15s;
 }
 .icon-btn:hover{color:var(--t0);background:var(--s2);border-color:var(--b0);}
 .icon-btn.danger:hover{color:var(--rose);border-color:var(--rose);}
-
 .icon-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
 
-/* ─────────── APP LAYOUT ─────────── */
-.app{
-  position:relative;z-index:1;
-  display:flex;flex:1;overflow:hidden;
-}
+/* ── App Layout ─────────────────────────────── */
+.app{display:flex;flex:1;overflow:hidden;position:relative;z-index:1;}
 
-/* ─────────── LEFT RAIL ─────────── */
+/* ── Rail ────────────────────────────────────── */
 .rail{
-  width:60px;flex-shrink:0;
-  background:var(--s0);
-  border-right:1px solid var(--b0);
-  display:flex;flex-direction:column;
-  align-items:center;
-  padding:10px 0;gap:2px;
+  width:52px;flex-shrink:0;background:var(--s0);border-right:1px solid var(--b0);
+  display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:2px;
 }
 .rail-btn{
-  width:42px;height:42px;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:3px;
-  background:transparent;border:none;
-  border-radius:var(--r-sm);
-  cursor:pointer;
-  color:var(--t2);
-  position:relative;
-  transition:all .15s;
+  width:40px;height:40px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:3px;
+  background:transparent;border:none;border-radius:var(--r-sm);
+  cursor:pointer;color:var(--t2);position:relative;transition:all .15s;
 }
 .rail-btn:hover{color:var(--t0);background:var(--s2);}
-.rail-btn.on{
-  color:var(--a0);
-  background:var(--a-tint);
+.rail-btn.on{color:var(--a0);background:var(--a-tint);}
+.rail-btn.on::after{
+  content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);
+  width:2px;height:18px;background:var(--a0);border-radius:0 2px 2px 0;
 }
-.rail-btn.on::before{
-  content:'';position:absolute;left:-10px;top:50%;
-  transform:translateY(-50%);
-  width:2px;height:20px;
-  background:var(--a0);
-  border-radius:0 2px 2px 0;
-  box-shadow:0 0 8px rgba(126,239,156,.5);
-}
-.rail-glyph{
-  font-family:var(--serif);font-style:italic;font-size:18px;
-  line-height:1;font-weight:500;
-}
-.rail-label{
-  font-family:var(--mono);font-size:8.5px;
-  letter-spacing:0.06em;text-transform:uppercase;
-  color:inherit;opacity:.85;
-}
+.rail-glyph{font-family:var(--serif);font-style:italic;font-size:16px;line-height:1;font-weight:500;}
+.rail-label{font-family:var(--mono);font-size:8px;letter-spacing:0.06em;text-transform:uppercase;color:inherit;}
 .rail-spacer{flex:1;}
-.rail-divider{width:24px;height:1px;background:var(--b0);margin:6px 0;}
+.rail-divider{width:22px;height:1px;background:var(--b0);margin:5px 0;}
 
-/* ─────────── SIDEBAR (mode context) ─────────── */
+/* ── Sidebar ─────────────────────────────────── */
 .sidebar{
-  width:240px;flex-shrink:0;
-  background:var(--s0);
-  border-right:1px solid var(--b0);
-  display:flex;flex-direction:column;
-  overflow:hidden;
+  width:256px;flex-shrink:0;background:var(--s0);border-right:1px solid var(--b0);
+  display:flex;flex-direction:column;overflow:hidden;
+  transition:width .2s ease;
 }
+.sidebar.collapsed{width:0;border-right:none;}
 .sb-head{
-  padding:14px 16px 10px;
-  border-bottom:1px solid var(--b0);
-  flex-shrink:0;
+  padding:14px 16px 12px;border-bottom:1px solid var(--b0);flex-shrink:0;
+  display:flex;align-items:flex-start;justify-content:space-between;
 }
-.sb-eyebrow{
-  font-family:var(--mono);font-size:9px;letter-spacing:0.18em;
-  color:var(--t3);text-transform:uppercase;margin-bottom:5px;
-}
+.sb-head-text{flex:1;min-width:0;}
+.sb-eyebrow{font-family:var(--mono);font-size:9px;letter-spacing:0.16em;color:var(--t3);text-transform:uppercase;margin-bottom:4px;}
 .sb-title{
-  font-family:var(--ui);font-size:18px;font-weight:500;
-  color:var(--t0);letter-spacing:-0.02em;
-  display:flex;align-items:baseline;gap:8px;
+  font-family:var(--ui);font-size:17px;font-weight:600;color:var(--t0);
+  letter-spacing:-0.02em;display:flex;align-items:baseline;gap:7px;
 }
-.sb-title-glyph{
-  font-family:var(--serif);font-style:italic;
-  color:var(--a0);font-size:20px;font-weight:500;
+.sb-title-glyph{font-family:var(--serif);font-style:italic;color:var(--a0);font-size:19px;}
+.sb-sub{font-family:var(--serif);font-style:italic;font-size:11.5px;color:var(--t2);margin-top:3px;line-height:1.5;}
+.sb-collapse{
+  width:24px;height:24px;background:transparent;border:1px solid var(--b0);
+  border-radius:var(--r-sm);color:var(--t3);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:12px;
+  transition:all .15s;flex-shrink:0;margin-left:8px;
 }
-.sb-sub{
-  font-family:var(--serif);font-style:italic;font-size:12px;
-  color:var(--t2);margin-top:4px;line-height:1.5;
-}
-
+.sb-collapse:hover{color:var(--t0);background:var(--s2);}
 .sb-scroll{flex:1;overflow-y:auto;overflow-x:hidden;}
-.sb-scroll::-webkit-scrollbar{width:5px;}
-.sb-scroll::-webkit-scrollbar-thumb{background:var(--b1);border-radius:3px;}
-.sb-scroll::-webkit-scrollbar-thumb:hover{background:var(--b2);}
-
-.sb-section{padding:14px 16px 6px;}
+.sb-scroll::-webkit-scrollbar{width:4px;}
+.sb-scroll::-webkit-scrollbar-thumb{background:var(--b1);border-radius:2px;}
+.sb-section{padding:12px 14px 4px;}
 .sb-lbl{
-  font-family:var(--mono);font-size:9px;letter-spacing:0.18em;
-  color:var(--t3);text-transform:uppercase;margin-bottom:8px;
+  font-family:var(--mono);font-size:9px;letter-spacing:0.16em;color:var(--t3);
+  text-transform:uppercase;margin-bottom:7px;
   display:flex;align-items:center;gap:8px;
 }
 .sb-lbl::after{content:'';flex:1;height:1px;background:var(--b0);}
 
-/* operations grid */
-.ops{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+/* Mode ops grid */
+.ops{display:grid;grid-template-columns:1fr 1fr;gap:3px;}
 .op{
-  background:var(--s1);
-  border:1px solid var(--b0);
-  border-radius:var(--r-sm);
-  padding:8px 9px;
-  font-family:var(--ui);font-size:11px;font-weight:500;
-  color:var(--t1);
-  cursor:pointer;
-  text-align:left;
-  transition:all .15s;
-  letter-spacing:-0.005em;
-  display:flex;flex-direction:column;gap:2px;
+  background:var(--s1);border:1px solid var(--b0);border-radius:var(--r-sm);
+  padding:7px 9px;font-family:var(--ui);font-size:11px;font-weight:500;
+  color:var(--t1);cursor:pointer;text-align:left;transition:all .15s;
+  letter-spacing:-0.005em;display:flex;flex-direction:column;gap:2px;
 }
-.op:hover{
-  border-color:var(--b2);color:var(--t0);
-  background:var(--s2);
-}
-.op.on{
-  border-color:var(--a0);
-  color:var(--a0);
-  background:var(--a-tint);
-  box-shadow:var(--a-glow);
-}
-.op-glyph{font-family:var(--serif);font-style:italic;font-size:14px;color:var(--a0);opacity:.85;}
+.op:hover{border-color:var(--b2);color:var(--t0);background:var(--s2);}
+.op.on{border-color:var(--a0);color:var(--a0);background:var(--a-tint);}
+.op-glyph{font-family:var(--serif);font-style:italic;font-size:13px;color:var(--a0);opacity:.8;}
 
-/* quick chips */
+/* Quick chips */
 .chips{display:flex;flex-wrap:wrap;gap:4px;}
 .chip{
-  padding:4px 8px;
-  background:var(--s1);
-  border:1px solid var(--b0);
-  border-radius:14px;
-  font-family:var(--mono);font-size:10.5px;
-  color:var(--t1);
-  cursor:pointer;
-  transition:all .15s;
-  white-space:nowrap;
+  padding:4px 8px;background:var(--s1);border:1px solid var(--b0);
+  border-radius:20px;font-family:var(--mono);font-size:10px;
+  color:var(--t1);cursor:pointer;transition:all .15s;white-space:nowrap;
 }
-.chip:hover{
-  border-color:var(--a0);color:var(--a0);
-  background:var(--a-tint-2);
-}
+.chip:hover{border-color:var(--a0);color:var(--a0);background:var(--a-tint-2);}
 
+/* Syntax block */
 .syntax-block{
-  font-family:var(--mono);font-size:10.5px;line-height:1.8;
-  color:var(--t2);
-  background:var(--s1);
-  border:1px solid var(--b0);
-  border-radius:var(--r-sm);
-  padding:9px 11px;
+  font-family:var(--mono);font-size:10px;line-height:1.9;
+  color:var(--t2);background:var(--s1);border:1px solid var(--b0);
+  border-radius:var(--r-sm);padding:8px 10px;
 }
 .syntax-block .kw{color:var(--a0);}
 .syntax-block .var{color:var(--warm);}
 
-/* definitions panel */
-.defs{
-  border-top:1px solid var(--b0);
-  flex-shrink:0;
-  background:var(--s0);
-}
+/* Definitions panel */
+.defs{border-top:1px solid var(--b0);flex-shrink:0;background:var(--s0);}
 .defs-head{
-  padding:10px 16px 8px;
-  display:flex;align-items:center;justify-content:space-between;
+  padding:9px 14px 7px;display:flex;align-items:center;justify-content:space-between;
 }
 .defs-clear{
-  background:transparent;border:none;
-  font-family:var(--mono);font-size:9px;
-  color:var(--t3);
-  cursor:pointer;letter-spacing:0.08em;text-transform:uppercase;
-  transition:color .15s;
+  background:transparent;border:none;font-family:var(--mono);font-size:9px;
+  color:var(--t3);cursor:pointer;letter-spacing:0.08em;text-transform:uppercase;transition:color .15s;
 }
 .defs-clear:hover{color:var(--rose);}
-.defs-list{
-  max-height:170px;overflow-y:auto;
-  padding:0 10px 10px;
-}
+.defs-list{max-height:150px;overflow-y:auto;padding:0 8px 8px;}
 .def{
-  display:flex;align-items:baseline;gap:8px;
-  padding:5px 8px;border-radius:var(--r-xs);
-  font-family:var(--mono);font-size:11px;
-  cursor:pointer;
-  transition:background .12s;
+  display:flex;align-items:baseline;gap:8px;padding:4px 7px;border-radius:var(--r-xs);
+  font-family:var(--mono);font-size:11px;cursor:pointer;transition:background .12s;
 }
 .def:hover{background:var(--s2);}
 .def-name{color:var(--warm);font-weight:500;flex-shrink:0;}
-.def-val{color:var(--t2);font-style:italic;font-family:var(--serif);font-size:12px;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.def-empty{
-  text-align:center;padding:14px 8px;
-  color:var(--t3);font-family:var(--serif);font-style:italic;font-size:12px;
-}
+.def-val{color:var(--t2);font-style:italic;font-family:var(--serif);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.def-empty{text-align:center;padding:12px 8px;color:var(--t3);font-family:var(--serif);font-style:italic;font-size:12px;}
 
-/* ─────────── CONTENT ─────────── */
+/* ── Content ─────────────────────────────────── */
 .content{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
-
 .view{display:none;flex:1;flex-direction:column;overflow:hidden;min-height:0;}
 .view.on{display:flex;}
 
-/* notebook */
+/* ── Notebook ────────────────────────────────── */
 .notebook{
   flex:1;overflow-y:auto;overflow-x:hidden;
-  padding:24px 32px 32px;
-  display:flex;flex-direction:column;gap:14px;
+  padding:28px 40px 36px;
+  display:flex;flex-direction:column;gap:12px;
   scroll-behavior:smooth;
 }
-.notebook::-webkit-scrollbar{width:8px;}
-.notebook::-webkit-scrollbar-thumb{background:var(--b1);border-radius:4px;}
-.notebook::-webkit-scrollbar-thumb:hover{background:var(--b2);}
+.notebook::-webkit-scrollbar{width:6px;}
+.notebook::-webkit-scrollbar-thumb{background:var(--b1);border-radius:3px;}
 
-/* welcome / empty state */
+/* ── Welcome / Empty State ───────────────────── */
 .welcome{
-  flex:1;
-  display:flex;flex-direction:column;
-  align-items:center;justify-content:center;
-  gap:24px;text-align:center;
-  padding:40px 20px;
-  min-height:60vh;
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:20px;text-align:center;padding:40px 20px;min-height:60vh;
 }
 .welcome-mark{
-  font-family:var(--serif);font-style:italic;font-weight:400;
-  font-size:96px;line-height:1;
-  background:linear-gradient(160deg,var(--a0),var(--a2) 120%);
-  -webkit-background-clip:text;background-clip:text;
-  color:transparent;
-  filter:drop-shadow(0 8px 24px rgba(126,239,156,.15));
+  font-family:var(--serif);font-style:italic;font-size:88px;line-height:1;
+  color:var(--a0);filter:drop-shadow(0 4px 20px rgba(63,185,80,.2));
 }
 .welcome-title{
-  font-family:var(--ui);font-size:28px;font-weight:300;
-  color:var(--t0);letter-spacing:-0.02em;
-  max-width:520px;
-  line-height:1.25;
+  font-family:var(--ui);font-size:26px;font-weight:300;color:var(--t0);
+  letter-spacing:-0.03em;max-width:500px;line-height:1.3;
 }
-.welcome-title em{
-  font-family:var(--serif);font-style:italic;font-weight:500;
-  color:var(--a0);
-}
-.welcome-sub{
-  font-family:var(--serif);font-style:italic;
-  font-size:14px;color:var(--t2);
-  max-width:480px;line-height:1.6;
-}
-.welcome-grid{
-  display:grid;grid-template-columns:repeat(2,1fr);
-  gap:8px;width:100%;max-width:580px;margin-top:8px;
-}
+.welcome-title em{font-family:var(--serif);font-style:italic;font-weight:500;color:var(--a0);}
+.welcome-sub{font-family:var(--serif);font-style:italic;font-size:14px;color:var(--t2);max-width:440px;line-height:1.7;}
+.welcome-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;width:100%;max-width:560px;margin-top:6px;}
 .wcell{
-  text-align:left;
-  padding:14px 16px;
-  background:var(--s0);
-  border:1px solid var(--b0);
-  border-radius:var(--r-md);
-  cursor:pointer;
-  transition:all .18s;
-  display:flex;flex-direction:column;gap:6px;
+  text-align:left;padding:13px 15px;background:var(--s0);border:1px solid var(--b0);
+  border-radius:var(--r-md);cursor:pointer;transition:all .18s;display:flex;flex-direction:column;gap:5px;
 }
-.wcell:hover{
-  border-color:var(--a0);
-  background:var(--s1);
-  transform:translateY(-1px);
-}
+.wcell:hover{border-color:var(--a0);background:var(--s1);transform:translateY(-1px);box-shadow:var(--shadow-1);}
 .wcell-tag{
-  font-family:var(--mono);font-size:9px;
-  letter-spacing:0.12em;text-transform:uppercase;
-  color:var(--a0);
-  display:flex;align-items:center;gap:6px;
+  font-family:var(--mono);font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--a0);
+  display:flex;align-items:center;gap:5px;
 }
-.wcell-tag::before{
-  content:'';width:5px;height:5px;border-radius:50%;
-  background:var(--a0);box-shadow:0 0 6px var(--a0);
-}
-.wcell-expr{
-  font-family:var(--mono);font-size:13px;
-  color:var(--t0);letter-spacing:-0.01em;
-}
-.wcell-desc{
-  font-family:var(--serif);font-style:italic;font-size:11.5px;
-  color:var(--t2);
-}
-
+.wcell-tag::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--a0);}
+.wcell-expr{font-family:var(--mono);font-size:12.5px;color:var(--t0);letter-spacing:-0.01em;}
+.wcell-desc{font-family:var(--serif);font-style:italic;font-size:11px;color:var(--t2);}
 .welcome-tip{
-  font-family:var(--mono);font-size:10.5px;
-  color:var(--t3);letter-spacing:0.04em;
-  display:flex;align-items:center;gap:10px;
-  margin-top:10px;
+  font-family:var(--mono);font-size:10px;color:var(--t3);
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:8px;
 }
 .welcome-tip kbd{
-  font-family:var(--mono);font-size:9.5px;
-  padding:2px 6px;border-radius:3px;
-  background:var(--s2);color:var(--t1);
-  border:1px solid var(--b0);
+  font-family:var(--mono);font-size:9px;padding:2px 5px;border-radius:3px;
+  background:var(--s2);color:var(--t1);border:1px solid var(--b0);
 }
 
-/* ─────────── CELLS ─────────── */
+/* ── Cells ───────────────────────────────────── */
 .cell{
-  flex-shrink:0;
-  background:var(--s0);
-  border:1px solid var(--b0);
-  border-radius:var(--r-md);
-  overflow:hidden;
-  transition:border-color .18s, transform .18s;
-  animation:cellin .25s cubic-bezier(.2,.8,.2,1);
+  flex-shrink:0;background:var(--s0);border:1px solid var(--b0);
+  border-radius:var(--r-md);overflow:hidden;
+  transition:border-color .18s,box-shadow .18s;
+  animation:cellin .22s cubic-bezier(.2,.8,.2,1);
   position:relative;
 }
-.cell:hover{border-color:var(--b1);}
-.cell.text-cell{background:var(--s1);}
-@keyframes cellin{
-  from{opacity:0;transform:translateY(8px);}
-  to{opacity:1;transform:translateY(0);}
+.cell:hover{border-color:var(--b1);box-shadow:var(--shadow-1);}
+/* Mode left-border stripe */
+.cell::before{
+  content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--algebra-accent);border-radius:var(--r-md) 0 0 var(--r-md);
 }
+.cell[data-mode="calc"]::before{background:var(--calc-accent);}
+.cell[data-mode="solve"]::before{background:var(--solve-accent);}
+.cell[data-mode="matrix"]::before{background:var(--matrix-accent);}
+.cell[data-mode="stats"]::before{background:var(--stats-accent);}
+.cell[data-mode="trig"]::before{background:var(--trig-accent);}
+.cell[data-mode="logic"]::before{background:var(--logic-accent);}
+.cell[data-mode="units"]::before{background:var(--units-accent);}
+.cell[data-mode="numeric"]::before{background:var(--warm);}
+
+@keyframes cellin{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
 
 .cin{
-  display:flex;align-items:flex-start;gap:14px;
-  padding:12px 16px 10px;
-  background:linear-gradient(180deg, var(--s1) 0%, var(--s0) 100%);
-  border-bottom:1px solid var(--b0);
+  display:flex;align-items:flex-start;gap:12px;
+  padding:11px 16px 9px 18px;
+  background:var(--s1);border-bottom:1px solid var(--b0);
 }
 .cprompt{
-  font-family:var(--mono);font-size:10px;
-  color:var(--t3);letter-spacing:0.04em;
-  flex-shrink:0;padding-top:3px;
-  display:flex;align-items:center;gap:6px;
+  font-family:var(--mono);font-size:10px;color:var(--t3);
+  flex-shrink:0;padding-top:2px;display:flex;align-items:center;gap:5px;
 }
-.cprompt-num{
-  display:inline-block;min-width:18px;
-  font-variant-numeric:tabular-nums;
-  color:var(--a0);font-weight:500;
-}
-.cprompt-arrow{color:var(--t3);}
-
+.cprompt-num{min-width:16px;color:var(--a0);font-weight:600;font-variant-numeric:tabular-nums;}
+.cprompt-arrow{color:var(--t4);}
 .cexpr{
-  flex:1;
-  font-family:var(--mono);font-size:13px;
-  color:var(--t0);
-  line-height:1.5;
-  cursor:pointer;
-  word-break:break-word;
-  transition:color .15s;
+  flex:1;font-family:var(--mono);font-size:13px;color:var(--t1);
+  line-height:1.5;cursor:pointer;word-break:break-word;transition:color .15s;
 }
 .cexpr:hover{color:var(--a0);}
-
-.cmeta{
-  flex-shrink:0;
-  display:flex;align-items:center;gap:6px;
-  margin-top:1px;
-}
+.cmeta{flex-shrink:0;display:flex;align-items:center;gap:5px;margin-top:1px;}
 .cbadge{
-  font-family:var(--mono);font-size:9px;
-  padding:2px 7px;border-radius:3px;
-  background:var(--s2);color:var(--t2);
-  border:1px solid var(--b0);
+  font-family:var(--mono);font-size:8.5px;padding:2px 6px;border-radius:3px;
+  background:var(--s2);color:var(--t3);border:1px solid var(--b0);
   letter-spacing:0.08em;text-transform:uppercase;
 }
-
+/* Output */
 .cout{
-  padding:18px 20px;
-  min-height:48px;
-  display:flex;align-items:center;
-  font-size:14px;
-  position:relative;
+  padding:20px 22px 20px 26px;min-height:52px;
+  display:flex;align-items:center;font-size:15px;position:relative;
 }
-.cout.loading{padding:14px 20px;justify-content:flex-start;}
+.cout.loading{padding:14px 22px;justify-content:flex-start;}
 .cout.err{
   color:var(--rose);font-family:var(--mono);font-size:12px;
-  background:var(--rose-tint);
-  border-top:1px solid rgba(232,138,153,.2);
+  background:var(--rose-tint);border-top:1px solid rgba(248,81,73,.15);
 }
 .cout-prompt{
-  position:absolute;left:16px;top:18px;
-  font-family:var(--mono);font-size:10px;
-  color:var(--t3);letter-spacing:0.04em;
+  position:absolute;left:10px;top:22px;
+  font-family:var(--mono);font-size:10px;color:var(--t3);
 }
-.cout-body{
-  flex:1;padding-left:36px;
-  overflow-x:auto;
-}
-.cout-body::-webkit-scrollbar{height:5px;}
-.cout-body::-webkit-scrollbar-thumb{background:var(--b1);border-radius:3px;}
-
-.mjrender{
-  font-size:18px;color:var(--t0);
-}
+.cout-body{flex:1;padding-left:20px;overflow-x:auto;}
+.cout-body::-webkit-scrollbar{height:4px;}
+.cout-body::-webkit-scrollbar-thumb{background:var(--b1);border-radius:2px;}
+.mjrender{font-size:19px;color:var(--t0);}
 .mjrender mjx-container{margin:0!important;}
-
-.unit-result{
-  font-family:var(--mono);font-size:16px;color:var(--cyan);
-  display:flex;align-items:center;gap:8px;
-}
+.unit-result{font-family:var(--mono);font-size:16px;color:var(--cyan);display:flex;align-items:center;gap:8px;}
 .unit-tag{
-  font-family:var(--mono);font-size:9px;
-  padding:2px 7px;border-radius:3px;
-  background:var(--cyan-tint);color:var(--cyan);
-  border:1px solid rgba(127,197,224,.25);
+  font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:3px;
+  background:var(--cyan-tint);color:var(--cyan);border:1px solid rgba(121,192,255,.2);
   letter-spacing:0.1em;text-transform:uppercase;
 }
 
-/* cell actions */
+/* Cell Actions — always visible, subtle */
 .cacts{
-  display:flex;align-items:center;gap:2px;
-  padding:6px 12px;
-  border-top:1px solid var(--b0);
-  background:var(--s0);
-  opacity:0;
-  transition:opacity .18s;
+  display:flex;align-items:center;gap:1px;
+  padding:5px 10px;border-top:1px solid var(--b0);background:var(--s0);
 }
-.cell:hover .cacts{opacity:1;}
 .cact{
-  background:transparent;
-  border:none;
-  border-radius:var(--r-xs);
-  padding:5px 10px;
-  font-family:var(--mono);font-size:10px;
-  color:var(--t2);
-  cursor:pointer;
-  transition:all .15s;
-  display:flex;align-items:center;gap:5px;
-  letter-spacing:0.02em;
+  background:transparent;border:none;border-radius:var(--r-xs);
+  padding:4px 9px;font-family:var(--mono);font-size:9.5px;
+  color:var(--t3);cursor:pointer;transition:all .15s;
+  display:flex;align-items:center;gap:4px;letter-spacing:0.02em;
 }
-.cact:hover{color:var(--a0);background:var(--s2);}
+.cact:hover{color:var(--t0);background:var(--s2);}
 .cact.violet:hover{color:var(--violet);}
 .cact.warm:hover{color:var(--warm);}
 .cact-spacer{flex:1;}
 
-/* steps */
+/* Steps */
 .steps{display:none;border-top:1px solid var(--b0);background:var(--s1);}
 .steps.open{display:block;}
-.step{
-  display:flex;gap:14px;align-items:flex-start;
-  padding:10px 20px;
-  border-bottom:1px solid var(--b0);
-}
+.step{display:flex;gap:12px;align-items:flex-start;padding:9px 18px;border-bottom:1px solid var(--b0);}
 .step:last-child{border-bottom:none;}
 .step-n{
-  width:22px;height:22px;
-  border-radius:50%;
-  background:var(--s2);
-  border:1px solid var(--b1);
+  width:20px;height:20px;border-radius:50%;background:var(--s2);border:1px solid var(--b1);
   display:flex;align-items:center;justify-content:center;
-  font-family:var(--mono);font-size:10px;
-  color:var(--t1);flex-shrink:0;
-  font-variant-numeric:tabular-nums;
+  font-family:var(--mono);font-size:9.5px;color:var(--t1);flex-shrink:0;
 }
 .step-body{flex:1;}
-.step-d{font-family:var(--ui);font-size:12px;color:var(--t1);margin-bottom:3px;}
+.step-d{font-family:var(--ui);font-size:11.5px;color:var(--t1);margin-bottom:2px;}
 .step-e{font-family:var(--mono);font-size:12px;color:var(--a0);}
 
-/* plot in cell */
+/* Cell Plot */
 .cell-plot{display:none;border-top:1px solid var(--b0);background:var(--s1);}
 .cell-plot.open{display:block;}
 .cell-plot-inner{width:100%;height:300px;}
 
-/* text cell */
+/* Text Cell */
+.text-cell{background:var(--s1);}
 .text-cell-edit{
-  width:100%;
-  background:transparent;border:none;outline:none;
-  color:var(--t0);
-  font-family:var(--serif);font-size:15px;line-height:1.7;
-  padding:14px 18px;
-  resize:none;min-height:50px;
+  width:100%;background:transparent;border:none;outline:none;
+  color:var(--t0);font-family:var(--serif);font-size:15px;line-height:1.7;
+  padding:14px 18px;resize:none;min-height:50px;
 }
 .text-cell-edit::placeholder{color:var(--t3);font-style:italic;}
 
-/* ─────────── INPUT AREA ─────────── */
+/* ── Input Area ───────────────────────────────── */
 .input-area{
-  flex-shrink:0;
-  background:var(--s0);
-  border-top:1px solid var(--b0);
-  padding:14px 32px 18px;
-  position:relative;
+  flex-shrink:0;background:var(--s0);border-top:1px solid var(--b0);
+  padding:12px 40px 16px;position:relative;
 }
 .input-area::before{
-  content:'';position:absolute;top:-32px;left:0;right:0;height:32px;
-  background:linear-gradient(180deg, transparent, var(--bg) 90%);
-  pointer-events:none;
+  content:'';position:absolute;top:-28px;left:0;right:0;height:28px;
+  background:linear-gradient(180deg,transparent,var(--bg) 95%);pointer-events:none;
 }
-
-.input-toolbar{
-  display:flex;align-items:center;gap:6px;
-  margin-bottom:10px;
-  flex-wrap:wrap;
-}
+.input-toolbar{display:flex;align-items:center;gap:5px;margin-bottom:8px;flex-wrap:wrap;}
 .in-op{
-  font-family:var(--mono);font-size:10px;
-  padding:4px 9px;
-  border-radius:var(--r-xs);
-  background:var(--s1);
-  border:1px solid var(--b0);
-  color:var(--t2);
-  cursor:pointer;
-  letter-spacing:0.04em;
-  transition:all .15s;
+  font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:var(--r-xs);
+  background:var(--s1);border:1px solid var(--b0);color:var(--t2);cursor:pointer;
+  letter-spacing:0.03em;transition:all .15s;
 }
 .in-op:hover{color:var(--t0);border-color:var(--b1);}
-.in-op.on{
-  background:var(--a-tint);
-  border-color:var(--a0);
-  color:var(--a0);
-}
+.in-op.on{background:var(--a-tint);border-color:var(--a0);color:var(--a0);}
 .in-op-spacer{flex:1;}
-
-.input-row{
-  display:flex;gap:10px;align-items:flex-end;
-}
+.input-row{display:flex;gap:8px;align-items:flex-end;}
 .input-wrap{
-  flex:1;
-  position:relative;
-  border:1px solid var(--b1);
-  border-radius:var(--r-md);
-  background:var(--s1);
-  transition:border-color .15s, box-shadow .15s;
-  overflow:hidden;
+  flex:1;position:relative;border:1px solid var(--b1);border-radius:var(--r-md);
+  background:var(--s1);transition:border-color .15s,box-shadow .15s;overflow:hidden;
 }
-.input-wrap.focused{
-  border-color:var(--a0);
-  box-shadow:var(--a-glow);
-}
+.input-wrap.focused{border-color:var(--a0);box-shadow:var(--a-glow);}
 .input-prompt{
-  position:absolute;left:14px;top:14px;
-  font-family:var(--mono);font-size:11px;
-  color:var(--a0);
-  pointer-events:none;
-  z-index:2;
-  font-weight:500;
+  position:absolute;left:13px;top:14px;font-family:var(--mono);font-size:11px;
+  color:var(--a0);pointer-events:none;z-index:2;font-weight:600;
 }
-#monwrap{height:48px;min-height:48px;max-height:140px;overflow:hidden;padding-left:32px;}
-#mlwrap{display:none;padding:14px 16px 14px 32px;min-height:48px;align-items:center;}
+/* Syntax validity dot */
+.valid-indicator{
+  position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  width:6px;height:6px;border-radius:50%;background:transparent;
+  z-index:10;pointer-events:none;transition:background .2s;
+}
+#monwrap{height:48px;min-height:48px;max-height:140px;overflow:hidden;padding-left:30px;padding-right:22px;}
+#mlwrap{display:none;padding:12px 14px 12px 30px;min-height:48px;align-items:center;}
 #mlwrap.on{display:flex;}
 math-field{
-  width:100%;
-  --caret-color:var(--a0);
-  --selection-background-color:var(--a-tint);
-  font-size:18px;color:var(--t0);
+  width:100%;--caret-color:var(--a0);
+  --selection-background-color:var(--a-tint);font-size:17px;color:var(--t0);
 }
-
 .run-btn{
-  height:48px;padding:0 22px;
-  border-radius:var(--r-md);
-  background:linear-gradient(140deg, var(--a0) 0%, var(--a2) 100%);
-  border:none;
-  color:#0b0d11;
-  font-family:var(--ui);font-size:13px;font-weight:600;
-  cursor:pointer;
-  transition:all .18s;
-  letter-spacing:-0.005em;
-  display:flex;align-items:center;gap:8px;
-  box-shadow:0 4px 16px -4px rgba(126,239,156,.4), inset 0 1px 0 rgba(255,255,255,.2);
-  white-space:nowrap;
+  height:52px;padding:0 24px;border-radius:var(--r-md);
+  background:var(--a0);border:none;color:#0d1117;
+  font-family:var(--ui);font-size:13px;font-weight:700;cursor:pointer;
+  transition:all .18s;letter-spacing:-0.01em;
+  display:flex;align-items:center;gap:7px;white-space:nowrap;
+  box-shadow:0 2px 8px rgba(63,185,80,.3);
 }
-.run-btn:hover{
-  transform:translateY(-1px);
-  box-shadow:0 6px 24px -4px rgba(126,239,156,.5), inset 0 1px 0 rgba(255,255,255,.25);
-}
+.run-btn:hover{background:var(--a1);transform:translateY(-1px);box-shadow:0 4px 14px rgba(63,185,80,.4);}
 .run-btn:active{transform:translateY(0);}
 .run-btn kbd{
-  font-family:var(--mono);font-size:10px;font-weight:500;
-  padding:2px 5px;border-radius:3px;
-  background:rgba(0,0,0,.2);color:rgba(11,13,17,.7);
+  font-family:var(--mono);font-size:10px;font-weight:600;
+  padding:2px 5px;border-radius:3px;background:rgba(13,17,23,.3);color:rgba(13,17,23,.8);
 }
-
 .text-btn{
-  height:48px;width:48px;
-  display:flex;align-items:center;justify-content:center;
-  background:var(--s1);
-  border:1px solid var(--b1);
-  border-radius:var(--r-md);
-  color:var(--t2);
-  cursor:pointer;
-  transition:all .15s;
+  height:52px;width:44px;display:flex;align-items:center;justify-content:center;
+  background:var(--s1);border:1px solid var(--b1);border-radius:var(--r-md);
+  color:var(--t2);cursor:pointer;transition:all .15s;
 }
-.text-btn:hover{
-  color:var(--violet);border-color:var(--violet);
-  background:var(--violet-tint);
-}
-.text-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.6;}
-
+.text-btn:hover{color:var(--violet);border-color:var(--violet);background:var(--violet-tint);}
+.text-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7;}
 .live-preview{
-  margin-top:8px;
-  padding:6px 14px 6px 32px;
-  background:var(--s2);
-  border:1px solid var(--b0);
-  border-radius:var(--r-sm);
-  font-size:14px;
-  color:var(--t1);
-  opacity:0;
-  transition:opacity .2s;
-  min-height:28px;
-  overflow-x:auto;
-  position:relative;
+  margin-top:7px;padding:5px 12px 5px 30px;background:var(--s2);border:1px solid var(--b0);
+  border-radius:var(--r-sm);font-size:14px;color:var(--t1);opacity:0;
+  transition:opacity .2s;min-height:26px;overflow-x:auto;position:relative;
 }
-.live-preview::before{
-  content:'⟶';
-  position:absolute;left:12px;top:6px;
-  font-family:var(--mono);color:var(--t3);font-size:11px;
-}
+.live-preview::before{content:'⟶';position:absolute;left:10px;top:5px;font-family:var(--mono);color:var(--t3);font-size:10px;}
 .live-preview.on{opacity:1;}
-
 .input-hint{
-  margin-top:8px;
-  display:flex;align-items:center;gap:18px;flex-wrap:wrap;
-  font-family:var(--mono);font-size:10px;
-  color:var(--t3);letter-spacing:0.02em;
+  margin-top:7px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  font-family:var(--mono);font-size:9.5px;color:var(--t3);
 }
 .input-hint kbd{
-  font-family:var(--mono);font-size:9.5px;
-  padding:2px 5px;border-radius:3px;
-  background:var(--s2);color:var(--t2);
-  border:1px solid var(--b0);
-  margin:0 2px;
+  font-family:var(--mono);font-size:9px;padding:1px 5px;border-radius:3px;
+  background:var(--s2);color:var(--t2);border:1px solid var(--b0);margin:0 1px;
 }
 
-/* ─────────── AUTOCOMPLETE ─────────── */
+/* ── Autocomplete ────────────────────────────── */
 .ac{
-  position:absolute;bottom:calc(100% + 6px);left:0;right:0;
-  background:var(--s1);
-  border:1px solid var(--b1);
-  border-radius:var(--r-md);
-  max-height:220px;overflow-y:auto;
-  z-index:200;
-  box-shadow:var(--shadow-3);
-  display:none;
-  padding:4px;
+  position:absolute;bottom:calc(100% + 5px);left:0;right:0;
+  background:var(--s1);border:1px solid var(--b1);border-radius:var(--r-md);
+  max-height:220px;overflow-y:auto;z-index:200;box-shadow:var(--shadow-3);
+  display:none;padding:4px;
 }
 .ac.open{display:block;}
-.aci{
-  display:flex;align-items:center;gap:10px;
-  padding:6px 10px;
-  border-radius:var(--r-sm);
-  cursor:pointer;
-  transition:background .12s;
-}
+.aci{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:var(--r-sm);cursor:pointer;transition:background .1s;}
 .aci:hover,.aci.sel{background:var(--s3);}
-.aci-name{
-  font-family:var(--mono);font-size:12px;
-  color:var(--a0);font-weight:500;
-}
-.aci-sig{
-  font-family:var(--mono);font-size:11px;
-  color:var(--t2);
-}
-.aci-tag{
-  margin-left:auto;
-  font-family:var(--mono);font-size:9px;
-  padding:2px 6px;border-radius:3px;
-  background:var(--s2);color:var(--t3);
-  letter-spacing:0.06em;text-transform:uppercase;
-}
+.aci-name{font-family:var(--mono);font-size:12px;color:var(--a0);font-weight:500;}
+.aci-sig{font-family:var(--mono);font-size:10.5px;color:var(--t2);}
+.aci-tag{margin-left:auto;font-family:var(--mono);font-size:9px;padding:1px 5px;border-radius:3px;background:var(--s2);color:var(--t3);letter-spacing:0.06em;text-transform:uppercase;}
 
-/* ─────────── GRAPH VIEW ─────────── */
-.graph-view{padding:24px 32px;flex:1;display:flex;flex-direction:column;gap:16px;overflow:auto;}
-.graph-head{
-  display:flex;align-items:baseline;gap:14px;
-  border-bottom:1px solid var(--b0);
-  padding-bottom:14px;
-}
-.graph-head h2{
-  font-family:var(--ui);font-size:20px;font-weight:500;
-  letter-spacing:-0.02em;color:var(--t0);
-}
-.graph-head h2 em{
-  font-family:var(--serif);font-style:italic;color:var(--violet);
-  font-weight:500;
-}
-.graph-head-sub{
-  font-family:var(--serif);font-style:italic;font-size:13px;
-  color:var(--t2);
-}
-
-.graph-controls{
-  background:var(--s0);
-  border:1px solid var(--b0);
-  border-radius:var(--r-md);
-  padding:14px;
-  display:flex;flex-direction:column;gap:12px;
-}
-
-.glabel{
-  font-family:var(--mono);font-size:9.5px;letter-spacing:0.14em;
-  text-transform:uppercase;color:var(--t3);
-  margin-bottom:5px;
-}
+/* ── Graph View ──────────────────────────────── */
+.graph-view{padding:24px 40px;flex:1;display:flex;flex-direction:column;gap:16px;overflow:auto;}
+.graph-head{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid var(--b0);padding-bottom:12px;}
+.graph-head h2{font-family:var(--ui);font-size:19px;font-weight:600;letter-spacing:-0.02em;color:var(--t0);}
+.graph-head h2 em{font-family:var(--serif);font-style:italic;color:var(--violet);font-weight:500;}
+.graph-head-sub{font-family:var(--serif);font-style:italic;font-size:13px;color:var(--t2);}
+.graph-controls{background:var(--s0);border:1px solid var(--b0);border-radius:var(--r-md);padding:14px;display:flex;flex-direction:column;gap:11px;}
+.glabel{font-family:var(--mono);font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:var(--t3);margin-bottom:4px;}
 .ginp{
-  background:var(--s1);
-  border:1px solid var(--b1);
-  border-radius:var(--r-sm);
-  color:var(--t0);
-  font-family:var(--mono);font-size:13px;
-  padding:8px 12px;outline:none;
-  width:100%;
-  transition:border-color .15s, box-shadow .15s;
+  background:var(--s1);border:1px solid var(--b1);border-radius:var(--r-sm);
+  color:var(--t0);font-family:var(--mono);font-size:12.5px;padding:8px 11px;
+  outline:none;width:100%;transition:border-color .15s,box-shadow .15s;
 }
 .ginp:focus{border-color:var(--a0);box-shadow:var(--a-glow);}
-
-.graph-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;}
-.graph-range{
-  display:flex;align-items:center;gap:6px;
-}
+.graph-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;}
+.graph-range{display:flex;align-items:center;gap:5px;}
 .graph-range .ginp{width:70px;}
 .graph-range span{font-family:var(--mono);color:var(--t3);font-size:11px;}
-
-.graph-actions{display:flex;gap:8px;margin-left:auto;}
+.graph-actions{display:flex;gap:6px;margin-left:auto;}
 .btn-plot{
-  height:38px;padding:0 18px;
-  background:linear-gradient(140deg, var(--a0), var(--a2));
-  color:#0b0d11;border:none;border-radius:var(--r-sm);
-  font-family:var(--ui);font-size:12px;font-weight:600;
-  cursor:pointer;transition:all .15s;letter-spacing:-0.005em;
-  box-shadow:0 4px 12px -4px rgba(126,239,156,.4);
+  height:36px;padding:0 16px;background:var(--a0);color:#0d1117;border:none;
+  border-radius:var(--r-sm);font-family:var(--ui);font-size:12px;font-weight:700;
+  cursor:pointer;transition:all .15s;letter-spacing:-0.01em;
 }
-.btn-plot:hover{transform:translateY(-1px);box-shadow:0 6px 16px -4px rgba(126,239,156,.5);}
-.btn-plot.violet{
-  background:linear-gradient(140deg, var(--violet), #7561d6);
-  box-shadow:0 4px 12px -4px rgba(169,156,242,.4);
-}
-.btn-plot.violet:hover{box-shadow:0 6px 16px -4px rgba(169,156,242,.5);}
+.btn-plot:hover{background:var(--a1);transform:translateY(-1px);}
+.btn-plot.violet{background:var(--violet);}
+.btn-plot.violet:hover{background:#a87af0;}
+.gplot{flex:1;border:1px solid var(--b0);border-radius:var(--r-md);background:var(--s0);overflow:hidden;min-height:340px;}
 
-.gplot{
-  flex:1;
-  border:1px solid var(--b0);
-  border-radius:var(--r-md);
-  background:var(--s0);
-  overflow:hidden;
-  min-height:340px;
-}
-
-/* ─────────── UNITS VIEW ─────────── */
-.units-view{padding:24px 32px;flex:1;overflow-y:auto;max-width:880px;}
-.units-head{
-  display:flex;align-items:baseline;gap:14px;
-  border-bottom:1px solid var(--b0);
-  padding-bottom:14px;margin-bottom:20px;
-}
-.units-head h2{
-  font-family:var(--ui);font-size:20px;font-weight:500;
-  letter-spacing:-0.02em;color:var(--t0);
-}
-.units-head h2 em{
-  font-family:var(--serif);font-style:italic;color:var(--cyan);
-  font-weight:500;
-}
-.units-head-sub{
-  font-family:var(--serif);font-style:italic;font-size:13px;
-  color:var(--t2);
-}
-.units-examples{
-  display:flex;gap:5px;flex-wrap:wrap;
-  margin-bottom:14px;
-}
+/* ── Units View ──────────────────────────────── */
+.units-view{padding:24px 40px;flex:1;overflow-y:auto;max-width:860px;}
+.units-head{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid var(--b0);padding-bottom:12px;margin-bottom:18px;}
+.units-head h2{font-family:var(--ui);font-size:19px;font-weight:600;letter-spacing:-0.02em;color:var(--t0);}
+.units-head h2 em{font-family:var(--serif);font-style:italic;color:var(--cyan);font-weight:500;}
+.units-head-sub{font-family:var(--serif);font-style:italic;font-size:13px;color:var(--t2);}
+.units-examples{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;}
 .unit-ex{
-  font-family:var(--mono);font-size:11px;
-  padding:4px 10px;
-  background:var(--s1);
-  border:1px solid var(--b0);
-  color:var(--cyan);
-  border-radius:14px;
-  cursor:pointer;
-  transition:all .15s;
+  font-family:var(--mono);font-size:10.5px;padding:4px 10px;background:var(--s1);
+  border:1px solid var(--b0);color:var(--cyan);border-radius:14px;cursor:pointer;transition:all .15s;
 }
 .unit-ex:hover{border-color:var(--cyan);background:var(--cyan-tint);}
-
-.units-input-row{display:flex;gap:10px;margin-bottom:16px;}
+.units-input-row{display:flex;gap:8px;margin-bottom:14px;}
 .units-result{
-  min-height:64px;
-  background:var(--s0);
-  border:1px solid var(--b0);
-  border-radius:var(--r-md);
-  padding:18px 20px;
-  font-family:var(--mono);font-size:18px;
-  color:var(--cyan);
-  margin-bottom:32px;
-  display:flex;align-items:center;
+  min-height:60px;background:var(--s0);border:1px solid var(--b0);border-radius:var(--r-md);
+  padding:16px 20px;font-family:var(--mono);font-size:17px;color:var(--cyan);margin-bottom:28px;display:flex;align-items:center;
 }
 .units-result-empty{font-family:var(--serif);font-style:italic;color:var(--t3);font-size:14px;}
-
-.consts-head{
-  font-family:var(--mono);font-size:10px;
-  letter-spacing:0.16em;text-transform:uppercase;
-  color:var(--t3);margin-bottom:10px;
-  display:flex;align-items:center;gap:10px;
-}
+.consts-head{font-family:var(--mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--t3);margin-bottom:8px;display:flex;align-items:center;gap:10px;}
 .consts-head::after{content:'';flex:1;height:1px;background:var(--b0);}
+.consts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px;}
+.const-card{padding:10px 13px;background:var(--s0);border:1px solid var(--b0);border-radius:var(--r-md);cursor:pointer;transition:all .18s;}
+.const-card:hover{border-color:var(--warm);background:var(--s1);}
+.const-card-name{font-family:var(--ui);font-size:12px;font-weight:500;color:var(--t0);margin-bottom:2px;letter-spacing:-0.005em;}
+.const-card-val{font-family:var(--mono);font-size:10.5px;color:var(--warm);}
 
-.consts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;}
-.const-card{
-  padding:12px 14px;
-  background:var(--s0);
-  border:1px solid var(--b0);
-  border-radius:var(--r-md);
-  cursor:pointer;
-  transition:all .18s;
-}
-.const-card:hover{
-  border-color:var(--warm);
-  background:var(--s1);
-}
-.const-card-name{
-  font-family:var(--ui);font-size:12px;font-weight:500;
-  color:var(--t0);margin-bottom:3px;
-  letter-spacing:-0.005em;
-}
-.const-card-val{
-  font-family:var(--mono);font-size:11px;
-  color:var(--warm);
-}
-
-/* ─────────── SPINNER ─────────── */
-.spin{
-  width:14px;height:14px;
-  border:2px solid var(--b1);
-  border-top-color:var(--a0);
-  border-radius:50%;
-  animation:spin .6s linear infinite;
-}
+/* ── Spinner ─────────────────────────────────── */
+.spin{width:14px;height:14px;border:2px solid var(--b1);border-top-color:var(--a0);border-radius:50%;animation:spin .6s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
 
-/* ─────────── TOAST ─────────── */
+/* ── Toast ───────────────────────────────────── */
 .toast{
-  position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(8px);
-  background:var(--s2);
-  border:1px solid var(--a0);
-  color:var(--a0);
-  padding:8px 16px;
-  border-radius:var(--r-md);
-  font-family:var(--mono);font-size:11px;font-weight:500;
-  letter-spacing:0.04em;
-  opacity:0;
-  transition:all .25s cubic-bezier(.2,.8,.2,1);
-  pointer-events:none;
-  z-index:999;
+  position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(8px);
+  background:var(--s2);border:1px solid var(--a0);color:var(--a0);
+  padding:7px 14px;border-radius:var(--r-md);
+  font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:0.04em;
+  opacity:0;transition:all .25s cubic-bezier(.2,.8,.2,1);pointer-events:none;z-index:999;
   box-shadow:var(--shadow-2);
 }
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
-/* ─────────── DEFINT PANEL ─────────── */
+/* ── Definite Integral Panel ─────────────────── */
 .defint-panel{
-  display:none;align-items:center;gap:8px;flex-wrap:wrap;
-  padding:10px 32px;
-  background:var(--s1);
-  border-bottom:1px solid var(--b0);
+  display:none;align-items:center;gap:7px;flex-wrap:wrap;
+  padding:9px 40px;background:var(--s1);border-bottom:1px solid var(--b0);
 }
 .defint-panel.on{display:flex;}
-.defint-label{
-  font-family:var(--mono);font-size:10px;
-  color:var(--violet);
-  letter-spacing:0.1em;text-transform:uppercase;
-}
+.defint-label{font-family:var(--mono);font-size:10px;color:var(--violet);letter-spacing:0.1em;text-transform:uppercase;}
 .defint-input{
-  background:var(--s2);
-  border:1px solid var(--b1);
-  border-radius:var(--r-sm);
-  color:var(--t0);
-  font-family:var(--mono);font-size:12px;
-  padding:5px 9px;outline:none;
-  transition:border-color .15s;
+  background:var(--s2);border:1px solid var(--b1);border-radius:var(--r-sm);
+  color:var(--t0);font-family:var(--mono);font-size:12px;padding:5px 9px;outline:none;transition:border-color .15s;
 }
 .defint-input:focus{border-color:var(--a0);}
 .defint-sep{color:var(--t3);font-family:var(--mono);font-size:11px;}
 .defint-btn{
-  font-family:var(--mono);font-size:10px;
-  padding:5px 12px;border-radius:var(--r-sm);
-  background:var(--a-tint);color:var(--a0);
-  border:1px solid var(--a0);
-  cursor:pointer;letter-spacing:0.04em;
+  font-family:var(--mono);font-size:10px;padding:5px 11px;border-radius:var(--r-sm);
+  background:var(--a-tint);color:var(--a0);border:1px solid var(--a0);cursor:pointer;letter-spacing:0.04em;
 }
-.defint-btn:hover{background:var(--a-tint);filter:brightness(1.2);}
+.defint-btn:hover{filter:brightness(1.15);}
 
-/* ─────────── COMMAND PALETTE ─────────── */
+/* ── Command Palette ─────────────────────────── */
 .palette-overlay{
-  position:fixed;inset:0;
-  background:rgba(11,13,17,.6);
-  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
-  z-index:500;
-  display:none;align-items:flex-start;justify-content:center;
-  padding-top:14vh;
+  position:fixed;inset:0;background:rgba(13,17,23,.7);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  z-index:500;display:none;align-items:flex-start;justify-content:center;padding-top:12vh;
 }
 .palette-overlay.on{display:flex;}
 .palette{
-  width:560px;max-width:90vw;
-  background:var(--s0);
-  border:1px solid var(--b1);
-  border-radius:var(--r-lg);
-  box-shadow:var(--shadow-3);
-  overflow:hidden;
+  width:540px;max-width:90vw;background:var(--s0);border:1px solid var(--b1);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-3);overflow:hidden;
 }
-.palette-input-wrap{
-  display:flex;align-items:center;gap:10px;
-  padding:14px 18px;
-  border-bottom:1px solid var(--b0);
-}
-.palette-input{
-  flex:1;
-  background:transparent;border:none;outline:none;
-  color:var(--t0);
-  font-family:var(--mono);font-size:14px;
-}
+.palette-input-wrap{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--b0);}
+.palette-input{flex:1;background:transparent;border:none;outline:none;color:var(--t0);font-family:var(--mono);font-size:14px;}
 .palette-input::placeholder{color:var(--t3);}
-.palette-key{
-  font-family:var(--mono);font-size:10px;
-  padding:2px 6px;border-radius:3px;
-  background:var(--s2);color:var(--t2);
-  border:1px solid var(--b0);
-}
-.palette-list{max-height:340px;overflow-y:auto;padding:6px;}
-.palette-item{
-  display:flex;align-items:center;gap:10px;
-  padding:8px 12px;
-  border-radius:var(--r-sm);
-  cursor:pointer;
-  transition:background .12s;
-}
+.palette-key{font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:3px;background:var(--s2);color:var(--t2);border:1px solid var(--b0);}
+.palette-list{max-height:320px;overflow-y:auto;padding:5px;}
+.palette-item{display:flex;align-items:center;gap:9px;padding:7px 11px;border-radius:var(--r-sm);cursor:pointer;transition:background .1s;}
 .palette-item:hover,.palette-item.sel{background:var(--s2);}
-.palette-item-name{
-  font-family:var(--mono);font-size:12px;
-  color:var(--a0);font-weight:500;
-}
-.palette-item-desc{
-  font-family:var(--ui);font-size:11.5px;
-  color:var(--t2);
-}
+.palette-item-name{font-family:var(--mono);font-size:12px;color:var(--a0);font-weight:500;}
+.palette-item-desc{font-family:var(--ui);font-size:11px;color:var(--t2);}
 
-/* ─────────── TWEAKS ─────────── */
+/* ── Tweaks ──────────────────────────────────── */
 .tweaks{
-  position:fixed;right:18px;bottom:18px;
-  width:280px;
-  background:var(--s0);
-  border:1px solid var(--b1);
-  border-radius:var(--r-lg);
-  box-shadow:var(--shadow-3);
-  z-index:400;
-  display:none;
-  overflow:hidden;
+  position:fixed;right:16px;bottom:16px;width:260px;
+  background:var(--s0);border:1px solid var(--b1);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-3);z-index:400;display:none;overflow:hidden;
 }
 .tweaks.on{display:block;}
-.tweaks-head{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:10px 14px;
-  border-bottom:1px solid var(--b0);
-  background:var(--s1);
-}
-.tweaks-head h3{
-  font-family:var(--mono);font-size:11px;
-  letter-spacing:0.1em;text-transform:uppercase;
-  color:var(--t1);
-}
-.tweaks-body{padding:12px 14px;display:flex;flex-direction:column;gap:14px;}
-.tweak-group{display:flex;flex-direction:column;gap:6px;}
-.tweak-label{
-  font-family:var(--mono);font-size:9.5px;
-  color:var(--t3);letter-spacing:0.1em;text-transform:uppercase;
-}
-.tweak-row{display:flex;gap:6px;}
-.tweak-swatch{
-  flex:1;height:26px;
-  border-radius:var(--r-xs);
-  border:1px solid var(--b0);
-  cursor:pointer;
-  transition:transform .15s, border-color .15s;
-  position:relative;
-}
+.tweaks-head{display:flex;align-items:center;justify-content:space-between;padding:9px 13px;border-bottom:1px solid var(--b0);background:var(--s1);}
+.tweaks-head h3{font-family:var(--mono);font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--t1);}
+.tweaks-body{padding:11px 13px;display:flex;flex-direction:column;gap:12px;}
+.tweak-group{display:flex;flex-direction:column;gap:5px;}
+.tweak-label{font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:0.1em;text-transform:uppercase;}
+.tweak-row{display:flex;gap:5px;}
+.tweak-swatch{flex:1;height:24px;border-radius:var(--r-xs);border:1px solid var(--b0);cursor:pointer;transition:transform .15s,border-color .15s;}
 .tweak-swatch:hover{transform:translateY(-1px);}
-.tweak-swatch.on{border-color:var(--t0);box-shadow:0 0 0 2px var(--bg), 0 0 0 3px currentColor;}
+.tweak-swatch.on{border-color:var(--t0);box-shadow:0 0 0 2px var(--bg),0 0 0 3px currentColor;}
 
-/* hide scrollbars in monaco */
+/* Monaco scrollbar */
 .monaco-editor .scroll-decoration{display:none!important;}
-
-/* MathJax inline */
+/* MathJax */
 mjx-container[display="true"]{margin:0!important;text-align:left!important;}
 </style>
 </head>
@@ -1188,20 +675,17 @@ mjx-container[display="true"]{margin:0!important;text-align:left!important;}
 <header class="topbar">
   <div class="brand">
     <div class="brand-mark">∫</div>
-    <div class="brand-text">
-      <b>cas</b><span>symbolic workstation</span>
-    </div>
+    <span class="brand-name">CassyCAS</span>
+    <span class="brand-sub">Symbolic Workstation</span>
   </div>
 
   <div class="topbar-divider"></div>
 
-  <div class="cmd-wrap">
-    <div class="cmd" onclick="openPalette()">
-      <span class="ico">⌕</span>
-      <span>Run command, search functions…</span>
-      <span class="cmd-key">⌘ K</span>
-    </div>
-  </div>
+  <button class="cmd-pill" onclick="openPalette()">
+    <span>⌕</span>
+    <span>Search functions, modes…</span>
+    <kbd>⌘K</kbd>
+  </button>
 
   <div class="topbar-spacer"></div>
 
@@ -1260,13 +744,17 @@ mjx-container[display="true"]{margin:0!important;text-align:left!important;}
   </nav>
 
   <!-- SIDEBAR (mode context) -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
+    <button class="sidebar-collapse" id="sidebar-collapse" title="Collapse sidebar" onclick="toggleSidebar()">«</button>
     <div class="sb-head">
-      <div class="sb-eyebrow">Mode</div>
-      <div class="sb-title" id="mode-title">
-        <span class="sb-title-glyph">α</span><span>Algebra</span>
+      <div class="sb-head-text">
+        <div class="sb-eyebrow">Mode</div>
+        <div class="sb-title" id="mode-title">
+          <span class="sb-title-glyph">α</span><span>Algebra</span>
+        </div>
+        <div class="sb-sub" id="mode-sub">Symbolic manipulation, simplification, factoring.</div>
       </div>
-      <div class="sb-sub" id="mode-sub">Symbolic manipulation, simplification, factoring.</div>
+      <button class="sb-collapse" onclick="toggleSidebar()" title="Collapse sidebar">‹</button>
     </div>
 
     <div class="sb-scroll">
@@ -1334,7 +822,7 @@ mjx-container[display="true"]{margin:0!important;text-align:left!important;}
         <div class="welcome" id="welcome">
           <div class="welcome-mark">∑</div>
           <div class="welcome-title">A precision instrument for <em>symbolic mathematics.</em></div>
-          <div class="welcome-sub">Type any expression below — the system will normalize, simplify, plot, or solve as needed. Switch modes from the left panel.</div>
+          <div class="welcome-sub">Welcome — type any expression below and press Enter. The workstation will normalize, simplify, differentiate, integrate, plot, or solve it for you. Pick a discipline from the left panel, or hit ⌘K to search every function.</div>
           <div class="welcome-grid" id="welcome-grid"></div>
           <div class="welcome-tip">
             <span><kbd>Enter</kbd> run</span>
@@ -1359,7 +847,9 @@ mjx-container[display="true"]{margin:0!important;text-align:left!important;}
         <div class="input-row">
           <div class="input-wrap" id="input-wrap">
             <div class="input-prompt">›</div>
+            <span class="valid-indicator" id="valid-indicator"></span>
             <div class="ac" id="ac"></div>
+            <span class="valid-indicator" id="valid-indicator"></span>
             <div id="monwrap"></div>
             <div id="mlwrap"><math-field id="mf" virtual-keyboard-mode="off"></math-field></div>
           </div>
@@ -1546,9 +1036,13 @@ initEvalWorker();
 math.config({ number: 'Fraction' });
 
 async function runInWorker(expr, localScope) {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     const id = ++evalMsgId;
-    evalMsgMap.set(id, resolve);
+    const timeoutId = setTimeout(() => {
+      evalMsgMap.delete(id);
+      reject(new Error('Computation timed out — try a simpler expression or smaller bounds.'));
+    }, 10000);
+    evalMsgMap.set(id, result => { clearTimeout(timeoutId); resolve(result); });
     const scopePayload = {};
     for (let k in localScope) { if (typeof localScope[k] !== 'function') scopePayload[k] = localScope[k]; }
     const userFnsPayload = {};
@@ -1562,6 +1056,24 @@ try {
   if (s) { const o=JSON.parse(s); Object.keys(o).forEach(k=>{ if(!['pi','e','phi','tau'].includes(k)) scope[k]=o[k]; }); }
 } catch(e){}
 
+
+// ══════════════════════════════════════════════════════
+//  ERROR CATEGORIZER
+// ══════════════════════════════════════════════════════
+function categorizeError(err) {
+  const msg = (err && err.message) ? err.message : String(err);
+  if (/undefined.*symbol|symbol.*undefined|is not defined/i.test(msg)) {
+    const sym = msg.match(/["'`]([^"'`]+)["'`]/);
+    return sym ? `Unknown symbol: "${sym[1]}". Define it first (e.g. ${sym[1]} = 5).` : 'Unknown symbol — check spelling or define it first.';
+  }
+  if (/unexpected.*end|unexpected.*token|unexpected end/i.test(msg)) return 'Incomplete expression — check your brackets and parentheses.';
+  if (/division by zero|divide by zero/i.test(msg)) return 'Division by zero — expression is undefined at this point.';
+  if (/cannot convert|type error|expected.*number/i.test(msg)) return 'Type mismatch — check that arguments are the right type.';
+  if (/timed out/i.test(msg)) return '⏱ ' + msg;
+  if (/maximum.*call|stack overflow/i.test(msg)) return 'Expression is too deeply nested or recursive.';
+  if (/too large/i.test(msg)) return msg;
+  return msg.length > 140 ? msg.slice(0, 140) + '…' : msg;
+}
 // ── INPUT NORMALISER ─────────────────────────────────
 function normalise(raw) {
   return raw
@@ -1605,7 +1117,7 @@ const MODES = {
     label:'Algebra', glyph:'α',
     sub:'Symbolic manipulation, simplification, factoring.',
     sm:['Simplify','Expand','Factor','Collect','Apart','GCD','LCM'],
-    qr:['x^2','sqrt(x)','abs(x)','floor(x)','ceil(x)','sign(x)','mod(a,b)','gcd(a,b)','lcm(a,b)','factorial(n)','log(x)','log(x,b)'],
+    qr:['x^2','sqrt(x)','abs(x)','floor(x)','ceil(x)','sign(x)','mod(a,b)','gcd(a,b)','lcm(a,b)','factorial(n)','log(x)','polydiv(x^3-1,x-1,x)'],
     syn:'<span class="kw">simplify</span>(expr)  <span class="kw">expand</span>(expr)\n<span class="kw">factor</span>(expr)  <span class="kw">collect</span>(expr,<span class="var">x</span>)\n<span class="kw">apart</span>(expr)\n<span class="var">f</span>(<span class="var">x</span>) = <span class="var">x</span>^2+1   <span class="var">x</span> = 42\n<span class="kw">gcd</span>(252,198)  <span class="kw">lcm</span>(4,6)',
     ex:[
       {expr:'simplify((x^2-1)/(x-1))', desc:'Cancel a removable singularity'},
@@ -1618,7 +1130,7 @@ const MODES = {
     label:'Calculus', glyph:'∫',
     sub:'Differentiation, integration, limits, series.',
     sm:['Derive','Integrate','Definite ∫','Limit','Sum','Product','Series'],
-    qr:['derivative(f,x)','integrate(f,x)','integrate(f,x,a,b)','limit(f,x,0)','sum(f,n,1,10)','product(f,n,1,5)','derivative(f,x,2)','series(f,x)','series(f,x,0,8)'],
+    qr:['derivative(f,x)','integrate(f,x)','integrate(f,x,a,b)','limit(f,x,0)','sum(f,n,1,10)','product(f,n,1,5)','derivative(f,x,2)','series(f,x)','gradient(f,[x,y])','ode(dy/dx,x,y,0,1,5)'],
     syn:'<span class="kw">derivative</span>(expr, <span class="var">x</span>)\n<span class="kw">derivative</span>(expr, <span class="var">x</span>, n)  nth order\n<span class="kw">integrate</span>(expr, <span class="var">x</span>)\n<span class="kw">integrate</span>(expr, <span class="var">x</span>, a, b)\n<span class="kw">limit</span>(expr, <span class="var">x</span>, a)\n<span class="kw">series</span>(expr, <span class="var">x</span>, a, n)',
     ex:[
       {expr:'derivative(sin(x)*x^2, x)', desc:'Product rule'},
@@ -1718,7 +1230,7 @@ const ACD = [
   {n:'factor',s:'factor(expr)',t:'algebra'},{n:'collect',s:'collect(expr,x)',t:'algebra'},
   {n:'derivative',s:'derivative(expr,x)',t:'calc'},{n:'integrate',s:'integrate(expr,x)',t:'calc'},
   {n:'limit',s:'limit(expr,x,a)',t:'calc'},{n:'sum',s:'sum(expr,n,a,b)',t:'calc'},
-  {n:'product',s:'product(expr,n,a,b)',t:'calc'},{n:'series',s:'series(expr,x,a,n)',t:'calc'},
+  {n:'product',s:'product(expr,n,a,b)',t:'calc'},{n:'series',s:'series(expr,x,a,n)',t:'calc'},,
   {n:'solve',s:'solve(equation,x)',t:'solve'},
   {n:'zeros',s:'zeros(expr,x)',t:'solve'},{n:'det',s:'det(matrix)',t:'matrix'},
   {n:'inv',s:'inv(matrix)',t:'matrix'},{n:'transpose',s:'transpose(matrix)',t:'matrix'},
@@ -1728,7 +1240,7 @@ const ACD = [
   {n:'mean',s:'mean([...])',t:'stats'},{n:'std',s:'std([...])',t:'stats'},
   {n:'variance',s:'variance([...])',t:'stats'},{n:'median',s:'median([...])',t:'stats'},
   {n:'quantileSeq',s:'quantileSeq([...],p)',t:'stats'},{n:'correlation',s:'correlation(a,b)',t:'stats'},
-  {n:'mad',s:'mad([...])',t:'stats'},{n:'sin',s:'sin(x)',t:'trig'},
+  {n:'mad',s:'mad([...])',t:'stats'},{n:'gradient',s:'gradient(f,[x,y])',t:'calc'},{n:'ode',s:'ode(f,x,y,x0,y0,x1)',t:'calc'},{n:'polydiv',s:'polydiv(p,q,x)',t:'algebra'},{n:'sin',s:'sin(x)',t:'trig'},
   {n:'cos',s:'cos(x)',t:'trig'},{n:'tan',s:'tan(x)',t:'trig'},
   {n:'asin',s:'asin(x)',t:'trig'},{n:'acos',s:'acos(x)',t:'trig'},
   {n:'atan',s:'atan(x)',t:'trig'},{n:'atan2',s:'atan2(y,x)',t:'trig'},
@@ -1840,6 +1352,15 @@ function initMonaco() {
       mon.layout();
       updateAC(v);
       sched(v);
+      const validEl = document.getElementById('valid-indicator');
+      if (validEl) {
+        if (!v.trim()) { validEl.style.opacity='0'; }
+        else {
+          validEl.style.opacity='1';
+          try { math.parse(v); validEl.title='Syntax OK'; validEl.style.background='var(--a0)'; }
+          catch { validEl.title='Syntax error'; validEl.style.background='var(--error, #f87171)'; }
+        }
+      }
     });
     monReady=true;
     document.getElementById('monwrap').style.height='48px';
@@ -2066,6 +1587,27 @@ async function evalAlgebra(expr){
       return {type:'sym', out:math.parse(inner).toTex(), plain:inner, steps};
     }
   }
+  if (/^polydiv\s*\(/.test(expr)) {
+    const args = parseTopLevelArgs(xarg(expr, 'polydiv'));
+    if (args.length >= 3) {
+      const [pdp, pdq, pdv] = args;
+      const stepsPD = [{ d: 'Dividend', e: pdp }, { d: 'Divisor', e: pdq }];
+      if (window.Algebrite) {
+        try {
+          const algQ = Algebrite.run(`quotient(${pdp}, ${pdq}, ${pdv})`);
+          const algR = Algebrite.run(`remainder(${pdp}, ${pdq}, ${pdv})`);
+          if (algQ && !algQ.includes('Stop')) {
+            stepsPD.push({ d: 'Quotient', e: algQ }, { d: 'Remainder', e: algR });
+            let tex;
+            try { tex = `\\frac{${math.parse(pdp).toTex()}}{${math.parse(pdq).toTex()}} = ${math.parse(algQ).toTex()} + \\frac{${math.parse(algR).toTex()}}{${math.parse(pdq).toTex()}}`; }
+            catch { tex = escH(`${algQ} remainder ${algR}`); }
+            return { type: 'sym', out: tex, plain: `quotient: ${algQ}, remainder: ${algR}`, steps: stepsPD };
+          }
+        } catch(e) {}
+      }
+      return { type: 'sym', out: `\\text{polydiv requires Algebrite — loading…}`, plain: 'polydiv requires Algebrite', steps: stepsPD };
+    }
+  }
   if(/^simplify\s*\(/.test(expr)){
     const inner=xarg(expr,'simplify');
     const node=math.parse(inner);
@@ -2196,6 +1738,7 @@ async function evalCalc(expr){
   const sm=expr.match(/^sum\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*,\s*(.+?)\s*,\s*(.+?)\s*\)$/);
   if(sm){
     const[,f,v,s,e]=sm, st=Math.round(math.evaluate(s,scope)), en=Math.round(math.evaluate(e,scope));
+    if (Math.abs(en - st) > 10000) throw new Error(`Sum range too large (${st} to ${en}). Use a smaller range.`);
     const fn=math.compile(f);
     const freeVars = getFreeVars(f, v);
     const loc=Object.assign({},scope);
@@ -2224,10 +1767,43 @@ async function evalCalc(expr){
   const pm=expr.match(/^product\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*,\s*(.+?)\s*,\s*(.+?)\s*\)$/);
   if(pm){
     const[,f,v,s,e]=pm, st=Math.round(math.evaluate(s,scope)), en=Math.round(math.evaluate(e,scope));
+    if (Math.abs(en - st) > 10000) throw new Error(`Product range too large (${st} to ${en}). Use a smaller range.`);
     const fn=math.compile(f), loc=Object.assign({},scope);
     let tot=1;
     for(let i=st;i<=en;i++){loc[v]=i;tot=math.multiply(tot,fn.evaluate(loc));}
     return{type:'sym',out:`\\prod_{${v}=${st}}^{${en}} ${math.parse(f).toTex()} = ${toTex(tot)}`,plain:fmtR(tot),steps:[{d:`Product ${v}=${st}..${en}`,e:fmtR(tot)}]};
+  }
+  // ── Gradient ──────────────────────────────────────────
+  const gradM = expr.match(/^gradient\s*\(\s*(.+?)\s*,\s*\[(.+?)\]\s*\)$/);
+  if (gradM) {
+    const [, gf, varsStr] = gradM;
+    const gvars = varsStr.split(',').map(s => s.trim());
+    const partials = gvars.map(gv => {
+      try { return math.simplify(math.derivative(math.parse(gf), gv)).toString(); }
+      catch { return '?'; }
+    });
+    const stepArr = partials.map((p, i) => ({ d: `∂f/∂${gvars[i]}`, e: p }));
+    const vecTex = partials.map(p => { try { return math.parse(p).toTex(); } catch { return escH(p); } }).join(' \\\\ ');
+    return { type: 'sym', out: `\\nabla f = \\begin{pmatrix} ${vecTex} \\end{pmatrix}`, plain: `[${partials.join(', ')}]`, steps: stepArr };
+  }
+  // ── ODE (RK4) ──────────────────────────────────────────
+  const odeM = expr.match(/^ode\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*,\s*([a-zA-Z_]\w*)\s*,\s*(.+?)\s*,\s*(.+?)\s*,\s*(.+?)\s*\)$/);
+  if (odeM) {
+    const [, of_, oxv, oyv, ox0s, oy0s, ox1s] = odeM;
+    const ox0 = math.evaluate(ox0s, scope), oy0 = math.evaluate(oy0s, scope), ox1 = math.evaluate(ox1s, scope);
+    const { xs: odeXs, ys: odeYs } = rk4Solve(of_, oxv, oyv, ox0, oy0, ox1);
+    const yFinal = odeYs[odeYs.length - 1];
+    return {
+      type: 'sym',
+      out: `${oyv}(${fmtN(ox1)}) \\approx ${fmtN(yFinal)}`,
+      plain: `${oyv}(${ox1}) ≈ ${fmtN(yFinal)}`,
+      steps: [
+        { d: `ODE: d${oyv}/d${oxv} = ${of_}`, e: `IC: ${oyv}(${ox0}) = ${oy0}` },
+        { d: 'Method', e: 'RK4, 500 steps' },
+        { d: `${oyv}(${fmtN(ox1)})`, e: fmtN(yFinal) }
+      ],
+      odeData: { xs: odeXs, ys: odeYs, xv: oxv, yv: oyv }
+    };
   }
   // ── Taylor / Maclaurin series ──────────────────────
   if(/^series\s*\(/.test(expr)){
@@ -2239,14 +1815,27 @@ async function evalCalc(expr){
       const xTerm=Math.abs(a)<1e-12?v:`(${v}-${fmtN(a)})`;
       let dNode=math.parse(f), factorial=1;
       const coeffs=[];
-      for(let k=0;k<=nOrd;k++){
-        try{
-          const loc={...scope,[v]:a};
-          const val=math.evaluate(dNode.toString(),loc);
-          coeffs.push(typeof val==='number'?val/factorial:null);
-          steps.push({d:`k=${k}: f${'\''.repeat(k)}(${fmtN(a)})/${factorial}`,e:fmtN(typeof val==='number'?val/factorial:NaN)});
-        }catch{coeffs.push(null);}
-        if(k<nOrd){try{dNode=math.derivative(dNode,v);}catch{break};factorial*=(k+1);}
+      for (let k = 0; k <= nOrd; k++) {
+        try {
+          const loc = { ...scope, [v]: a };
+          let val = math.evaluate(dNode.toString(), loc);
+          // If NaN at this point, try limit from both sides (removable singularity)
+          if (typeof val !== 'number' || isNaN(val)) {
+            const l1 = math.evaluate(dNode.toString(), { ...scope, [v]: a + 1e-6 });
+            const l2 = math.evaluate(dNode.toString(), { ...scope, [v]: a - 1e-6 });
+            if (typeof l1 === 'number' && typeof l2 === 'number' && Math.abs(l1 - l2) < 1e-4) {
+              val = (l1 + l2) / 2;
+            } else {
+              coeffs.push(null);
+              steps.push({ d: `k=${k}: f${'\''.repeat(k)}(${fmtN(a)})/k!`, e: '(singularity — skipped)' });
+              if (k < nOrd) { try { dNode = math.derivative(dNode, v); } catch { break; } factorial *= (k + 1); }
+              continue;
+            }
+          }
+          coeffs.push(typeof val === 'number' ? val / factorial : null);
+          steps.push({ d: `k=${k}: f${'\''.repeat(k)}(${fmtN(a)})/${factorial}`, e: fmtN(typeof val === 'number' ? val / factorial : NaN) });
+        } catch { coeffs.push(null); }
+        if (k < nOrd) { try { dNode = math.derivative(dNode, v); } catch { break; } factorial *= (k + 1); }
       }
       // Build expression string with exact fractions where possible
       const termExprs=[];
@@ -2282,10 +1871,16 @@ async function evalSolve(expr){
   const sys=expr.match(/^solve\s*\(\s*\[(.+)\]\s*,\s*\[(.+)\]\s*\)$/);
   if(sys){
     const eqs=sys[1].split(',').map(s=>s.trim()), vars=sys[2].split(',').map(s=>s.trim());
-    const sol=solveSys(eqs,vars);
-    const tex=sol.map(r=>`${r.v} = ${fmtN(r.x)}`).join(',\\quad ');
-    return{type:'sym',out:tex,plain:sol.map(r=>`${r.v}=${fmtN(r.x)}`).join(', '),
-      steps:[{d:'System of equations',e:eqs.join(', ')},{d:"Newton's method",e:sol.map(r=>`${r.v}=${fmtN(r.x)}`).join(', ')}]};
+    const sol = solveSys(eqs, vars);
+    const tex = sol.map(r => `${r.v} = ${fmtN(r.x)}`).join(',\\quad ');
+    const warnMsg = sol[0]?.warn ? `\\ \\small{\\color{orange}{⚠ may not have converged, residual ≈ ${sol[0].residual?.toExponential(2)}}}` : '';
+    return { type: 'sym', out: tex + warnMsg, plain: sol.map(r => `${r.v}=${fmtN(r.x)}`).join(', '),
+      steps: [
+        { d: 'System of equations', e: eqs.join(', ') },
+        { d: "Newton's method (multi-start)", e: sol.map(r => `${r.v}=${fmtN(r.x)}`).join(', ') },
+        ...(sol[0]?.warn ? [{ d: '⚠ Warning', e: `Residual: ${sol[0].residual?.toExponential(2)} — result may be approximate` }] : [])
+      ]
+    };
   }
   // Parse solve(eq, var) robustly — split at top-level comma before the last identifier
   let sm = null;
@@ -2353,7 +1948,7 @@ async function evalSolve(expr){
       ? roots.map((r,i)=>`${v}_{${i+1}}=${fmtN(r)}`).join(',\\quad ')
       : `\\text{No real roots found}`;
     return{type:'sym',out:tex,plain:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'No real roots found',
-      steps:[{d:'Rewrite as f=0',e:`${lhs}-(${rhs})=0`},{d:'Numerical root search',e:roots.length?roots.length+' root(s) found':'none found in [-100000, 100000]'},{d:'Solutions',e:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'none'}]};
+      steps:[{d:'Rewrite as f=0',e:`${lhs}-(${rhs})=0`},{d:'Numerical root search',e:roots.length?roots.length+' root(s) found':'none found in [-10000, 10000]'},{d:'Solutions',e:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'none'}]};
   }
   return evalGeneric(expr);
 }
@@ -2403,28 +1998,20 @@ async function evalGeneric(expr){
     if (workerRes.error) throw new Error(workerRes.error);
     const result = math.evaluate(workerRes.res);
 
-    if(result&&result.isComplex){
-      let re = result.re;
-      let im = result.im;
-
-      // Better formatting for pure imaginary or complex
-      if (Math.abs(re) < 1e-10 && Math.abs(im - 1) < 1e-10) return {type:'sym', out:`i`, plain:`i`};
-      if (Math.abs(re) < 1e-10 && Math.abs(im + 1) < 1e-10) return {type:'sym', out:`-i`, plain:`-i`};
-
-      let outStr = "";
-      if (Math.abs(re) >= 1e-10) {
-        outStr += fmtN(re);
-        if (im > 0) outStr += " + ";
-        else outStr += " - ";
-      } else {
-        if (im < 0) outStr += "-";
+    if (result && result.isComplex) {
+      const re = result.re, im = result.im;
+      const reSmall = Math.abs(re) < 1e-10;
+      const imSmall = Math.abs(im) < 1e-10;
+      if (reSmall && imSmall) return { type: 'sym', out: '0', plain: '0' };
+      if (reSmall) {
+        const imTex = Math.abs(Math.abs(im) - 1) < 1e-10 ? '' : fmtN(Math.abs(im));
+        return { type: 'sym', out: `${im < 0 ? '-' : ''}${imTex}i`, plain: `${im < 0 ? '-' : ''}${imTex || '1'}i` };
       }
-
-      let absIm = Math.abs(im);
-      if (Math.abs(absIm - 1) >= 1e-10) outStr += fmtN(absIm);
-      outStr += "i";
-
-      return{type:'sym',out:outStr,plain:outStr};
+      if (imSmall) return { type: 'sym', out: fmtN(re), plain: fmtN(re) };
+      const imSign = im < 0 ? ' - ' : ' + ';
+      const absImTex = Math.abs(Math.abs(im) - 1) < 1e-10 ? '' : fmtN(Math.abs(im));
+      const out = `${fmtN(re)}${imSign}${absImTex}i`;
+      return { type: 'sym', out, plain: out };
     }
 
     if (typeof result === 'number') {
@@ -2483,7 +2070,7 @@ async function runCell(){
   const id='c'+cellN;
   const nb=document.getElementById('notebook');
   const el=document.createElement('div');
-  el.className='cell'; el.id=id;
+  el.className='cell'; el.id=id; el.dataset.mode=curMode;
   el.innerHTML=`
     <div class="cin">
       <span class="cprompt"><span class="cprompt-num">${cellN}</span><span class="cprompt-arrow">›</span></span>
@@ -2502,7 +2089,7 @@ async function runCell(){
     try{const res=await dispatch(expr,cm); await renderCell(id,res,expr,cm);}
     catch(e){
       try{const res=await evalGeneric(normalise(expr)); await renderCell(id,res,expr,cm);}
-      catch(e2){renderErr(id,e2.message||String(e2));}
+      catch(e2){renderErr(id,categorizeError(e2));}
     }
     persistScope();
     const def = await parseDef(normalise(expr));
@@ -2556,6 +2143,19 @@ async function renderCell(id,res,expr,mode){
     }
   } catch(e){ console.warn('MathJax typeset error',e); }
 
+  if(res.odeData){
+    const pEl=document.getElementById('pl'+id);
+    if(pEl){
+      const div=document.createElement('div');
+      div.className='cell-plot-inner'; div.id='plo'+id;
+      pEl.innerHTML=''; pEl.appendChild(div); pEl.classList.add('open');
+      try{
+        Plotly.newPlot('plo'+id,[{x:res.odeData.xs,y:res.odeData.ys,type:'scatter',mode:'lines',line:{color:'#a99cf2',width:2},name:`${res.odeData.yv}(${res.odeData.xv})`}],
+          pLayout(`${res.odeData.yv}(${res.odeData.xv}) — RK4`),{responsive:true,displayModeBar:false});
+      }catch(e){}
+    }
+  }
+
   if(res.steps&&res.steps.length){
     sEl.innerHTML=res.steps.map((s,i)=>
       `<div class="step"><div class="step-n">${i+1}</div><div class="step-body"><div class="step-d">${escH(s.d)}</div><div class="step-e">${escH(s.e)}</div></div></div>`
@@ -2579,9 +2179,28 @@ async function renderCell(id,res,expr,mode){
 
 function renderErr(id,msg){
   const o=document.getElementById('o'+id);
-  if(o){o.className='cout err';o.innerHTML=`<div class="cout-prompt" style="color:var(--rose);">!</div><div class="cout-body" style="padding-left:32px;">${escH(msg)}</div>`;}
+  const friendly = categorizeError({message: msg});
+  if(o){o.className='cout err';o.innerHTML=`<div class="cout-prompt" style="color:var(--rose);">!</div><div class="cout-body" style="padding-left:32px;">${escH(friendly)}</div>`;}
 }
 
+function renderODEPlot(id, odeData) {
+  const { xs, ys, xv, yv } = odeData;
+  const nb = document.getElementById('notebook');
+  let pd = document.getElementById('pd'+id);
+  if (!pd) {
+    pd = document.createElement('div');
+    pd.id = 'pd'+id;
+    pd.style.cssText = 'border-top:1px solid var(--b0);height:260px;background:var(--s1);';
+    const cell = document.getElementById(id);
+    if (cell) cell.insertBefore(pd, cell.querySelector('.cout'));
+  }
+  pd.style.display = 'block';
+  const trace = {x:xs,y:ys,type:'scatter',mode:'lines',line:{color:'#6ee7b7',width:2},name:`${yv}(${xv})`};
+  const layout = {paper_bgcolor:'transparent',plot_bgcolor:'transparent',margin:{t:20,r:20,b:40,l:50},
+    xaxis:{color:'#6b7280',title:xv,gridcolor:'#2a2d38'},yaxis:{color:'#6b7280',title:yv,gridcolor:'#2a2d38'},
+    font:{color:'#dde1ec',family:'JetBrains Mono,monospace',size:11}};
+  Plotly.newPlot(pd,[trace],layout,{responsive:true,displayModeBar:false});
+}
 function toggleSteps(id){document.getElementById('st'+id).classList.toggle('open');}
 
 // ══════════════════════════════════════════════════════
@@ -2742,6 +2361,8 @@ function symbolicIntegrate(f, v) {
     return { tex:`${math.parse(val).toTex()} ${x}`, plain:`(${val})*${x}` };
   }
   if (f === x) return { tex:`\\frac{${x}^{2}}{2}`, plain:`${x}^2/2` };
+  if (f === `sqrt(${x})`) return { tex: `\\frac{2}{3}${x}^{3/2}`, plain: `(2/3)*${x}^(3/2)` };
+  if (f === `1/${x}` || f === `${x}^(-1)`) return { tex: `\\ln|${x}|`, plain: `log(abs(${x}))` };
   let pm = f.match(new RegExp(`^${x}\\^\\(?(.+?)\\)?$`));
   if (!pm) pm = f.match(new RegExp(`^\\(${x}\\)\\^\\(?(.+?)\\)?$`));
   if (pm) {
@@ -2765,6 +2386,22 @@ function symbolicIntegrate(f, v) {
     } else if (!c.includes(x)) {
       const sub = symbolicIntegrate(inner, x);
       return { tex: `${math.parse(c).toTex()} \\cdot ${sub.tex}`, plain: `(${c})*(${sub.plain})` };
+    }
+  }
+  // Division by constant: expr/c
+  const divM = f.match(new RegExp(`^(.+?)\\s*\\/\\s*(-?[\\d\\.]+(?:\\/[\\d\\.]+)?)$`));
+  if (divM) {
+    const inner2 = divM[1], c2 = divM[2];
+    if (!inner2.includes('/') || inner2.includes('(')) {
+      try {
+        const cv = math.evaluate(c2);
+        if (typeof cv === 'number' && !inner2.includes(c2)) {
+          const sub2 = symbolicIntegrate(inner2, x);
+          if (!sub2.noForm) {
+            return { tex: `\\frac{1}{${math.parse(c2).toTex()}} \\cdot ${sub2.tex}`, plain: `(${sub2.plain})/(${c2})` };
+          }
+        }
+      } catch {}
     }
   }
   const trigTable = [
@@ -2821,7 +2458,7 @@ function symbolicIntegrate(f, v) {
   if (fxN.match(/^1\s*\/\s*sqrt\s*\(1\s*-\s*x\^2\)$/) || fxN === '1/sqrt(1-x^2)') return {tex:`\\arcsin(${x})`, plain:`asin(${x})`};
   if (fxN.match(/^1\s*\/\s*\(1\s*\+\s*x\^2\)$/) || fxN === '1/(1+x^2)') return {tex:`\\arctan(${x})`, plain:`atan(${x})`};
   if (fxN.match(/^-1\s*\/\s*sqrt\s*\(1\s*-\s*x\^2\)$/)) return {tex:`\\arccos(${x})`, plain:`acos(${x})`};
-  if (fxN.match(/^1\s*\/\s*\(x\s*\*\s*sqrt\s*\(x\^2\s*-\s*1\)\)$/) || fxN === '1/(x*sqrt(x^2-1))') return {tex:`\\text{arcsec}(${x})`, plain:`acos(1/${x})`};
+  if (fxN.match(/^1\s*\/\s*\(x\s*\*\s*sqrt\s*\(x\^2\s*-\s*1\)\)$/) || fxN === '1/(x*sqrt(x^2-1))') return {tex:`\\text{arcsec}(${x})`, plain:`acos(1/abs(${x}))`};
   // Integration by parts: x·f(x) patterns
   if (fxN === `x*exp(x)` || fxN === `exp(x)*x`) return {tex:`(${x}-1)e^{${x}}`, plain:`(${x}-1)*exp(${x})`};
   if (fxN === `x*sin(x)` || fxN === `sin(x)*x`) return {tex:`\\sin(${x})-${x}\\cos(${x})`, plain:`sin(${x})-${x}*cos(${x})`};
@@ -3005,54 +2642,166 @@ function doFactor(inner, v) {
       break;
     }
   } catch {}
+  // Try to detect and keep irreducible quadratic factor
+  try {
+    const testVals = [1.1, 2.3, -1.7, 3.1, -2.2];
+    const yVals = testVals.map(t => { try { return math.evaluate(inner, { ...scope, [v]: t }); } catch { return NaN; } });
+    if (yVals.some(isNaN)) return null;
+    const [x1, x2, x3] = testVals, [y1, y2, y3] = yVals;
+    const M = [[x1*x1, x1, 1], [x2*x2, x2, 1], [x3*x3, x3, 1]];
+    const coeffArr = solveL(M, [y1, y2, y3]);
+    if (!coeffArr) return null;
+    const [A, B, C] = coeffArr;
+    if (Math.abs(A) < 1e-6) return null;
+    const disc = B*B - 4*A*C;
+    if (disc < -1e-6) {
+      const Astr = fmtN(A), Bstr = fmtN(B), Cstr = fmtN(C);
+      const quadFactor = `(${Astr}*${v}^2+${Bstr}*${v}+${Cstr})`;
+      let ok = true;
+      for (let i = 3; i < testVals.length; i++) {
+        const t = testVals[i];
+        const actual = yVals[i];
+        const predicted = math.evaluate(quadFactor, { ...scope, [v]: t });
+        if (Math.abs(actual - predicted) > 0.01 * (Math.abs(actual) + 1)) { ok = false; break; }
+      }
+      if (ok) return quadFactor;
+    }
+  } catch {}
   return null;
 }
 
 // ══════════════════════════════════════════════════════
 //  NUMERICAL HELPERS (preserved)
 // ══════════════════════════════════════════════════════
-function numInt(fn,v,a,b,n=1000){
-  const h=(b-a)/n, loc=Object.assign({},scope); let s=0;
-  for(let i=0;i<=n;i++){const x=a+i*h;loc[v]=x;const fx=fn.evaluate(loc);const w=(i===0||i===n)?1:(i%2===0?2:4);s+=w*fx;}
-  return s*h/3;
-}
-function numLim(expr,varName,val){
-  const e=math.compile(expr);
-  const eps1=1e-4, eps2=1e-7;
-  try{
-    const L1=e.evaluate({[varName]:val-eps1,...scope}), R1=e.evaluate({[varName]:val+eps1,...scope});
-    const L2=e.evaluate({[varName]:val-eps2,...scope}), R2=e.evaluate({[varName]:val+eps2,...scope});
-
-    if(L2 > 1e6 && R2 > 1e6 && L2 > L1*10 && R2 > R1*10) return Infinity;
-    if(L2 < -1e6 && R2 < -1e6 && L2 < L1*10 && R2 < R1*10) return -Infinity;
-
-    if(Math.abs(L2-R2)<1e-3) return L2;
-    return NaN;
-  }catch(e){return NaN;}
-}
-function findRoots(f,v,mn=-10000,mx=10000,steps=20000){
-  let fn;
-  try { fn = math.compile(f); } catch(e) { return []; }
-  const loc=Object.assign({},scope),roots=[],dx=(mx-mn)/steps;
-  let px=mn,ps=null;
-  for(let i=0;i<=steps;i++){
-    const x=mn+i*dx;loc[v]=x;
-    let y;
-    try{
-      y=fn.evaluate(loc);
-      if(y && y.isComplex) y = y.re; // handle potential complex results by taking real part
-    }catch{ps=null; continue;}
-    if(typeof y !== 'number' || !isFinite(y)) { ps=null; continue; }
-    const s=Math.sign(y);
-    if(s===0 || Math.abs(y) < 1e-12){ if(!roots.some(rr=>Math.abs(rr-x)<1e-6)) roots.push(x); }
-    else if(ps!==null&&ps!==0&&s!==ps){
-      const r=bisect(fn,v,px,x,Object.assign({},scope));
-      if(r!==null&&!roots.some(rr=>Math.abs(rr-r)<1e-6)) roots.push(r);
-    }
-    px=x;ps=s;
+function numInt(fn, v, a, b, n = 1000) {
+  const h = (b - a) / n;
+  const loc = Object.assign({}, scope);
+  let s = 0, count = 0;
+  for (let i = 0; i <= n; i++) {
+    const x = a + i * h;
+    loc[v] = x;
+    let fx;
+    try { fx = fn.evaluate(loc); } catch { continue; }
+    if (!isFinite(fx) || isNaN(fx)) continue; // skip singularities
+    const w = (i === 0 || i === n) ? 1 : (i % 2 === 0 ? 2 : 4);
+    s += w * fx;
+    count++;
   }
-  loc[v]=0;try{if(Math.abs(fn.evaluate(loc))<1e-8&&!roots.some(r=>Math.abs(r)<1e-6))roots.push(0);}catch{}
-  return roots.map(r=>parseFloat(r.toPrecision(10)));
+  if (count < n * 0.5) return NaN; // too many bad points
+  return s * h / 3;
+}
+function numLim(expr, varName, val) {
+  const e = math.compile(expr);
+  function evalAt(v) {
+    try {
+      const r = e.evaluate({[varName]: v, ...scope});
+      return (typeof r === 'number') ? r : (r && r.re !== undefined ? r.re : NaN);
+    } catch { return NaN; }
+  }
+  // Handle limit as x → ±∞: substitute x = 1/t, limit t→0+
+  if (!isFinite(val)) {
+    const sign = val > 0 ? 1 : -1;
+    const subExpr = expr.replace(new RegExp(`\\b${varName}\\b`, 'g'), `(${sign}/t___)`);
+    try {
+      const g = math.compile(subExpr);
+      const hs = [1e-3, 5e-4, 2.5e-4];
+      const vals = hs.map(h => { try { return g.evaluate({t___: h, ...scope}); } catch { return NaN; }});
+      if (vals.some(isNaN)) return NaN;
+      // Richardson: extrapolate L ≈ vals[2] + (vals[2]-vals[1])*3
+      const L = vals[2] + (vals[2] - vals[1]) * 3;
+      return isFinite(L) ? L : (Math.abs(vals[2]) > 1e6 ? (vals[2] > 0 ? Infinity : -Infinity) : NaN);
+    } catch { return NaN; }
+  }
+  // Use Richardson extrapolation with 3 levels
+  const hs = [1e-4, 5e-5, 2.5e-5];
+  const L = hs.map(h => {
+    const l = evalAt(val - h), r = evalAt(val + h);
+    return (l + r) / 2;
+  });
+  if (L.some(isNaN)) {
+    // Try one-sided (e.g. log at x=0)
+    const hs2 = [1e-5, 5e-6, 2.5e-6].map(h => evalAt(val + h));
+    if (!hs2.some(isNaN)) {
+      // Check if diverging
+      if (Math.abs(hs2[2]) > 1e8) return hs2[2] > 0 ? Infinity : -Infinity;
+      return hs2[2];
+    }
+    return NaN;
+  }
+  // Check for divergence
+  if (Math.abs(L[2]) > 1e8 && Math.abs(L[2]) > Math.abs(L[0]) * 5) {
+    return L[2] > 0 ? Infinity : -Infinity;
+  }
+  // Richardson extrapolation: eliminate O(h^2) error
+  const extrapolated = L[2] + (L[2] - L[1]) / 3;
+  // Verify stability: all three levels agree to 3 sig figs
+  const spread = Math.max(...L) - Math.min(...L);
+  if (spread > 1e-3 * (Math.abs(extrapolated) + 1e-10)) return NaN; // doesn't converge
+  return extrapolated;
+}
+function rk4Solve(fExpr, xVar, yVar, x0, y0, x1, n = 500) {
+  const fn = math.compile(fExpr);
+  const h = (x1 - x0) / n;
+  const xs = [x0], ys = [y0];
+  let x = x0, y = y0;
+  for (let i = 0; i < n; i++) {
+    const ev = (xi, yi) => { try { return fn.evaluate({ ...scope, [xVar]: xi, [yVar]: yi }); } catch { return 0; } };
+    const k1 = ev(x, y);
+    const k2 = ev(x + h/2, y + h/2 * k1);
+    const k3 = ev(x + h/2, y + h/2 * k2);
+    const k4 = ev(x + h, y + h * k3);
+    y += h * (k1 + 2*k2 + 2*k3 + k4) / 6;
+    x += h;
+    xs.push(parseFloat(x.toPrecision(8)));
+    ys.push(parseFloat(y.toPrecision(8)));
+  }
+  return { xs, ys };
+}
+function findRoots(f, v, mn = -10000, mx = 10000, steps = 50000) {
+  let fn;
+  try { fn = math.compile(f); } catch { return []; }
+  const loc = Object.assign({}, scope), roots = [], dx = (mx - mn) / steps;
+  let px = mn, ps = null, pAbsY = null;
+  for (let i = 0; i <= steps; i++) {
+    const x = mn + i * dx; loc[v] = x;
+    let y;
+    try {
+      y = fn.evaluate(loc);
+      if (y && y.isComplex) y = y.re;
+    } catch { ps = null; pAbsY = null; continue; }
+    if (typeof y !== 'number' || !isFinite(y)) { ps = null; pAbsY = null; continue; }
+    const s = Math.sign(y);
+    if (s === 0 || Math.abs(y) < 1e-12) {
+      if (!roots.some(r => Math.abs(r - x) < 1e-6)) roots.push(x);
+    } else if (ps !== null && ps !== 0 && s !== ps) {
+      const r = bisect(fn, v, px, x, Object.assign({}, scope));
+      if (r !== null && !roots.some(rr => Math.abs(rr - r) < 1e-6)) roots.push(r);
+    } else if (pAbsY !== null && Math.abs(y) < 1e-3 && Math.abs(y) < pAbsY) {
+      // Possible double root — refine with Newton
+      let nx = x, nfn = y;
+      for (let it = 0; it < 30; it++) {
+        const h = 1e-6; loc[v] = nx + h;
+        let fp; try { fp = fn.evaluate(loc); } catch { break; }
+        loc[v] = nx - h;
+        let fm; try { fm = fn.evaluate(loc); } catch { break; }
+        const df = (fp - fm) / (2 * h);
+        if (Math.abs(df) < 1e-15) break;
+        const step = -nfn / df;
+        nx += step; loc[v] = nx;
+        try { nfn = fn.evaluate(loc); } catch { break; }
+        if (Math.abs(step) < 1e-10) break;
+      }
+      loc[v] = nx;
+      let fcheck; try { fcheck = fn.evaluate(loc); } catch { fcheck = 1; }
+      if (Math.abs(fcheck) < 1e-6 && !roots.some(r => Math.abs(r - nx) < 1e-5)) roots.push(nx);
+    }
+    px = x; ps = s; pAbsY = Math.abs(y);
+    if (roots.length >= 20) break;
+  }
+  // Also check x=0 explicitly
+  loc[v] = 0;
+  try { if (Math.abs(fn.evaluate(loc)) < 1e-8 && !roots.some(r => Math.abs(r) < 1e-6)) roots.push(0); } catch {}
+  return roots.map(r => parseFloat(r.toPrecision(10)));
 }
 function bisect(fn,v,a,b,s,it=60){
   for(let i=0;i<it;i++){
@@ -3064,23 +2813,57 @@ function bisect(fn,v,a,b,s,it=60){
   }
   return(a+b)/2;
 }
-function solveSys(eqs,vars){
-  const fns=eqs.map(eq=>{let l,r;if(eq.includes('='))[l,r]=eq.split('=').map(s=>s.trim());else{l=eq;r='0';}return math.compile(`(${l})-(${r})`);});
-  let xs=vars.map(()=>1.0);
-  for(let it=0;it<150;it++){
-    const loc=Object.assign({},scope);vars.forEach((v,i)=>loc[v]=xs[i]);
-    const F=fns.map(fn=>fn.evaluate(loc));
-    const J=fns.map(fn=>vars.map((v,j)=>{
-      const s1=Object.assign({},loc),s2=Object.assign({},loc),h=1e-7;
-      s1[v]=xs[j]+h;s2[v]=xs[j]-h;
-      try{return(fn.evaluate(s1)-fn.evaluate(s2))/(2*h);}catch{return 0;}
-    }));
-    const dx=solveL(J,F.map(f=>-f));
-    if(!dx) break;
-    xs=xs.map((x,i)=>x+dx[i]);
-    if(dx.every(d=>Math.abs(d)<1e-12)) break;
+function solveSys(eqs, vars) {
+  const fns = eqs.map(eq => {
+    let l, r;
+    if (eq.includes('=')) [l, r] = eq.split('=').map(s => s.trim());
+    else { l = eq; r = '0'; }
+    return math.compile(`(${l})-(${r})`);
+  });
+  function tryNewton(x0) {
+    let xs = [...x0];
+    for (let it = 0; it < 200; it++) {
+      const loc = Object.assign({}, scope);
+      vars.forEach((v, i) => loc[v] = xs[i]);
+      const F = fns.map(fn => { try { return fn.evaluate(loc); } catch { return NaN; } });
+      if (F.some(isNaN)) return null;
+      const J = fns.map(fn => vars.map((v2, j) => {
+        const s1 = Object.assign({}, loc), s2 = Object.assign({}, loc), h = 1e-7;
+        s1[v2] = xs[j] + h; s2[v2] = xs[j] - h;
+        try { return (fn.evaluate(s1) - fn.evaluate(s2)) / (2 * h); } catch { return 0; }
+      }));
+      const dx = solveL(J, F.map(f => -f));
+      if (!dx) break;
+      xs = xs.map((x, i) => x + dx[i]);
+      if (dx.every(d => Math.abs(d) < 1e-12)) break;
+    }
+    // Check residual
+    const loc2 = Object.assign({}, scope);
+    vars.forEach((v, i) => loc2[v] = xs[i]);
+    const residual = Math.sqrt(fns.reduce((s, fn) => { try { return s + fn.evaluate(loc2) ** 2; } catch { return s + 1e10; } }, 0));
+    return { xs, residual };
   }
-  return vars.map((v,i)=>({v,x:parseFloat(xs[i].toPrecision(10))}));
+  // Try multiple starting points
+  const starts = [
+    vars.map(() => 1.0),
+    vars.map(() => 0.0),
+    vars.map(() => -1.0),
+    vars.map((_, i) => (i + 1) * 2.7),
+    vars.map((_, i) => -(i + 1) * 1.3),
+  ];
+  let best = null;
+  for (const s0 of starts) {
+    const res = tryNewton(s0);
+    if (res && (best === null || res.residual < best.residual)) best = res;
+    if (best && best.residual < 1e-8) break;
+  }
+  if (!best) return vars.map(v => ({ v, x: NaN, warn: true }));
+  const converged = best.residual < 1e-6;
+  return vars.map((v, i) => ({
+    v, x: parseFloat(best.xs[i].toPrecision(10)),
+    warn: !converged,
+    residual: best.residual
+  }));
 }
 function solveL(A,b){
   const n=b.length,M=A.map((row,i)=>[...row,b[i]]);
@@ -3240,6 +3023,12 @@ function clearAll(){
   localStorage.removeItem('cas2-scope');
 }
 
+function toggleSidebar(){
+  const sb = document.querySelector('.sidebar');
+  const btn = document.querySelector('.sb-collapse');
+  sb.classList.toggle('collapsed');
+  btn.textContent = sb.classList.contains('collapsed') ? '›' : '‹';
+}
 function toggleTheme(){
   darkTheme=!darkTheme;
   document.body.classList.toggle('light',!darkTheme);
@@ -3306,7 +3095,7 @@ function buildWelcomeNode(){
   w.innerHTML=`
     <div class="welcome-mark">∑</div>
     <div class="welcome-title">A precision instrument for <em>symbolic mathematics.</em></div>
-    <div class="welcome-sub">Type any expression below — the system will normalize, simplify, plot, or solve as needed. Switch modes from the left panel.</div>
+    <div class="welcome-sub">Welcome — type any expression below and press Enter. The workstation will normalize, simplify, differentiate, integrate, plot, or solve it for you. Pick a discipline from the left panel, or hit ⌘K to search every function.</div>
     <div class="welcome-grid" id="welcome-grid"></div>
     <div class="welcome-tip">
       <span><kbd>Enter</kbd> run</span>
