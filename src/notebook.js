@@ -7,7 +7,7 @@ import { dispatch, classifyDef, cellUses, applyDefinition, transformSub } from '
 import { restoreBaseScope, sanitizeScope, reviveJSON, snapshotScope } from './kernel/mathjs-client.js';
 import { renderTex, explorableTex } from './render.js';
 import { plotInline, plotSeries, exportPlot } from './plot.js';
-import { engine } from './sympy/client.js';
+import { engine, SYMPY_TIMEOUT_MS } from './sympy/client.js';
 import { MODES } from './modes.js';
 
 export const cells = [];        // math cells: {id, n, kind:'math', expr, mode, res, error, explore} | text: {id, kind:'text', content}
@@ -146,7 +146,7 @@ export function deleteCell(cell) {
 }
 // Cells that used the fallback engine while SymPy was loading are upgraded once it is ready.
 export function upgradePendingCells() {
-  const ids = mathCells().filter(c => c.res && c.res.note === 'pending' || (c.error && /exact engine/i.test(c.error))).map(c => c.id);
+  const ids = mathCells().filter(c => c.res && c.res.note === 'pending' || (c.error && /will update automatically/.test(c.error))).map(c => c.id);
   if (ids.length) return recompute({ ids });
   return idle();
 }
@@ -209,6 +209,7 @@ async function renderCell(cell) {
     } catch { renderTex(target, latex); }
   } else renderTex(target, latex);
   if (res.note === 'pending') out.insertAdjacentHTML('beforeend', `<span class="cnote" title="Computed by the fallback engine while SymPy loads; will update automatically">⟳ upgrading</span>`);
+  if (res.note === 'timeout') out.insertAdjacentHTML('beforeend', `<span class="cnote" title="SymPy took longer than ${SYMPY_TIMEOUT_MS / 1000} s on this input, so the fallback engine answered">⏱ exact engine timed out</span>`);
   if (res.note === 'numeric') out.insertAdjacentHTML('beforeend', `<span class="cnote" title="No closed form; value computed numerically">≈ numeric</span>`);
   el.dataset.latex = latex; el.dataset.plain = plain;
   const [label, title] = ENGINE_BADGE[res.engine] || ['', ''];

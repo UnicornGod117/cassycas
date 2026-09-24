@@ -11,7 +11,7 @@ import { numInt, numLim, rk4Solve, findRoots, solveSys } from './kernel/numeric.
 import {
   alg, toAlgebrite, numericallyEqual, symbolicIntegrate, partialFractions, doFactor, doExpand,
 } from './kernel/fallback.js';
-import { sympy, engineReady, engine, EngineUnavailable } from './sympy/client.js';
+import { sympy, engineReady, engine, EngineUnavailable, EngineTimeout } from './sympy/client.js';
 import { toAst, expandPrimes, UnsupportedForSympy } from './sympy/ast.js';
 
 // ── Result constructors ───────────────────────────────
@@ -62,12 +62,15 @@ export function substituteWorkspace(exprStr, keep = []) {
 }
 function ast(exprStr, keep = []) { return toAst(substituteWorkspace(exprStr, keep)); }
 
+// Set when SymPy timed out during the current dispatch (evaluations are serialised).
+let timedOut = false;
 // Run a SymPy op; returns null when the exact engine cannot be used for this input
 // (not loaded, timed out, or the expression uses something only mathjs understands).
 async function exact(op, payload) {
   if (!state.engineEnabled || !engineReady()) return null;
   try { return await sympy(op, payload); }
   catch (e) {
+    if (e instanceof EngineTimeout) timedOut = true;
     if (e instanceof EngineUnavailable || e instanceof UnsupportedForSympy) return null;
     return { error: e.message };
   }
@@ -77,12 +80,14 @@ function tryAst(exprStr, keep) { try { return ast(exprStr, keep); } catch (e) { 
 // automatically once SymPy finishes loading).
 function fallbackNote() {
   if (!state.engineEnabled) return null;
+  if (timedOut) return 'timeout';
   if (engine.status === 'loading' || engine.status === 'restarting') return 'pending';
   return null;
 }
 // Suffix for errors raised when only the exact engine can answer.
 function needsExactHint() {
   if (!state.engineEnabled) return ' (SymPy), which is turned off in Tweaks';
+  if (timedOut) return ' (SymPy), which timed out on this input';
   if (engine.status === 'failed') return ' (SymPy), which could not be loaded';
   return ' (SymPy, still loading — this cell will update automatically)';
 }
@@ -178,6 +183,7 @@ export async function applyDefinition(def) {
 //  DISPATCH
 // ══════════════════════════════════════════════════════
 export async function dispatch(rawExpr, mode) {
+  timedOut = false;
   const expr = normalise(rawExpr);
   const def = classifyDef(expr);
   if (def) return applyDefinition(def);

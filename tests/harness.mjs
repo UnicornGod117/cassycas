@@ -41,12 +41,13 @@ function serve() {
   return new Promise(r => server.listen(0, '127.0.0.1', () => r(server)));
 }
 
-export async function openApp({ engine = true, hash = '', serviceWorkers = 'block' } = {}) {
+// host 'localhost' lets the app register its service worker (it skips 127.0.0.1).
+export async function openApp({ engine = true, hash = '', serviceWorkers = 'block', host = '127.0.0.1' } = {}) {
   const server = await serve();
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  const origin = `http://${host}:${server.address().port}`;
   const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
   const context = await browser.newContext({ serviceWorkers });
-  await context.route(/^https?:\/\/(?!127\.0\.0\.1)/, async route => {
+  await context.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, async route => {
     const url = route.request().url();
     const m = url.match(/cdn\.jsdelivr\.net\/pyodide\/v0\.26\.4\/full\/([^?]+)/);
     const headers = { 'access-control-allow-origin': '*' };

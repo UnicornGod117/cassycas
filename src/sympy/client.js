@@ -9,6 +9,8 @@ const pending = new Map();
 export const SYMPY_TIMEOUT_MS = 20000;
 
 export class EngineUnavailable extends Error {}
+// This input took longer than SYMPY_TIMEOUT_MS; retrying it automatically would time out again.
+export class EngineTimeout extends EngineUnavailable {}
 
 function setStatus(status, detail = '') {
   engine.status = status; engine.detail = detail;
@@ -51,7 +53,7 @@ export function sympy(op, payload = {}, timeout = SYMPY_TIMEOUT_MS) {
     const timer = setTimeout(() => {
       if (!pending.has(id)) return;
       pending.delete(id);
-      reject(new EngineUnavailable('The exact engine timed out'));
+      reject(new EngineTimeout('The exact engine timed out'));
       // The interpreter cannot be interrupted: restart it (served from cache, a few seconds).
       if (worker) worker.terminate();
       worker = null;

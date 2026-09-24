@@ -704,4 +704,10 @@ math-field{
 @media (max-width: 760px){
   .sidebar{display:none;} .notebook{padding:16px 12px 24px;} .input-area{padding:10px 12px 12px;}
   .brand-sub,.cmd-pill span:nth-child(2){display:none;} .topbar{gap:6px;padding:0 8px;overflow-x:auto;}
+  /* The top bar scrolls sideways instead of squashing its controls; the engine pill keeps its dot. */
+  .topbar > *{flex-shrink:0;} .topbar{scrollbar-width:none;} .topbar::-webkit-scrollbar{display:none;}
+  .brand-name,#engine-text,.topbar-divider{display:none;}
+  .input-row{gap:6px;} .run-btn{padding-left:14px;padding-right:14px;} .run-btn kbd{display:none;}
+  /* Keyboard hints and the mode badge cost more room than they are worth on a phone. */
+  .input-hint,.cmeta .cbadge:not(.cbadge-engine){display:none;} .cout-body{padding-left:10px;}
 }

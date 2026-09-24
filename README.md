@@ -1,24 +1,24 @@
 # CassyCAS — Symbolic Workstation
 
-A precision, browser-native instrument for symbolic mathematics. Single HTML file, no install, no backend, no telemetry — everything runs client-side. Libraries are loaded from public CDNs (see *Tech stack*), so a network connection is needed on first load.
+A browser-native notebook for symbolic mathematics. Exact answers come from **SymPy running in your browser** (WebAssembly, via Pyodide); there is no server, no account and no telemetry. The whole app builds to one self-contained HTML file.
 
 ---
 
-## What it does now (Level 0 — the baseline)
+## What it does
 
 | Domain | Capabilities |
 |--------|-------------|
-| **Algebra** | Simplify (including rational cancellation), expand, factor over ℚ, collect in powers of a variable, partial fractions (`apart`), polynomial division (`polydiv`) |
-| **Calculus** | Symbolic differentiation (nth order, sees through user functions), antiderivatives (structural rules + standard forms + Algebrite — every result is verified by differentiating it back), definite integration (fundamental theorem when a verified antiderivative exists, otherwise adaptive Simpson; infinite bounds supported), numerical limits (one- and two-sided, divergence and non-existence detection), sums, products, **Taylor / Maclaurin series** up to order 20, RK4 ODE solver |
-| **Solving** | Exact roots of polynomial equations, including symbolic parameters and complex roots; numerical root finding for everything else (bisection plus touching-root detection over ±10 000, nearest-to-origin first, poles rejected); nonlinear systems (multi-start Newton–Raphson with finite-difference Jacobian) |
-| **Linear Algebra** | Determinant, inverse, transpose, eigenvalues/vectors, trace, rank, cross/dot products, vector and matrix norms |
-| **Statistics** | Mean, std, variance, median, MAD, quantiles, correlation, skew/kurtosis (via MathJS) |
-| **Trigonometry** | All standard / inverse / hyperbolic functions; a global Deg/Rad mode (explicit units such as `30 deg` are always honoured) |
-| **Units** | Full dimensional analysis, SI/imperial/temperature conversion, prefix handling |
-| **Logic** | Boolean, bitwise, combinatorics (`combinations`, `permutations`, factorial) |
-| **Visualization** | Inline 2D plots per cell, full 2D/3D graph tab, multi-trace, PNG export |
+| **Algebra** | Exact arithmetic and radicals (`sqrt(8)+sqrt(2) → 3*sqrt(2)`), simplify, expand, factor, collect, partial fractions (`apart`), together/cancel, polynomial division |
+| **Calculus** | Derivatives and antiderivatives with steps (SymPy's rule-based integrator, including non-elementary results such as `erfi`), definite and improper integrals, one- and two-sided limits (oscillation is reported as "does not exist"), series in ascending powers of `(x - a)` including Laurent series, closed-form sums and products, gradients |
+| **Solving** | Exact solutions of polynomial and transcendental equations (general solutions, parameters, complex roots), inequalities, systems, ODEs with initial conditions (`dsolve`) |
+| **Linear algebra** | Exact determinant, inverse, eigenvalues/vectors, RREF, rank, norms |
+| **Numerics, statistics, units, logic** | MathJS: statistics, units and dimensional analysis, bitwise and boolean logic, combinatorics |
+| **Trigonometry** | Exact values (`sin(pi/6) → 1/2`); a global Deg/Rad mode for numerical evaluation |
+| **Plots** | Automatic plots for results in one variable, with sliders for parameters; a full 2D/3D graph tab; PNG export |
 
-**Interface**: Monaco editor with custom CAS language tokens, MathLive visual input, live LaTeX preview, command palette (`⌘K`), step-by-step breakdowns, session save/load (`.cas` JSON — definitions *and* cells), reactive re-evaluation of dependent cells, dark/light themes, accent palette, density modes.
+**Notebook.** Cells form a dependency graph: editing a definition re-runs only the cells below it that use it. Numeric definitions get sliders. Click any part of a result to differentiate, integrate, factor or plot that sub-expression. Cells can be edited in place. The notebook is kept in the browser, exported as `.cas`, LaTeX or text, and shared as a link — the notebook is compressed into the URL fragment, so it never reaches a server.
+
+**Interface.** CodeMirror editor with autocomplete and history, MathLive visual input, KaTeX rendering, command palette (`⌘K`), step-by-step breakdowns, themes and accents.
 
 ---
 
@@ -32,53 +32,77 @@ Tab             autocomplete
 Alt+↑/↓         input history
 ```
 
-Definitions persist across cells:
 ```
 a = 5
 f(x) = a*x^2 + 3*x - 1
-derivative(f(x), x)              # 2*a*x + 3
-solve(f(x) = 0, x)               # exact roots (in terms of a) + numeric values
-series(sin(x), x, 0, 8)          # Maclaurin to 8th order
-integrate(x*sin(x), x)           # sin(x) - x*cos(x) + C
-factor(x^3 - 6*x^2 + 11*x - 6)   # (x-1)(x-2)(x-3)
-limit(abs(x)/x, x, 0, "+")       # one-sided limit → 1
-apart((x^2+1)/(x^3-x), x)        # partial fractions
+diff(f(x), x)                         # 10*x + 3
+solve(f(x) = 0, x)                    # x = -sqrt(29)/10 - 3/10 ≈ -0.8385164807, …
+integrate(x*sin(x), x)                # -x*cos(x) + sin(x) + C, with steps
+limit(sin(1/x), x, 0)                 # does not exist (oscillates between -1 and 1)
+series(cos(x), x, pi, 4)              # -1 + (x - pi)^2/2 - (x - pi)^4/24 + O((x - pi)^5)
+sum(k^2, k, 1, n)                     # n*(n + 1)*(2*n + 1)/6
+dsolve(y'' + y = 0, y(x), y(0) = 1)   # y(x) = C1*sin(x) + cos(x)
 ```
 
-**Exact vs Approx.** Arithmetic is always done in floating point. *Exact* mode presents results that are (to rounding) simple rationals as fractions — `1/3 + 1/6 → 1/2` — and shows closed forms such as `sqrt(2)` next to their values. *Approx* mode shows decimals. Switching modes re-evaluates the notebook without changing any definitions.
+**Exact vs Approx.** *Exact* shows closed forms, with a decimal alongside irrational values; *Approx* shows decimals. Switching re-evaluates the notebook without changing definitions.
 
-**Degree mode** affects numerical evaluation (`sin(30+60) → 1`, including inside user-defined functions). Symbolic calculus — derivatives, antiderivatives, series — is always in radians.
+**Degree mode** affects numerical evaluation (`sin(30+60) → 1`, including in user functions). Symbolic calculus is always in radians.
+
+### Optional Claude assistant
+
+Paste an Anthropic API key under *Tweaks* to enable two extras: turning a plain-English request ("area under x² from 0 to 3") into CassyCAS input, and an *Explain* button on results. The key is stored only in this browser's `localStorage` and is sent only to `api.anthropic.com`. Suggested input is placed in the editor for you to review; the assistant never runs anything itself. Without a key, nothing is sent anywhere.
 
 ---
 
-## Tech stack
+## Architecture
 
-| Layer | Library | Role |
-|-------|---------|------|
-| Math kernel | **MathJS 12** | Parse, simplify, derivative, evaluate, units (evaluation runs in a Web Worker with a 10 s watchdog) |
-| Computer algebra | **Algebrite 1.4** | Factoring, polynomial roots, rational simplification, integration fallback |
-| Visual input | **MathLive** | LaTeX ↔ ASCII math input |
-| Render | **MathJax 3** | High-quality LaTeX in output cells |
-| Plots | **Plotly.js** | 2D/3D interactive graphs |
-| Editor | **Monaco** | Code input with custom CAS language |
+```
+src/
+  main.js, notebook.js, editor.js,     UI, reactive notebook, CodeMirror,
+  render.js, plot.js                   KaTeX, Plotly
+  engine.js                            evaluator: SymPy first, JavaScript fallback
+  sympy/                               exact engine: Pyodide worker, JSON bridge (bridge.py)
+  kernel/                              fallback engine: MathJS worker, Algebrite, numerics
+  assistant.js                         optional Claude assistant
+public/                                manifest, icon, service worker
+tests/                                 end-to-end tests and the differential corpus
+```
 
-No bundler, no transpiler. CDN scripts, plain JS, hand-rolled CSS variables for theming. The jsDelivr-hosted scripts carry Subresource Integrity hashes.
+**Two engines.** SymPy 1.12 on Pyodide 0.26 runs in a Web Worker and is downloaded lazily from jsDelivr on first use (about 18 MB, hash-checked by Pyodide). Until it is ready — or if it is switched off in *Tweaks*, times out, or cannot be downloaded — the JavaScript engine (MathJS, Algebrite and numerical methods) answers instead. Its results are marked, and cells it computed while SymPy was loading are re-run automatically once SymPy is ready. The fallback is built to decline rather than guess: when it cannot answer reliably (a quintic it cannot factor, a limit that does not converge numerically, a symbolic sum) it says that the exact engine is needed.
+
+**No code injection.** User input never becomes Python source. The JavaScript side parses input with MathJS and sends a JSON expression tree; `bridge.py` checks every node type, operator and function name against whitelists before building SymPy objects.
+
+**Offline.** When the app is served over HTTP(S), a service worker caches the app shell and, after the first visit, the versioned Pyodide and SymPy files, so later visits work without a network. Opened as a local file, the app still works but downloads SymPy each session.
+
+**Size.** `dist/index.html` is about 7.9 MB (2.5 MB gzipped) with CodeMirror, KaTeX and its fonts, MathLive, MathJS, Algebrite and Plotly inlined. On first use SymPy adds about 18 MB (the Python runtime, its standard library, SymPy and mpmath).
+
+**Why SymPy.** Giac was the other candidate. Its npm package is native C++ source rather than WebAssembly, and GeoGebra's WebAssembly build could not be obtained reproducibly, so it was ruled out.
+
+---
 
 ## Development
 
-```
-npm install                 # test-only dependencies (pinned copies of the CDN libraries + Playwright)
-npx playwright install chromium
-npm test
+```bash
+npm install
+npm run test:setup     # SymPy/mpmath wheels into tests/.wheels, plus Playwright's Chromium (needs pip)
+npm run dev            # Vite dev server
+npm run build          # dist/index.html
+npm test               # end-to-end suites (build first)
 ```
 
-The suite (`tests/`) loads the app in headless Chromium with every CDN request served from `node_modules`, so it runs offline. Set `CHROMIUM_PATH` to use an existing Chromium binary.
+The tests load `dist/` in headless Chromium. Pyodide is served from the `pyodide` npm package and SymPy from `tests/.wheels`, so the suite runs offline. Set `CHROMIUM_PATH` to use an existing Chromium binary, and `CAS_ENGINES=exact` or `CAS_ENGINES=fallback` to test one engine only.
+
+- `tests/cas.test.mjs` — behaviour of the app, run once per engine.
+- `tests/corpus.test.mjs` — the differential corpus: 473 generated problems (arithmetic, derivatives, antiderivatives, definite integrals, limits, polynomial roots, factor/expand/simplify, sums) with references from CPython SymPy. The exact engine must agree with every reference; the fallback may decline but must never be wrong. Regenerate with `python tests/corpus/generate.py` (after `pip install sympy==1.12 mpmath==1.3.0`); CI checks that the committed corpus is up to date.
+- `tests/offline.test.mjs` — the service worker serves the app and SymPy with the network off.
+
+CI runs all of this on every push. Pushes to `main` also deploy `dist/` to GitHub Pages (enable *Settings → Pages → Source: GitHub Actions* once).
 
 ---
 
 # Deep expansion roadmap
 
-The architecture is intentionally minimal — single HTML file, no build step. That constraint defines the ceiling. Below is a 10-level roadmap, ordered by depth and implementation cost. Each item names the specific algorithm or technique that would implement it, so the work is concretely scoped rather than aspirational.
+This roadmap was written for the original single-file app. The rebuild on SymPy delivered **4.1** (workers), **4.3** (SymPy via Pyodide), **4.6** (reactive evaluation), **5.2** (shareable URLs), **7.2** (differential testing against SymPy), **8.1** (natural language to expression) and **8.3** (explanations), and SymPy now covers much of Level 1 and **2.1**. Below is the original 10-level roadmap, ordered by depth and implementation cost. Each item names the specific algorithm or technique that would implement it, so the work is concretely scoped rather than aspirational.
 
 The biggest single leap in **practical utility** would come from items **1.1 + 1.2 + 2.1** together (polynomial engine + partial fractions + ODEs) — that covers most undergraduate mathematics. The biggest leap in **theoretical capability** would come from **1.4 + 5.1** (Risch + Gröbner bases). The biggest leap in **interface coolness** is **6.x + 8.x** (visualization + AI augmentation).
 
@@ -705,7 +729,7 @@ The end-game. Embed a tactic-based prover (a Lean 4 or Coq kernel via WASM) and 
 
 These shape every decision:
 
-1. **Single-file simplicity is sacred.** No `npm install`. The whole app downloads in one HTML file. Optional WASM modules and Pyodide load lazily when the user opts in.
+1. **Single-file delivery.** The build produces one HTML file that works from a web server or from disk. Heavy runtimes (Pyodide, SymPy) load lazily and are cached.
 2. **Client-side only.** No telemetry, no backend, no auth. The user's mathematics never leaves their browser.
 3. **Layered escape hatches.** Symbolic first, numeric fallback, never silent failure. Every result carries provenance.
 4. **Exact when possible, approximate by toggle.** Float noise is the enemy. The Exact/Approx toggle is a top-level UI control for a reason.
@@ -739,12 +763,12 @@ Total: a credible roadmap to a system that meets or exceeds undergraduate-CAS co
 
 ## Contributing
 
-Issues and PRs welcome. The codebase is one HTML file — pop it open and read it top-to-bottom in an afternoon. Areas where help is most appreciated:
+Issues and PRs welcome. Start with `src/engine.js` (how inputs are routed) and `src/sympy/bridge.py` (what SymPy is asked to do). Areas where help is most appreciated:
 
-- Symbolic integration patterns (more rules in `symbolicIntegrate`)
+- New bridge operations (whitelisted in `bridge.py`), with corpus templates that test them
 - Polynomial engine prototypes (Level 1.1)
 - Visualization plug-ins (Level 6)
 - Notebook examples for the gallery (Level 9.1)
 - Bug reports with minimal reproducible expressions
 
-Build philosophy: small commits, tests for new rules, no unnecessary dependencies, no build step that doesn't survive `view-source:`.
+Build philosophy: small commits, a test or corpus template for every new capability, no unnecessary dependencies.
