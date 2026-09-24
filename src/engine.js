@@ -4,15 +4,18 @@ import {
   math, freeSymbols, parseTopLevelArgs, xarg, splitRelation, normalise, inlineUserFns,
   prettify, texOf, escTex, isIdent, stripParens,
 } from './expr.js';
-import { fmtN, fmtNum, texNum, toTex, fmtR, fmtComplex, texComplex, asRational, toReal } from './format.js';
+import { fmtN, fmtNum, texNum, toTex, fmtR, fmtComplexDec as fmtComplex, texComplexDec as texComplex, asRational, toReal } from './format.js';
 import { state, scope, userFns, varDefs, CONSTANT_NAMES, IDENT_RE, FORBIDDEN_NAMES } from './state.js';
 import { ctx, workerEval } from './kernel/mathjs-client.js';
 import { numInt, numLim, rk4Solve, findRoots, solveSys } from './kernel/numeric.js';
+import { JS_NUMBER_THEORY, NotCertain } from './kernel/numtheory.js';
 import {
   alg, toAlgebrite, numericallyEqual, symbolicIntegrate, partialFractions, doFactor, doExpand,
 } from './kernel/fallback.js';
 import { sympy, engineReady, engine, EngineUnavailable, EngineTimeout } from './sympy/client.js';
 import { toAst, expandPrimes, UnsupportedForSympy } from './sympy/ast.js';
+import { TOOLS, toolSpec } from './tools.js';
+import { parsePlotItems, plotSpecTex } from './plotspec.js';
 
 // ── Result constructors ───────────────────────────────
 // A result may carry `expr` (a mathjs-parseable plain expression) which the renderer makes
@@ -191,6 +194,8 @@ export async function dispatch(rawExpr, mode) {
   if (/^dsolve\s*\(/.test(e)) return evalDsolve(e);
   if (/\bto\b/.test(e) && mode !== 'calculus') return evalUnits(e);
   const head = (e.match(/^([A-Za-z_]\w*)\s*\(/) || [])[1];
+  if (head === 'plot' && isWholeCall(e, head)) return evalPlot(parseTopLevelArgs(xarg(e, head)));
+  if (head && TOOLS[head] && isWholeCall(e, head)) return evalTool(head, parseTopLevelArgs(xarg(e, head)), e);
   if (head && ALGEBRA_OPS[head]) return ALGEBRA_OPS[head](e);
   if (head && CALCULUS_OPS[head]) return CALCULUS_OPS[head](e);
   if (head === 'solve' || head === 'zeros' || head === 'roots') return evalSolve(e, head);
@@ -217,6 +222,8 @@ async function evalExpression(expr) {
     }
   }
   if (!mjError) return valResult(value, expr);
+  // Only an unknown name makes an expression symbolic; any other evaluation error is real.
+  if (!/Undefined (symbol|function)/i.test(mjError.message)) throw mjError;
   // Symbolic fallback: mathjs simplification
   const node = math.parse(expr);
   let s = node; try { s = math.simplify(node); } catch {}
@@ -352,6 +359,7 @@ const ALGEBRA_OPS = {
 // ── Calculus ──────────────────────────────────────────
 async function evalDerivative(e) {
   const args = parseTopLevelArgs(xarg(e, 'derivative'));
+  if (args.length >= 3 && args.slice(1).every(a => IDENT_RE.test(a))) return evalTool('pdiff', args);   // ∂²f/∂x∂y
   const f = args[0], v = args[1] || 'x', order = args[2] ? parseInt(args[2], 10) : 1;
   if (!f || !IDENT_RE.test(v)) throw new Error('Use derivative(f, x) or derivative(f, x, n).');
   if (!(order >= 1 && order <= 20)) throw new Error('derivative order must be an integer between 1 and 20.');
@@ -368,6 +376,7 @@ async function evalDerivative(e) {
 
 async function evalIntegrate(e) {
   const args = parseTopLevelArgs(xarg(e, 'integrate'));
+  if (args.length >= 2 && args.slice(1).every(a => /^\[.*\]$/s.test(a))) return evalTool('integrate_multi', args);  // ∫∫ f dx dy
   const f = args[0], v = args[1] || 'x';
   if (!f || !IDENT_RE.test(v)) throw new Error('Use integrate(f, x) or integrate(f, x, a, b).');
   const definite = args.length >= 4;
@@ -680,6 +689,114 @@ function matrixOp(kind) {
   };
 }
 const MATRIX_OPS = { eigs: matrixOp('eigs'), rref: matrixOp('rref'), nullspace: matrixOp('nullspace'), charpoly: matrixOp('charpoly') };
+
+// ── Tools (named SymPy capabilities, see tools.js / sympy/tools.py) ──
+function isWholeCall(e, head) {
+  return e.trim().replace(/\s+/g, '') === `${head}(${xarg(e, head)})`.replace(/\s+/g, '');
+}
+const LONE_EQ = /(?<![<>!=])=(?!=)/;
+// "lhs = rhs" → "(lhs) == (rhs)" so it reaches SymPy as an equation.
+function relationText(s) {
+  if (!LONE_EQ.test(s)) return s;
+  const { lhs, rhs, rel } = splitRelation(s);
+  if (rel !== '=') throw new Error('Expected an equation with "=".');
+  return `(${lhs}) == (${rhs})`;
+}
+const listItems = (s) => /^\[.*\]$/s.test(s) ? parseTopLevelArgs(s.slice(1, -1)) : [s];
+// Match argument strings to a tool's kinds; returns [{kind, text}] with defaults filled in.
+function matchToolArgs(name, spec, args) {
+  const kinds = spec.args.split(',');
+  const out = [];
+  let i = 0;
+  for (const k of kinds) {
+    const base = k[0], rep = k.endsWith('*'), opt = k.endsWith('?'), def = k.includes('=') ? k.split('=')[1] : null;
+    if (rep) { while (i < args.length) out.push({ kind: base, text: args[i++] }); continue; }
+    if (i < args.length) out.push({ kind: base, text: args[i++] });
+    else if (def) out.push({ kind: base, text: def });
+    else if (!opt) throw new Error(`Use ${spec.sig || name + '(…)'}.`);
+  }
+  if (i < args.length) throw new Error(`Too many arguments. Use ${spec.sig || name + '(…)'}.`);
+  return out;
+}
+async function evalTool(name, args, whole) {
+  const spec = toolSpec(name);
+  const parts = matchToolArgs(name, spec, args);
+  const keep = new Set();
+  for (const { kind, text } of parts) {
+    if (kind === 'v' || kind === 'V') listItems(text).forEach(t => { if (!IDENT_RE.test(t)) throw new Error(`"${t}" should be a variable name. Use ${spec.sig}.`); keep.add(t); });
+    if (kind === 'R') { const [v] = listItems(text); if (!IDENT_RE.test(v || '')) throw new Error('Each range looks like [x, a, b].'); keep.add(v); }
+    if (kind === 'f') { const m = text.match(/^[A-Za-z_]\w*\s*\(\s*([A-Za-z_]\w*)\s*\)$/); if (!m) throw new Error(`Name the sequence like a(n). Use ${spec.sig}.`); keep.add(m[1]); }
+  }
+  const unavailable = () => {
+    if (spec.fallback === 'mathjs' && whole) return evalExpression(whole);
+    const js = JS_TOOLS[name];
+    if (js) {
+      try {
+        const res = js(parts.map(p => p.text), parts);
+        res.note = res.note ?? fallbackNote();
+        return res;
+      } catch (err) { if (!(err instanceof NotCertain)) throw err; }
+    }
+    throw new Error(`${name}() needs the exact engine${needsExactHint()}.`);
+  };
+  if (!state.engineEnabled || !engineReady()) return unavailable();
+  let payload;
+  try { payload = parts.map(({ kind, text }) => ast(kind === 'r' ? relationText(text) : text, [...keep])); }
+  catch (err) { if (err instanceof UnsupportedForSympy) return unavailable(); throw err; }
+  const r = await exact('tool', { name, args: payload });
+  if (!r) return unavailable();
+  if (r.error) throw new Error(r.error);
+  const steps = stepList(r.steps);
+  const argTex = parts.map(({ kind, text }) => { try { return math.parse(kind === 'r' ? relationText(text) : text).toTex({ parenthesis: 'auto' }); } catch { return `\\text{${escTex(text)}}`; } });
+  let res;
+  if (r.display) res = texResult(r.display.latex, r.display.plain, { engine: 'sympy', steps });
+  else {
+    const prefix = r.prefix ?? `\\operatorname{${escTex(name)}}\\left(${argTex.join(',\\ ')}\\right) = `;
+    res = presentValue(r.value, { prefix, steps, plotVar: false });
+    if (r.numeric) res.note = 'numeric';
+  }
+  if (Array.isArray(r.plot) && r.plot.length) {
+    const v = r.plotVar || 'x';
+    res.plot = r.plot.length === 1 ? { expr: r.plot[0], v } : null;
+    if (r.plot.length > 1) res.plotSpec = { items: r.plot.map(expr => ({ kind: 'fn', expr, label: expr })), v };
+  }
+  return res;
+}
+
+// Tools the JavaScript engine can answer with certainty while SymPy is unavailable.
+const substituted = (text, keep = []) => substituteWorkspace(text, keep).toString();
+const JS_TOOLS = {
+  ...Object.fromEntries(Object.entries(JS_NUMBER_THEORY).map(([n, fn]) => [n, (texts) => {
+    const r = fn(texts.map(t => substituted(t)));
+    return texResult(r.latex, r.plain, { engine: 'js' });
+  }])),
+  // ∫∫ f over [x, a, b], [y, c(x), d(x)], …: nested adaptive quadrature (innermost range first).
+  integrate_multi: (texts) => {
+    const ranges = texts.slice(1).map(listItems);
+    if (ranges.length > 3) throw new NotCertain('more than three nested integrals');
+    const vars = ranges.map(r => r[0]);
+    let inner = substituteWorkspace(texts[0], vars).compile();
+    for (const [v, a, b] of ranges) {
+      const prev = inner, ca = substituteWorkspace(a, vars).compile(), cb = substituteWorkspace(b, vars).compile();
+      inner = { evaluate: (loc) => numInt(prev, v, toReal(ca.evaluate(loc)), toReal(cb.evaluate(loc)), loc, ranges.length > 1 ? 1e-10 : 1e-11) };
+    }
+    const val = inner.evaluate(ctx());
+    if (!isFinite(val)) throw new NotCertain('the integral did not converge numerically');
+    const pre = ranges.slice().reverse().map(([, a, b]) => `\\int_{${texOf(a)}}^{${texOf(b)}}`).join('') + ` ${texOf(texts[0])}\\, ` + vars.map(v => `d${v}`).join('\\,') + ' = ';
+    const res = texResult(pre + texNum(val), fmtNum(val), { engine: 'js', steps: [{ d: 'Method', e: 'Nested adaptive Simpson quadrature' }] });
+    res.note = 'numeric';
+    return res;
+  },
+};
+
+// plot(sin(x), x^2 + y^2 = 4, [cos(t), sin(t)], r = 1 + cos(theta), [x, -5, 5])
+function evalPlot(args) {
+  const spec = parsePlotItems(args);
+  const res = texResult(plotSpecTex(spec), `plot(${args.join(', ')})`, { engine: null });
+  res.type = 'plot';
+  res.plotSpec = spec;
+  return res;
+}
 
 // ── Units ─────────────────────────────────────────────
 async function evalUnits(expr) {

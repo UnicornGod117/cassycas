@@ -50,6 +50,10 @@ function complexParts(re, im, num, tex) {
 }
 export const fmtComplex = (re, im) => complexParts(re, im, fmtNum, false);
 export const texComplex = (re, im) => complexParts(re, im, texNum, true);
+// Decimal forms for the "≈" part of a result, which should never be rationalised.
+const texDec = (n) => { const s = fmtN(n), m = s.match(/^(-?[\d.]+)e([+-]?\d+)$/); return m ? `${m[1]}\\times 10^{${parseInt(m[2], 10)}}` : s; };
+export const fmtComplexDec = (re, im) => complexParts(re, im, fmtN, false);
+export const texComplexDec = (re, im) => complexParts(re, im, texDec, true);
 export function toTex(val) {
   try {
     if (typeof val === 'number') return texNum(val);

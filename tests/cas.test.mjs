@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { openApp, run, hasWheels } from './harness.mjs';
+import { openApp, run, hasWheels, latexProblems } from './harness.mjs';
 
 const ENGINES = (process.env.CAS_ENGINES || 'exact,fallback').split(',');
 
@@ -75,6 +75,10 @@ for (const name of ENGINES) {
         // Without SymPy the fallback may decline, but only by pointing at the exact engine.
         assert.ok(!r.error || (!exact && /exact engine/.test(r.error)), `${expr}: ${r.error}`);
       }
+    });
+
+    test('every rendered result is well-formed LaTeX', async () => {
+      assert.deepEqual(await latexProblems(page), []);
     });
 
     test('solve: polynomials exactly, others numerically', async () => {

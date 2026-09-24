@@ -3,9 +3,10 @@ import { math, splitEquation } from '../expr.js';
 import { asRational, toReal } from '../format.js';
 import { ctx } from './mathjs-client.js';
 
-// Adaptive Simpson quadrature; infinite ranges are mapped onto finite ones.
-export function numInt(fn, v, a, b) {
-  const loc = ctx();
+// Adaptive Simpson quadrature; infinite ranges are mapped onto finite ones. `base` supplies the
+// values of outer variables (nested integrals); `tol` is the relative error target.
+export function numInt(fn, v, a, b, base = null, tol = 1e-11) {
+  const loc = base ? Object.assign({}, base) : ctx();
   let g = x => { loc[v] = x; try { return toReal(fn.evaluate(loc)); } catch { return NaN; } };
   let sign = 1;
   if (a > b) { [a, b] = [b, a]; sign = -1; }
@@ -35,7 +36,7 @@ export function numInt(fn, v, a, b) {
   let total = 0;
   for (let i = 0; i < panels; i++) {
     const l = a + i * hw, r = l + hw, fl = safe(l), fr = safe(r), fm = safe((l + r) / 2);
-    total += rec(l, r, fl, fm, fr, hw / 6 * (fl + 4 * fm + fr), 1e-11 * Math.max(1, width), 40);
+    total += rec(l, r, fl, fm, fr, hw / 6 * (fl + 4 * fm + fr), tol * Math.max(1, width), 40);
   }
   return sign * total;
 }

@@ -6,7 +6,7 @@ import { state, scope, userFns, varDefs, CONSTANT_NAMES } from './state.js';
 import { dispatch, classifyDef, cellUses, applyDefinition, transformSub } from './engine.js';
 import { restoreBaseScope, sanitizeScope, reviveJSON, snapshotScope } from './kernel/mathjs-client.js';
 import { renderTex, explorableTex } from './render.js';
-import { plotInline, plotSeries, exportPlot } from './plot.js';
+import { plotInline, plotSeries, exportPlot, plotSpecInline } from './plot.js';
 import { engine, SYMPY_TIMEOUT_MS } from './sympy/client.js';
 import { MODES } from './modes.js';
 
@@ -240,7 +240,8 @@ async function renderCell(cell) {
     `<button class="cact warm" data-action="edit">Edit</button>`, `<button class="cact" data-action="delete">Delete</button>`);
   acts.innerHTML = a.join('');
 
-  if (res.odeData) { plotEl.classList.add('open'); plotSeries(plotEl, res.odeData.xs, res.odeData.ys, `${res.odeData.yv}(${res.odeData.xv}) — RK4`, res.odeData.xv, res.odeData.yv); }
+  if (res.plotSpec && (res.type === 'plot' || state.autoPlot)) { plotEl.classList.add('open'); plotSpecInline(plotEl, res.plotSpec); }
+  else if (res.odeData) { plotEl.classList.add('open'); plotSeries(plotEl, res.odeData.xs, res.odeData.ys, `${res.odeData.yv}(${res.odeData.xv}) — RK4`, res.odeData.xv, res.odeData.yv); }
   else if (plot && state.autoPlot && res.type !== 'val') { plotEl.classList.add('open'); plotInline(plotEl, plot.expr, plot.v, plot.title); }
 }
 function safeTex(s) { try { return math.parse(s).toTex({ parenthesis: 'auto' }); } catch { return `\\text{${escTex(s)}}`; } }
@@ -251,6 +252,7 @@ function plotCandidate(cell) {
   if (r.type === 'vardef' && r.symbolic && r.expr) {
     try { const fs = require_free(r.expr); if (fs.length === 1) return { expr: r.expr, v: fs[0], title: r.name }; } catch {}
   }
+  if (r.plotSpec) return { spec: r.plotSpec };
   if (r.plot) return typeof r.plot === 'string' ? { expr: r.plot, v: 'x' } : r.plot;
   return null;
 }
@@ -377,6 +379,7 @@ export function bindNotebookEvents({ explain }) {
       case 'plot': {
         const p = plotCandidate(cell);
         if (plotEl.classList.contains('open')) { plotEl.classList.remove('open'); plotEl.innerHTML = ''; }
+        else if (p && p.spec) { plotEl.classList.add('open'); plotSpecInline(plotEl, p.spec); }
         else if (p) { plotEl.classList.add('open'); plotInline(plotEl, p.expr, p.v, p.title); }
         break;
       }

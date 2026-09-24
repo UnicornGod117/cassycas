@@ -1,8 +1,10 @@
 // Expression utilities shared by every engine: parsing helpers, free symbols, normalisation.
 import { create, all } from 'mathjs';
+import { installDistributions } from './kernel/distributions.js';
 import { CONSTANT_NAMES, IDENT_RE, userFns } from './state.js';
 
 export const math = create(all, { number: 'number' });
+installDistributions(math);
 
 export function stripParens(n) { while (n && n.isParenthesisNode) n = n.content; return n; }
 const isFnName = (path, parent) => parent && parent.isFunctionNode && path === 'fn';

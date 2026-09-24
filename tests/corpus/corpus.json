@@ -9356,5 +9356,1037 @@
 0.6931471805599453,
 0.0
 ]
+},
+{
+"id": 473,
+"kind": "value",
+"input": "totient(390)",
+"mode": "numtheory",
+"value": [
+96.0,
+0.0
+],
+"rational": "96"
+},
+{
+"id": 474,
+"kind": "value",
+"input": "nextprime(390)",
+"mode": "numtheory",
+"value": [
+397.0,
+0.0
+],
+"rational": "397"
+},
+{
+"id": 475,
+"kind": "value",
+"input": "modinv(172, 365)",
+"mode": "numtheory",
+"value": [
+278.0,
+0.0
+],
+"rational": "278"
+},
+{
+"id": 476,
+"kind": "value",
+"input": "powmod(69, 738028704807, 365)",
+"mode": "numtheory",
+"value": [
+364.0,
+0.0
+],
+"rational": "364"
+},
+{
+"id": 477,
+"kind": "value",
+"input": "totient(1584)",
+"mode": "numtheory",
+"value": [
+480.0,
+0.0
+],
+"rational": "480"
+},
+{
+"id": 478,
+"kind": "value",
+"input": "nextprime(1584)",
+"mode": "numtheory",
+"value": [
+1597.0,
+0.0
+],
+"rational": "1597"
+},
+{
+"id": 479,
+"kind": "value",
+"input": "modinv(149, 202)",
+"mode": "numtheory",
+"value": [
+141.0,
+0.0
+],
+"rational": "141"
+},
+{
+"id": 480,
+"kind": "value",
+"input": "powmod(75, 811281616911, 202)",
+"mode": "numtheory",
+"value": [
+147.0,
+0.0
+],
+"rational": "147"
+},
+{
+"id": 481,
+"kind": "value",
+"input": "totient(1009)",
+"mode": "numtheory",
+"value": [
+1008.0,
+0.0
+],
+"rational": "1008"
+},
+{
+"id": 482,
+"kind": "value",
+"input": "nextprime(1009)",
+"mode": "numtheory",
+"value": [
+1013.0,
+0.0
+],
+"rational": "1013"
+},
+{
+"id": 483,
+"kind": "value",
+"input": "modinv(43, 284)",
+"mode": "numtheory",
+"value": [
+251.0,
+0.0
+],
+"rational": "251"
+},
+{
+"id": 484,
+"kind": "value",
+"input": "powmod(72, 301583163766, 284)",
+"mode": "numtheory",
+"value": [
+72.0,
+0.0
+],
+"rational": "72"
+},
+{
+"id": 485,
+"kind": "value",
+"input": "totient(974)",
+"mode": "numtheory",
+"value": [
+486.0,
+0.0
+],
+"rational": "486"
+},
+{
+"id": 486,
+"kind": "value",
+"input": "nextprime(974)",
+"mode": "numtheory",
+"value": [
+977.0,
+0.0
+],
+"rational": "977"
+},
+{
+"id": 487,
+"kind": "value",
+"input": "modinv(81, 160)",
+"mode": "numtheory",
+"value": [
+81.0,
+0.0
+],
+"rational": "81"
+},
+{
+"id": 488,
+"kind": "value",
+"input": "powmod(86, 65517755780, 160)",
+"mode": "numtheory",
+"value": [
+96.0,
+0.0
+],
+"rational": "96"
+},
+{
+"id": 489,
+"kind": "value",
+"input": "totient(446)",
+"mode": "numtheory",
+"value": [
+222.0,
+0.0
+],
+"rational": "222"
+},
+{
+"id": 490,
+"kind": "value",
+"input": "nextprime(446)",
+"mode": "numtheory",
+"value": [
+449.0,
+0.0
+],
+"rational": "449"
+},
+{
+"id": 491,
+"kind": "value",
+"input": "modinv(405, 407)",
+"mode": "numtheory",
+"value": [
+203.0,
+0.0
+],
+"rational": "203"
+},
+{
+"id": 492,
+"kind": "value",
+"input": "powmod(56, 631012263038, 407)",
+"mode": "numtheory",
+"value": [
+210.0,
+0.0
+],
+"rational": "210"
+},
+{
+"id": 493,
+"kind": "value",
+"input": "totient(633)",
+"mode": "numtheory",
+"value": [
+420.0,
+0.0
+],
+"rational": "420"
+},
+{
+"id": 494,
+"kind": "value",
+"input": "nextprime(633)",
+"mode": "numtheory",
+"value": [
+641.0,
+0.0
+],
+"rational": "641"
+},
+{
+"id": 495,
+"kind": "value",
+"input": "modinv(51, 428)",
+"mode": "numtheory",
+"value": [
+235.0,
+0.0
+],
+"rational": "235"
+},
+{
+"id": 496,
+"kind": "value",
+"input": "powmod(80, 90982901857, 428)",
+"mode": "numtheory",
+"value": [
+264.0,
+0.0
+],
+"rational": "264"
+},
+{
+"id": 497,
+"kind": "value",
+"input": "totient(3196)",
+"mode": "numtheory",
+"value": [
+1472.0,
+0.0
+],
+"rational": "1472"
+},
+{
+"id": 498,
+"kind": "value",
+"input": "nextprime(3196)",
+"mode": "numtheory",
+"value": [
+3203.0,
+0.0
+],
+"rational": "3203"
+},
+{
+"id": 499,
+"kind": "value",
+"input": "modinv(233, 400)",
+"mode": "numtheory",
+"value": [
+297.0,
+0.0
+],
+"rational": "297"
+},
+{
+"id": 500,
+"kind": "value",
+"input": "powmod(71, 99268886759, 400)",
+"mode": "numtheory",
+"value": [
+231.0,
+0.0
+],
+"rational": "231"
+},
+{
+"id": 501,
+"kind": "value",
+"input": "totient(1230)",
+"mode": "numtheory",
+"value": [
+320.0,
+0.0
+],
+"rational": "320"
+},
+{
+"id": 502,
+"kind": "value",
+"input": "nextprime(1230)",
+"mode": "numtheory",
+"value": [
+1231.0,
+0.0
+],
+"rational": "1231"
+},
+{
+"id": 503,
+"kind": "value",
+"input": "modinv(231, 410)",
+"mode": "numtheory",
+"value": [
+71.0,
+0.0
+],
+"rational": "71"
+},
+{
+"id": 504,
+"kind": "value",
+"input": "powmod(85, 106916861573, 410)",
+"mode": "numtheory",
+"value": [
+325.0,
+0.0
+],
+"rational": "325"
+},
+{
+"id": 505,
+"kind": "function",
+"input": "laplace(sinh(3*t), t, s)",
+"mode": "calculus",
+"var": "s",
+"points": [
+3.3,
+4.7,
+6.1,
+8.5
+],
+"values": [
+[
+1.5873015873015872,
+0.0
+],
+[
+0.22918258212375858,
+0.0
+],
+[
+0.10634526763559021,
+0.0
+],
+[
+0.04743083003952569,
+0.0
+]
+]
+},
+{
+"id": 506,
+"kind": "function",
+"input": "laplace(t*exp(-3*t), t, s)",
+"mode": "calculus",
+"var": "s",
+"points": [
+3.3,
+4.7,
+6.1,
+8.5
+],
+"values": [
+[
+0.025195263290501386,
+0.0
+],
+[
+0.016866250632484397,
+0.0
+],
+[
+0.012075836251660428,
+0.0
+],
+[
+0.007561436672967864,
+0.0
+]
+]
+},
+{
+"id": 507,
+"kind": "function",
+"input": "laplace(cos(t), t, s)",
+"mode": "calculus",
+"var": "s",
+"points": [
+3.3,
+4.7,
+6.1,
+8.5
+],
+"values": [
+[
+0.27754415475189237,
+0.0
+],
+[
+0.20355132091814637,
+0.0
+],
+[
+0.1596440722323999,
+0.0
+],
+[
+0.11604095563139932,
+0.0
+]
+]
+},
+{
+"id": 508,
+"kind": "function",
+"input": "laplace(sin(4*t), t, s)",
+"mode": "calculus",
+"var": "s",
+"points": [
+3.3,
+4.7,
+6.1,
+8.5
+],
+"values": [
+[
+0.14875418371141688,
+0.0
+],
+[
+0.10501443948542925,
+0.0
+],
+[
+0.07517383950385266,
+0.0
+],
+[
+0.0453257790368272,
+0.0
+]
+]
+},
+{
+"id": 509,
+"kind": "function",
+"input": "laplace(t^3, t, s)",
+"mode": "calculus",
+"var": "s",
+"points": [
+3.3,
+4.7,
+6.1,
+8.5
+],
+"values": [
+[
+0.05059358928630153,
+0.0
+],
+[
+0.012295885735153588,
+0.0
+],
+[
+0.004333431244804848,
+0.0
+],
+[
+0.0011494115252451479,
+0.0
+]
+]
+},
+{
+"id": 510,
+"kind": "function",
+"input": "laplace(3*t^2 + 3*t + 1, t, s)",
+"mode": "calculus",
+"var": "s",
+"points": [
+3.3,
+4.7,
+6.1,
+8.5
+],
+"values": [
+[
+0.7454712413390099,
+0.0
+],
+[
+0.4063646783468018,
+0.0
+],
+[
+0.270991845132412,
+0.0
+],
+[
+0.16893954813759413,
+0.0
+]
+]
+},
+{
+"id": 511,
+"kind": "function",
+"input": "laplace(sinh(2*t), t, s)",
+"mode": "calculus",
+"var": "s",
+"points": [
+3.3,
+4.7,
+6.1,
+8.5
+],
+"values": [
+[
+0.29027576197387517,
+0.0
+],
+[
+0.11055831951354339,
+0.0
+],
+[
+0.06022282445046673,
+0.0
+],
+[
+0.029304029304029304,
+0.0
+]
+]
+},
+{
+"id": 512,
+"kind": "function",
+"input": "laplace(t^3, t, s)",
+"mode": "calculus",
+"var": "s",
+"points": [
+3.3,
+4.7,
+6.1,
+8.5
+],
+"values": [
+[
+0.05059358928630153,
+0.0
+],
+[
+0.012295885735153588,
+0.0
+],
+[
+0.004333431244804848,
+0.0
+],
+[
+0.0011494115252451479,
+0.0
+]
+]
+},
+{
+"id": 513,
+"kind": "function",
+"input": "laplace(t*exp(3*t), t, s)",
+"mode": "calculus",
+"var": "s",
+"points": [
+3.3,
+4.7,
+6.1,
+8.5
+],
+"values": [
+[
+11.11111111111111,
+0.0
+],
+[
+0.3460207612456747,
+0.0
+],
+[
+0.1040582726326743,
+0.0
+],
+[
+0.03305785123966942,
+0.0
+]
+]
+},
+{
+"id": 514,
+"kind": "function",
+"input": "laplace(exp(-2*t)*sin(4*t), t, s)",
+"mode": "calculus",
+"var": "s",
+"points": [
+3.3,
+4.7,
+6.1,
+8.5
+],
+"values": [
+[
+0.09072352007257882,
+0.0
+],
+[
+0.06569223189357859,
+0.0
+],
+[
+0.049013601274353634,
+0.0
+],
+[
+0.031683168316831684,
+0.0
+]
+]
+},
+{
+"id": 515,
+"kind": "function",
+"input": "laplace(exp(-2*t)*sin(t), t, s)",
+"mode": "calculus",
+"var": "s",
+"points": [
+3.3,
+4.7,
+6.1,
+8.5
+],
+"values": [
+[
+0.034376074252320386,
+0.0
+],
+[
+0.021791239921551537,
+0.0
+],
+[
+0.015012760846719712,
+0.0
+],
+[
+0.008988764044943821,
+0.0
+]
+]
+},
+{
+"id": 516,
+"kind": "function",
+"input": "laplace(exp(-2*t), t, s)",
+"mode": "calculus",
+"var": "s",
+"points": [
+3.3,
+4.7,
+6.1,
+8.5
+],
+"values": [
+[
+0.18867924528301888,
+0.0
+],
+[
+0.14925373134328357,
+0.0
+],
+[
+0.12345679012345678,
+0.0
+],
+[
+0.09523809523809523,
+0.0
+]
+]
+},
+{
+"id": 517,
+"kind": "function",
+"input": "laplace(sin(4*t), t, s)",
+"mode": "calculus",
+"var": "s",
+"points": [
+3.3,
+4.7,
+6.1,
+8.5
+],
+"values": [
+[
+0.14875418371141688,
+0.0
+],
+[
+0.10501443948542925,
+0.0
+],
+[
+0.07517383950385266,
+0.0
+],
+[
+0.0453257790368272,
+0.0
+]
+]
+},
+{
+"id": 518,
+"kind": "function",
+"input": "laplace(sin(4*t), t, s)",
+"mode": "calculus",
+"var": "s",
+"points": [
+3.3,
+4.7,
+6.1,
+8.5
+],
+"values": [
+[
+0.14875418371141688,
+0.0
+],
+[
+0.10501443948542925,
+0.0
+],
+[
+0.07517383950385266,
+0.0
+],
+[
+0.0453257790368272,
+0.0
+]
+]
+},
+{
+"id": 519,
+"kind": "function",
+"input": "laplace(exp(2*t), t, s)",
+"mode": "calculus",
+"var": "s",
+"points": [
+3.3,
+4.7,
+6.1,
+8.5
+],
+"values": [
+[
+0.7692307692307693,
+0.0
+],
+[
+0.37037037037037035,
+0.0
+],
+[
+0.24390243902439024,
+0.0
+],
+[
+0.15384615384615385,
+0.0
+]
+]
+},
+{
+"id": 520,
+"kind": "value",
+"input": "discriminant(-2*x^2 + 4*x + 30, x)",
+"mode": "algebra",
+"value": [
+256.0,
+0.0
+],
+"rational": "256"
+},
+{
+"id": 521,
+"kind": "value",
+"input": "discriminant(-x^3 + 6*x^2 - 5*x - 12, x)",
+"mode": "algebra",
+"value": [
+400.0,
+0.0
+],
+"rational": "400"
+},
+{
+"id": 522,
+"kind": "value",
+"input": "discriminant(2*x^2 + 12*x + 10, x)",
+"mode": "algebra",
+"value": [
+64.0,
+0.0
+],
+"rational": "64"
+},
+{
+"id": 523,
+"kind": "value",
+"input": "discriminant(x^2 - 25, x)",
+"mode": "algebra",
+"value": [
+100.0,
+0.0
+],
+"rational": "100"
+},
+{
+"id": 524,
+"kind": "value",
+"input": "discriminant(3*x^3 + 18*x^2 + 33*x + 18, x)",
+"mode": "algebra",
+"value": [
+324.0,
+0.0
+],
+"rational": "324"
+},
+{
+"id": 525,
+"kind": "value",
+"input": "discriminant(1 - x^2, x)",
+"mode": "algebra",
+"value": [
+4.0,
+0.0
+],
+"rational": "4"
+},
+{
+"id": 526,
+"kind": "value",
+"input": "discriminant(-x^3 - 12*x^2 - 47*x - 60, x)",
+"mode": "algebra",
+"value": [
+4.0,
+0.0
+],
+"rational": "4"
+},
+{
+"id": 527,
+"kind": "value",
+"input": "discriminant(2*x^2 + 12*x + 16, x)",
+"mode": "algebra",
+"value": [
+16.0,
+0.0
+],
+"rational": "16"
+},
+{
+"id": 528,
+"kind": "value",
+"input": "discriminant(-x^2 - 2*x + 3, x)",
+"mode": "algebra",
+"value": [
+16.0,
+0.0
+],
+"rational": "16"
+},
+{
+"id": 529,
+"kind": "value",
+"input": "discriminant(2*x^3 + 2*x^2 - 34*x + 30, x)",
+"mode": "algebra",
+"value": [
+147456.0,
+0.0
+],
+"rational": "147456"
+},
+{
+"id": 530,
+"kind": "value",
+"input": "integrate(x^2 + y^2, [x, -1, 1], [y, -2, 3])",
+"mode": "calculus",
+"value": [
+26.666666666666668,
+0.0
+],
+"rational": "80/3"
+},
+{
+"id": 531,
+"kind": "value",
+"input": "integrate(sin(x)*cos(y), [x, -1, 3], [y, 0, 1])",
+"mode": "calculus",
+"value": [
+1.287698674479646,
+0.0
+]
+},
+{
+"id": 532,
+"kind": "value",
+"input": "integrate(exp(x + y), [x, -1, 1], [y, -2, 3])",
+"mode": "calculus",
+"value": [
+46.89100156141001,
+0.0
+]
+},
+{
+"id": 533,
+"kind": "value",
+"input": "integrate(exp(x + y), [x, 0, 1], [y, 0, 3])",
+"mode": "calculus",
+"value": [
+32.79433128149753,
+0.0
+]
+},
+{
+"id": 534,
+"kind": "value",
+"input": "integrate(x^2 + y^2, [x, -2, 1], [y, 0, 2])",
+"mode": "calculus",
+"value": [
+14.0,
+0.0
+],
+"rational": "14"
+},
+{
+"id": 535,
+"kind": "value",
+"input": "integrate(x + 3*y, [x, -2, 1], [y, -1, 1])",
+"mode": "calculus",
+"value": [
+-3.0,
+0.0
+],
+"rational": "-3"
+},
+{
+"id": 536,
+"kind": "value",
+"input": "integrate(sin(x)*cos(y), [x, 0, 2], [y, -2, 1])",
+"mode": "calculus",
+"value": [
+2.479345147661557,
+0.0
+]
+},
+{
+"id": 537,
+"kind": "value",
+"input": "integrate(sin(x)*cos(y), [x, -2, 2], [y, 0, 1])",
+"mode": "calculus",
+"value": [
+0.0,
+0.0
+],
+"rational": "0"
+},
+{
+"id": 538,
+"kind": "value",
+"input": "integrate(sin(x)*cos(y), [x, -1, 2], [y, -2, 3])",
+"mode": "calculus",
+"value": [
+1.0046708547743437,
+0.0
+]
+},
+{
+"id": 539,
+"kind": "value",
+"input": "integrate(x - 2*y, [x, -1, 2], [y, -1, 2])",
+"mode": "calculus",
+"value": [
+-4.5,
+0.0
+],
+"rational": "-9/2"
 }
 ]

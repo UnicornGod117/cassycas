@@ -5,6 +5,7 @@ import { toReal, escH } from './format.js';
 import { state, scope } from './state.js';
 import { ctx } from './kernel/mathjs-client.js';
 import { substituteWorkspace } from './engine.js';
+import { parsePlotItems } from './plotspec.js';
 
 const COLORS = ['#7eef9c', '#a99cf2', '#7fc5e0', '#e8b87a', '#e88a99', '#f0a06f'];
 
@@ -82,6 +83,64 @@ export function exportPlot(el, name) {
   if (div) Plotly.downloadImage(div, { format: 'png', width: 1200, height: 800, filename: name });
 }
 
+// Draw a plot spec (see plotspec.js): functions, implicit, parametric and polar curves.
+export function drawSpec(target, spec, { xrange } = {}) {
+  const compile = (s, keep) => substituteWorkspace(inlineUserFns(normalise(s)), keep).compile();
+  const r = spec.range;
+  const [xa, xb] = xrange || (r && ['x', 'y'].includes(r.v) ? [r.a, r.b] : [-10, 10]);
+  const traces = [];
+  let geometric = false;
+  spec.items.forEach((it, idx) => {
+    const color = COLORS[idx % COLORS.length];
+    const line = { color, width: 2.2 };
+    if (it.kind === 'fn') {
+      const [a, b] = r && r.v === it.v ? [r.a, r.b] : [xa, xb];
+      const { xs, ys } = sample(compile(it.expr, [it.v]), it.v, a, b, {}, 800);
+      traces.push({ x: xs, y: ys, type: 'scatter', mode: 'lines', line, name: it.label, connectgaps: false });
+    } else if (it.kind === 'implicit') {
+      geometric = true;
+      const fn = compile(it.expr, ['x', 'y']), n = 180;
+      const xs = [], ys = [], zs = [];
+      for (let i = 0; i <= n; i++) { xs.push(xa + (xb - xa) * i / n); ys.push(xa + (xb - xa) * i / n); }
+      const loc = ctx({});
+      for (let j = 0; j <= n; j++) {
+        const row = [];
+        loc.y = ys[j];
+        for (let i = 0; i <= n; i++) { loc.x = xs[i]; let z = null; try { z = toReal(fn.evaluate(loc)); } catch {} row.push(isFinite(z) ? z : null); }
+        zs.push(row);
+      }
+      traces.push({ x: xs, y: ys, z: zs, type: 'contour', name: it.label, showscale: false, hoverinfo: 'skip', showlegend: true,
+        contours: { start: 0, end: 0, size: 1, coloring: 'lines' }, colorscale: [[0, color], [1, color]], line: { width: 2.2 } });
+    } else {
+      geometric = true;
+      const [a, b] = r && r.v === it.v ? [r.a, r.b] : [0, 2 * Math.PI];
+      const n = 1200, xs = [], ys = [];
+      const loc = ctx({});
+      const fx = it.kind === 'param' ? compile(it.x, [it.v, 'x', 'y']) : null, fy = it.kind === 'param' ? compile(it.y, [it.v, 'x', 'y']) : null;
+      const fr = it.kind === 'polar' ? compile(it.r, [it.v]) : null;
+      for (let i = 0; i <= n; i++) {
+        const t = a + (b - a) * i / n; loc[it.v] = t;
+        let X = null, Y = null;
+        try {
+          if (fr) { const rr = toReal(fr.evaluate(loc)); X = rr * Math.cos(t); Y = rr * Math.sin(t); }
+          else { X = toReal(fx.evaluate(loc)); Y = toReal(fy.evaluate(loc)); }
+        } catch {}
+        xs.push(isFinite(X) ? X : null); ys.push(isFinite(Y) ? Y : null);
+      }
+      traces.push({ x: xs, y: ys, type: 'scatter', mode: 'lines', line, name: it.label, connectgaps: false });
+    }
+  });
+  const base = layout(spec.items.length === 1 ? spec.items[0].label : '');
+  const lay = { ...base, showlegend: spec.items.length > 1, hovermode: geometric ? 'closest' : 'x unified' };
+  if (geometric) lay.yaxis = { ...base.yaxis, scaleanchor: 'x', scaleratio: 1 };
+  Plotly.newPlot(target, traces, lay, { responsive: true, displayModeBar: false });
+}
+export function plotSpecInline(container, spec) {
+  container.innerHTML = '<div class="cell-plot-inner"></div>';
+  try { drawSpec(container.firstChild, spec); }
+  catch (e) { container.innerHTML = `<div class="plot-err">${escH(e.message)}</div>`; }
+}
+
 // Graph view (2D multi-trace or 3D surface).
 export function plotGraph(is3D) {
   const raw = document.getElementById('ginp').value.trim();
@@ -90,9 +149,11 @@ export function plotGraph(is3D) {
   const panel = document.getElementById('gplot');
   const fail = (m) => { panel.innerHTML = `<div class="cout err" style="padding:14px 18px;">${escH(m)}</div>`; };
   if (!isFinite(xmin) || !isFinite(xmax) || xmin >= xmax) return fail('The x range must satisfy min < max.');
-  let fns;
-  try { fns = parseTopLevelArgs(raw).map(e => substituteWorkspace(inlineUserFns(normalise(e)), ['x', 'y']).compile()); }
-  catch (e) { return fail(e.message); }
+  let fns = [];
+  if (is3D) {
+    try { fns = parseTopLevelArgs(raw).map(e => substituteWorkspace(inlineUserFns(normalise(e)), ['x', 'y']).compile()); }
+    catch (e) { return fail(e.message); }
+  }
   panel.innerHTML = '<div id="gplotinner" style="width:100%;height:100%;min-height:380px;"></div>';
   if (is3D) {
     const n = 60, xs = [], ys = [], zs = [];
@@ -109,11 +170,7 @@ export function plotGraph(is3D) {
     Plotly.newPlot('gplotinner', [{ x: xs, y: ys, z: zs, type: 'surface', colorscale: [[0, '#1f8a4d'], [0.5, '#7eef9c'], [1, '#a99cf2']], showscale: false }],
       { ...layout(raw), scene: { bgcolor: dk ? '#13171f' : '#f1efe8' }, margin: { l: 0, r: 0, t: 36, b: 0 } }, { responsive: true });
   } else {
-    const names = parseTopLevelArgs(raw);
-    const traces = fns.map((fn, idx) => {
-      const { xs, ys } = sample(fn, 'x', xmin, xmax, {}, 800);
-      return { x: xs, y: ys, type: 'scatter', mode: 'lines', line: { color: COLORS[idx % COLORS.length], width: 2.4 }, name: names[idx] };
-    });
-    Plotly.newPlot('gplotinner', traces, layout(raw), { responsive: true });
+    try { drawSpec(document.getElementById('gplotinner'), parsePlotItems(parseTopLevelArgs(raw)), { xrange: [xmin, xmax] }); }
+    catch (e) { fail(e.message); }
   }
 }

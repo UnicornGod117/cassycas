@@ -1,8 +1,10 @@
 // mathjs evaluation kernel (runs off the main thread; terminated on timeout).
 import { create, all } from 'mathjs';
 import { makeDegFns } from './degree.js';
+import { installDistributions } from './distributions.js';
 
 const math = create(all, { number: 'number' });
+installDistributions(math);
 const DEG = makeDegFns(math);
 const revive = (k, v) => (v && v.mathjs === 'number') ? Number(v.value) : math.reviver(k, v);
 

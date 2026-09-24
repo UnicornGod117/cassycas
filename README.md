@@ -8,13 +8,17 @@ A browser-native notebook for symbolic mathematics. Exact answers come from **Sy
 
 | Domain | Capabilities |
 |--------|-------------|
-| **Algebra** | Exact arithmetic and radicals (`sqrt(8)+sqrt(2) → 3*sqrt(2)`), simplify, expand, factor, collect, partial fractions (`apart`), together/cancel, polynomial division |
-| **Calculus** | Derivatives and antiderivatives with steps (SymPy's rule-based integrator, including non-elementary results such as `erfi`), definite and improper integrals, one- and two-sided limits (oscillation is reported as "does not exist"), series in ascending powers of `(x - a)` including Laurent series, closed-form sums and products, gradients |
-| **Solving** | Exact solutions of polynomial and transcendental equations (general solutions, parameters, complex roots), inequalities, systems, ODEs with initial conditions (`dsolve`) |
-| **Linear algebra** | Exact determinant, inverse, eigenvalues/vectors, RREF, rank, norms |
-| **Numerics, statistics, units, logic** | MathJS: statistics, units and dimensional analysis, bitwise and boolean logic, combinatorics |
+| **Algebra** | Exact arithmetic and radicals (`sqrt(8)+sqrt(2) → 3*sqrt(2)`), simplify, expand, factor, collect, partial fractions (`apart`), together/cancel, polynomial division, completing the square, discriminants, resultants, coefficients, Gröbner bases, `rewrite(cos(x), exp)`, log and power combining, complex polar/rectangular forms |
+| **Calculus** | Derivatives (including mixed partials) and antiderivatives with steps (SymPy's rule-based integrator, including non-elementary results such as `erfi`); definite, improper and multiple integrals (`integrate(f, [y, 0, x], [x, 0, 1])`); one- and two-sided limits (oscillation is reported as "does not exist"); series in ascending powers of `(x - a)`, including Laurent series; Fourier series; closed-form sums and products; extrema with classification; tangent lines; implicit differentiation; arc length; residues |
+| **Vector calculus** | Gradient, Jacobian, Hessian, divergence, curl, Laplacian |
+| **Transforms and recurrences** | Laplace and inverse Laplace, Fourier and inverse Fourier transforms; recurrences with initial conditions (`rsolve`); ODEs with initial conditions (`dsolve`) |
+| **Solving** | Exact solutions of polynomial and transcendental equations (general solutions, parameters, complex roots), all complex solutions (`csolve`), inequalities, systems, numeric roots to any precision (`nsolve(cos(x) = x, x, 1, 50)`) |
+| **Number theory** | Primality, next/previous/n-th prime, prime counting, factorization, divisors, totient, Möbius, modular inverse and power, Chinese remainder theorem, continued fractions (periodic for quadratic surds), Diophantine equations, Fibonacci/Lucas/Catalan/Bernoulli/partition numbers, base conversion, and `identify(0.7853981633974483) → pi/4` |
+| **Linear algebra** | Exact determinant, inverse, eigenvalues/vectors, RREF, rank, norms, diagonalization, Jordan form, LU and QR decompositions, matrix exponential, adjugate, pseudo-inverse, column/row space, `linsolve` with free parameters |
+| **Probability** | Normal, binomial, Poisson, geometric, Student t, χ² and exponential distributions (`normalcdf`, `invnorm`, `binomcdf`, `tcdf`, …), accurate to about 10⁻¹⁴ and available without the exact engine |
+| **Numerics, statistics, units, logic** | Any number of digits (`N(pi, 1000)`); MathJS: statistics, units and dimensional analysis, bitwise and boolean logic, combinatorics |
 | **Trigonometry** | Exact values (`sin(pi/6) → 1/2`); a global Deg/Rad mode for numerical evaluation |
-| **Plots** | Automatic plots for results in one variable, with sliders for parameters; a full 2D/3D graph tab; PNG export |
+| **Plots** | `plot(sin(x), x^2 + y^2 = 16, r = 2 + 2cos(theta), [cos(3t), sin(2t)], [x, -5, 5])` draws functions, implicit, polar and parametric curves together, in a cell or in the graph tab; automatic plots for results in one variable, with sliders for parameters; 3D surfaces; PNG export |
 
 **Notebook.** Cells form a dependency graph: editing a definition re-runs only the cells below it that use it. Numeric definitions get sliders. Click any part of a result to differentiate, integrate, factor or plot that sub-expression. Cells can be edited in place. The notebook is kept in the browser, exported as `.cas`, LaTeX or text, and shared as a link — the notebook is compressed into the URL fragment, so it never reaches a server.
 
@@ -42,7 +46,17 @@ limit(sin(1/x), x, 0)                 # does not exist (oscillates between -1 an
 series(cos(x), x, pi, 4)              # -1 + (x - pi)^2/2 - (x - pi)^4/24 + O((x - pi)^5)
 sum(k^2, k, 1, n)                     # n*(n + 1)*(2*n + 1)/6
 dsolve(y'' + y = 0, y(x), y(0) = 1)   # y(x) = C1*sin(x) + cos(x)
+extrema(x^2 + x*y + y^2 - 3y, [x, y]) # x = -1, y = 2: local minimum, f = -3
+integrate(x*y, [y, 0, x], [x, 0, 1])  # 1/8
+laplace(t^2*exp(-t), t, s)            # 2/(s + 1)^3
+rsolve(a(n+2) = a(n+1) + a(n), a(n), a(0) = 0, a(1) = 1)   # Binet's formula
+factorint(2^32 + 1)                   # 641 * 6700417
+crt([2, 3, 2], [3, 5, 7])             # x ≡ 23 (mod 105)
+diagonalize([[2, 1], [1, 2]])         # P = [[-1, 1], [1, 1]], D = [[1, 0], [0, 3]]
+normalcdf(-1.96, 1.96)                # 0.9500042097
 ```
+
+Every function is listed, with its signature, in autocomplete and the command palette.
 
 **Exact vs Approx.** *Exact* shows closed forms, with a decimal alongside irrational values; *Approx* shows decimals. Switching re-evaluates the notebook without changing definitions.
 
@@ -61,14 +75,20 @@ src/
   main.js, notebook.js, editor.js,     UI, reactive notebook, CodeMirror,
   render.js, plot.js                   KaTeX, Plotly
   engine.js                            evaluator: SymPy first, JavaScript fallback
-  sympy/                               exact engine: Pyodide worker, JSON bridge (bridge.py)
-  kernel/                              fallback engine: MathJS worker, Algebrite, numerics
+  sympy/                               exact engine: Pyodide worker, JSON bridge (bridge.py),
+                                       named tools (tools.py)
+  tools.js                             registry of named tools: signatures, argument kinds, examples
+  plotspec.js                          plot(...) parsing: functions, implicit, parametric, polar
+  kernel/                              fallback engine: MathJS worker, Algebrite, numerics,
+                                       BigInt number theory, probability distributions
   assistant.js                         optional Claude assistant
 public/                                manifest, icon, service worker
 tests/                                 end-to-end tests and the differential corpus
 ```
 
-**Two engines.** SymPy 1.12 on Pyodide 0.26 runs in a Web Worker and is downloaded lazily from jsDelivr on first use (about 18 MB, hash-checked by Pyodide). Until it is ready — or if it is switched off in *Tweaks*, times out, or cannot be downloaded — the JavaScript engine (MathJS, Algebrite and numerical methods) answers instead. Its results are marked, and cells it computed while SymPy was loading are re-run automatically once SymPy is ready. The fallback is built to decline rather than guess: when it cannot answer reliably (a quintic it cannot factor, a limit that does not converge numerically, a symbolic sum) it says that the exact engine is needed.
+**Two engines.** SymPy 1.12 on Pyodide 0.26 runs in a Web Worker and is downloaded lazily from jsDelivr on first use (about 18 MB, hash-checked by Pyodide). Until it is ready — or if it is switched off in *Tweaks*, times out, or cannot be downloaded — the JavaScript engine (MathJS, Algebrite and numerical methods) answers instead. Its results are marked, and cells it computed while SymPy was loading are re-run automatically once SymPy is ready. The fallback is built to decline rather than guess: when it cannot answer reliably (a quintic it cannot factor, a limit that does not converge numerically, a symbolic sum) it says that the exact engine is needed. Number theory has exact BigInt fallbacks (deterministic Miller–Rabin below 3.3·10²⁴, Pollard's rho) and multiple integrals a numeric one; the probability distributions and `plot` never need SymPy.
+
+**Adding a capability.** A named tool is one entry in `src/tools.js` (signature, argument kinds, mode, example) and one whitelisted function in `src/sympy/tools.py`. Its arguments are built into SymPy objects like any other input, variable arguments stay symbolic even when the workspace defines them, and it appears in autocomplete, the palette and the tests (every example must have a verified result in `tests/tools.test.mjs`).
 
 **No code injection.** User input never becomes Python source. The JavaScript side parses input with MathJS and sends a JSON expression tree; `bridge.py` checks every node type, operator and function name against whitelists before building SymPy objects.
 
@@ -93,8 +113,11 @@ npm test               # end-to-end suites (build first)
 The tests load `dist/` in headless Chromium. Pyodide is served from the `pyodide` npm package and SymPy from `tests/.wheels`, so the suite runs offline. Set `CHROMIUM_PATH` to use an existing Chromium binary, and `CAS_ENGINES=exact` or `CAS_ENGINES=fallback` to test one engine only.
 
 - `tests/cas.test.mjs` — behaviour of the app, run once per engine.
-- `tests/corpus.test.mjs` — the differential corpus: 473 generated problems (arithmetic, derivatives, antiderivatives, definite integrals, limits, polynomial roots, factor/expand/simplify, sums) with references from CPython SymPy. The exact engine must agree with every reference; the fallback may decline but must never be wrong. Regenerate with `python tests/corpus/generate.py` (after `pip install sympy==1.12 mpmath==1.3.0`); CI checks that the committed corpus is up to date.
+- `tests/corpus.test.mjs` — the differential corpus: 540 generated problems (arithmetic, derivatives, antiderivatives, definite and double integrals, limits, polynomial roots, factor/expand/simplify, sums, number theory, Laplace transforms, discriminants) with references from CPython SymPy. The exact engine must agree with every reference; the fallback may decline but must never be wrong. Regenerate with `python tests/corpus/generate.py` (after `pip install sympy==1.12 mpmath==1.3.0`); CI checks that the committed corpus is up to date.
+- `tests/tools.test.mjs` — every named tool, the probability distributions and `plot(...)`, on both engines.
 - `tests/offline.test.mjs` — the service worker serves the app and SymPy with the network off.
+
+Every suite also checks that no result renders as malformed LaTeX.
 
 CI runs all of this on every push. Pushes to `main` also deploy `dist/` to GitHub Pages (enable *Settings → Pages → Source: GitHub Actions* once).
 

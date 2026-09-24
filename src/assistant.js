@@ -3,6 +3,8 @@
 // It never runs anything itself: the suggested expression is placed in the editor for review.
 import Anthropic from '@anthropic-ai/sdk';
 import { MODES } from './modes.js';
+import { TOOLS } from './tools.js';
+import { DISTRIBUTION_DOCS } from './kernel/distributions.js';
 
 const MODEL = 'claude-opus-5';
 const KEY_STORAGE = 'cas-anthropic-key';
@@ -26,7 +28,11 @@ Functions: simplify(f), expand(f), factor(f), apart(f, x), collect(f, x), polydi
 derivative(f, x[, n]), integrate(f, x) or integrate(f, x, a, b), limit(f, x, a[, "+"|"-"]), series(f, x, a, n),
 sum(f, k, a, b), product(f, k, a, b), gradient(f, [x, y]), solve(lhs = rhs, x), solve(x^2 < 4, x),
 solve([eq1, eq2], [x, y]), dsolve(y'' + y = 0, y(x), y(0) = 1), ode(f(x, y), x, y, x0, y0, x1),
-det(A), inv(A), eigs(A), rref(A), unit conversions like "100 km/h to m/s", mean([...]), std([...]).
+det(A), inv(A), eigs(A), rref(A), unit conversions like "100 km/h to m/s", mean([...]), std([...]),
+multiple integrals integrate(f, [y, 0, x], [x, 0, 1]), mixed partials derivative(f, x, y),
+plot(f, x^2 + y^2 = 4, [x(t), y(t)], r = f(theta), [x, a, b]).
+${Object.values(TOOLS).map(t => t.sig).join(', ')}.
+Probability: ${DISTRIBUTION_DOCS.map(d => d.s).join(', ')}.
 Definitions: "a = 5", "f(x) = x^2 + 1".
 
 Return exactly one expression. Choose the mode that fits: ${Object.keys(MODES).join(', ')}.

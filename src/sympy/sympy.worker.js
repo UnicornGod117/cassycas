@@ -1,6 +1,7 @@
 // SymPy on Pyodide. Downloads the Python runtime and SymPy from jsDelivr on first use
 // (hash-checked by Pyodide; cached by the service worker when the app is hosted).
 import bridgeSource from './bridge.py?raw';
+import toolsSource from './tools.py?raw';
 
 export const PYODIDE_INDEX = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/';
 let handle = null;
@@ -14,6 +15,7 @@ async function boot() {
     post({ type: 'status', detail: 'Loading SymPy…' });
     await py.loadPackage(['mpmath', 'sympy']);
     py.runPython(bridgeSource);
+    py.runPython(toolsSource);          // same namespace: registers the 'tool' operation
     handle = py.globals.get('handle');
     post({ type: 'status', detail: 'Warming up…' });
     handle(JSON.stringify({ op: 'integrate', expr: { t: 'fn', n: 'sin', args: [{ t: 'sym', n: 'x' }] }, var: 'x' }));

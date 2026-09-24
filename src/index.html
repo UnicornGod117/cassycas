@@ -238,8 +238,8 @@
         </div>
         <div class="graph-controls">
           <div>
-            <div class="glabel">Expression(s) — comma-separated · use <code style="color:var(--a0)">x</code> for 2D, <code style="color:var(--a0)">x</code> &amp; <code style="color:var(--a0)">y</code> for 3D</div>
-            <input class="ginp" id="ginp" placeholder="e.g.  sin(x), x^2 - 2x + 1"
+            <div class="glabel">Curves — comma-separated: functions of <code style="color:var(--a0)">x</code>, equations in <code style="color:var(--a0)">x, y</code>, <code style="color:var(--a0)">[x(t), y(t)]</code>, <code style="color:var(--a0)">r = f(theta)</code> · 3D: <code style="color:var(--a0)">f(x, y)</code></div>
+            <input class="ginp" id="ginp" placeholder="e.g.  sin(x), x^2 + y^2 = 16, [cos(t), sin(2t)], r = 1 + cos(theta)"
                    onkeydown="if(event.key==='Enter')plotGraph(false)"/>
           </div>
           <div class="graph-row">

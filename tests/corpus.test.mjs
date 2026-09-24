@@ -28,7 +28,7 @@ function num(s, scope = {}) {
   }
   return null;
 }
-const valuesAt = (expr, points) => points.map(p => { try { return pair(math.evaluate(expr, { x: p })); } catch { return null; } });
+const valuesAt = (expr, points, v = 'x') => points.map(p => { try { return pair(math.evaluate(expr, { [v]: p })); } catch { return null; } });
 
 // Top-level factors that depend on x (a product has at least two, counting powers).
 function xFactors(node) {
@@ -53,7 +53,7 @@ function judge(item, r) {
       return 'ok';
     }
     case 'function': case 'form': {
-      const got = valuesAt(lhs(plain), item.points);
+      const got = valuesAt(lhs(plain), item.points, item.var);
       const bad = got.findIndex((v, i) => !v || !near(v, item.values[i]));
       if (bad >= 0) return `wrong: ${plain} at x=${item.points[bad]} gives ${got[bad]}, want ${item.values[bad]}`;
       if (item.shape === 'product' && xFactors(math.parse(plain)) < 2) return `wrong: not factored: ${plain}`;

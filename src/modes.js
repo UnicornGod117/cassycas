@@ -1,10 +1,12 @@
 // Mode catalogue, autocomplete dictionary and constants.
+import { TOOLS } from './tools.js';
+import { DISTRIBUTION_DOCS } from './kernel/distributions.js';
 export const MODES = {
   algebra:{
     label:'Algebra', glyph:'α',
     sub:'Symbolic manipulation, simplification, factoring.',
-    sm:['Simplify','Expand','Factor','Collect','Apart','Together','GCD','LCM'],
-    qr:['x^2','sqrt(x)','abs(x)','floor(x)','ceil(x)','sign(x)','mod(a,b)','gcd(a,b)','lcm(a,b)','factorial(n)','log(x)','polydiv(x^3-1,x-1,x)'],
+    sm:['Simplify','Expand','Factor','Collect','Apart','Together','Complete □','Rewrite'],
+    qr:['completesquare(p,x)','discriminant(p,x)','rewrite(f,exp)','polar(z)','groebner([p,q],[x,y])','x^2','sqrt(x)','abs(x)','floor(x)','ceil(x)','sign(x)','mod(a,b)','gcd(a,b)','lcm(a,b)','factorial(n)','log(x)','polydiv(x^3-1,x-1,x)'],
     syn:'<span class="kw">simplify</span>(expr)  <span class="kw">expand</span>(expr)\n<span class="kw">factor</span>(expr)  <span class="kw">collect</span>(expr,<span class="var">x</span>)\n<span class="kw">apart</span>(expr)\n<span class="var">f</span>(<span class="var">x</span>) = <span class="var">x</span>^2+1   <span class="var">x</span> = 42\n<span class="kw">gcd</span>(252,198)  <span class="kw">lcm</span>(4,6)',
     ex:[
       {expr:'simplify((x^2-1)/(x-1))', desc:'Cancel a removable singularity'},
@@ -13,13 +15,17 @@ export const MODES = {
       {expr:'expand((a+b)^4)', desc:'Binomial expansion'},
       {expr:'factor(x^3-8)', desc:'Difference of cubes'},
       {expr:'f(x) = sin(x)+x^2', desc:'Define a function'},
+      {expr:'completesquare(2x^2 + 8x + 3, x)', desc:'Vertex form'},
+      {expr:'discriminant(a*x^2 + b*x + c, x)', desc:'Symbolic discriminant'},
+      {expr:'groebner([x^2 + y^2 - 1, x - y], [x, y])', desc:'Gröbner basis'},
+      {expr:'polar(1 + sqrt(3)*i)', desc:'Complex polar form'},
     ]
   },
   calculus:{
     label:'Calculus', glyph:'∫',
     sub:'Differentiation, integration, limits, series.',
-    sm:['Derive','Integrate','Definite ∫','Limit','Sum','Product','Series','DSolve'],
-    qr:['derivative(f,x)','integrate(f,x)','integrate(f,x,a,b)','limit(f,x,0)','sum(f,n,1,10)','product(f,n,1,5)','derivative(f,x,2)','series(f,x)','gradient(f,[x,y])','ode(x+y,x,y,0,1,1)'],
+    sm:['Derive','Integrate','Definite ∫','Limit','Sum','Product','Series','DSolve','Extrema','Laplace','Plot'],
+    qr:['extrema(f,x)','tangent(f,x,a)','integrate(f,[x,0,1],[y,0,1])','jacobian([f,g],[x,y])','laplace(f,t,s)','rsolve(a(n+1)=2a(n),a(n),a(0)=1)','plot(f, x^2+y^2=4)','derivative(f,x)','integrate(f,x)','integrate(f,x,a,b)','limit(f,x,0)','sum(f,n,1,10)','product(f,n,1,5)','derivative(f,x,2)','series(f,x)','gradient(f,[x,y])','ode(x+y,x,y,0,1,1)'],
     syn:'<span class="kw">derivative</span>(expr, <span class="var">x</span>)\n<span class="kw">derivative</span>(expr, <span class="var">x</span>, n)  nth order\n<span class="kw">integrate</span>(expr, <span class="var">x</span>)\n<span class="kw">integrate</span>(expr, <span class="var">x</span>, a, b)\n<span class="kw">limit</span>(expr, <span class="var">x</span>, a, "+")\n<span class="kw">series</span>(expr, <span class="var">x</span>, a, n)',
     ex:[
       {expr:'derivative(sin(x)*x^2, x)', desc:'Product rule'},
@@ -29,6 +35,14 @@ export const MODES = {
       {expr:'sum(k^2, k, 1, n)', desc:'Closed-form sum'},
       {expr:"dsolve(y'' + y = 0, y(x))", desc:'Solve an ODE exactly'},
       {expr:'limit((1+1/x)^x, x, Infinity)', desc:'Exact limit → e'},
+      {expr:'extrema(x^3 - 3x, x)', desc:'Critical points, classified'},
+      {expr:'extrema(x^2 + x*y + y^2 - 3y, [x, y])', desc:'Extrema in two variables'},
+      {expr:'integrate(x*y, [y, 0, x], [x, 0, 1])', desc:'Double integral'},
+      {expr:'laplace(t^2*exp(-t), t, s)', desc:'Laplace transform'},
+      {expr:'rsolve(a(n+2) = a(n+1) + a(n), a(n), a(0) = 0, a(1) = 1)', desc:'Fibonacci recurrence'},
+      {expr:'tangent(sin(x), x, pi/4)', desc:'Tangent line'},
+      {expr:'curl([-y, x, z], [x, y, z])', desc:'Curl of a vector field'},
+      {expr:'plot(sin(x), x^2 + y^2 = 16, r = 2 + 2cos(theta), [3cos(3t), 3sin(2t)])', desc:'Curves of every kind'},
     ]
   },
   solve:{
@@ -43,12 +57,14 @@ export const MODES = {
       {expr:'zeros(x^3-6x^2+11x-6, x)', desc:'All real zeros'},
       {expr:'solve(sin(x) = 1/2, x)', desc:'General solution'},
       {expr:'solve(x^2 < 4, x)', desc:'Inequality'},
+      {expr:'csolve(x^5 = 1, x)', desc:'Complex roots of unity'},
+      {expr:'nsolve(cos(x) = x, x, 1, 50)', desc:'50-digit numeric root'},
     ]
   },
   matrix:{
     label:'Linear Algebra', glyph:'▦',
     sub:'Matrices, eigenvalues, vector operations.',
-    sm:['Det','Inv','Transpose','Eigs','RREF','Trace'],
+    sm:['Det','Inv','Transpose','Eigs','RREF','Trace','Diagonalize','Jordan','LU','LinSolve'],
     qr:['[[1,2],[3,4]]','det(A)','inv(A)','transpose(A)','trace(A)','eigs(A)','norm(A)','cross(a,b)','dot(a,b)'],
     syn:'<span class="var">A</span> = [[1,2],[3,4]]\n<span class="kw">det</span>(<span class="var">A</span>)  <span class="kw">inv</span>(<span class="var">A</span>)  <span class="kw">eigs</span>(<span class="var">A</span>)\n<span class="kw">cross</span>(a,b)  <span class="kw">dot</span>(a,b)',
     ex:[
@@ -56,30 +72,55 @@ export const MODES = {
       {expr:'inv([[2,1],[5,3]])', desc:'Matrix inverse'},
       {expr:'eigs([[4,1],[2,3]])', desc:'Eigen-decomposition'},
       {expr:'inv([[1,2],[3,4]])', desc:'Exact inverse'},
+      {expr:'diagonalize([[2, 1], [1, 2]])', desc:'A = P D P⁻¹'},
+      {expr:'expm([[0, 1], [-1, 0]])', desc:'Matrix exponential'},
+      {expr:'linsolve([[1, 1, 1], [1, -1, 2]], [6, 3])', desc:'Underdetermined system'},
+    ]
+  },
+  numtheory:{
+    label:'Number Theory', glyph:'ℕ',
+    sub:'Primes, factorization, modular arithmetic.',
+    sm:['IsPrime','Factor n','Divisors','Totient','ModInv','PowMod','CRT','ContFrac'],
+    qr:['isprime(n)','factorint(n)','divisors(n)','totient(n)','modinv(a,m)','powmod(a,b,m)','crt([r1,r2],[m1,m2])','contfrac(x)','nextprime(n)','prime(n)','fibonacci(n)','tobase(n,b)','diophantine(3x+5y=7)'],
+    syn:'<span class="kw">isprime</span>(n)  <span class="kw">factorint</span>(n)\n<span class="kw">divisors</span>(n)  <span class="kw">totient</span>(n)\n<span class="kw">modinv</span>(a, m)  <span class="kw">powmod</span>(a, b, m)\n<span class="kw">crt</span>([2,3], [3,5])\n<span class="kw">contfrac</span>(sqrt(7))  <span class="kw">diophantine</span>(3x+5y=7)',
+    ex:[
+      {expr:'factorint(2^32 + 1)', desc:'Euler’s factorization of F₅'},
+      {expr:'isprime(2^61 - 1)', desc:'Mersenne prime test'},
+      {expr:'crt([2, 3, 2], [3, 5, 7])', desc:'Sunzi’s remainder problem'},
+      {expr:'contfrac(sqrt(7))', desc:'Periodic continued fraction'},
+      {expr:'diophantine(x^2 + y^2 = z^2)', desc:'Pythagorean triples'},
+      {expr:'powmod(3, 10^18, 10^9 + 7)', desc:'Fast modular power'},
+      {expr:'divisors(360)', desc:'Divisors, τ(n) and σ(n)'},
     ]
   },
   numeric:{
     label:'Numeric', glyph:'#',
     sub:'High-precision evaluation, formatting.',
-    sm:['Evaluate','Round','Format'],
+    sm:['Evaluate','N digits','Identify','Round','Format'],
     qr:['pi','e','phi','tau','i','Infinity','sqrt(2)','exp(1)'],
     syn:'<span class="kw">pi</span>  <span class="kw">e</span>  <span class="kw">phi</span>  <span class="kw">tau</span>  <span class="kw">i</span>\n<span class="kw">round</span>(x, n)  <span class="kw">format</span>(x,opts)',
     ex:[
       {expr:'pi^e', desc:'π raised to e'},
       {expr:'e^(i*pi)', desc:'Euler\'s identity'},
       {expr:'phi^10', desc:'Tenth golden power'},
+      {expr:'N(pi, 100)', desc:'π to 100 digits'},
+      {expr:'identify(1.6180339887498949)', desc:'Recognise a decimal'},
     ]
   },
   stats:{
     label:'Statistics', glyph:'σ',
-    sub:'Descriptive statistics and correlation.',
-    sm:['Mean','Std','Var','Median','Quantile','Corr'],
-    qr:['mean([])','std([])','variance([])','median([])','mad([])','quantileSeq([],p)','correlation([],[])','sum([])'],
+    sub:'Descriptive statistics, correlation and probability distributions.',
+    sm:['Mean','Std','Var','Median','Quantile','Corr','NormalCDF','InvNorm','BinomCDF','PoissonCDF','TCDF'],
+    qr:['normalcdf(a,b,mu,sigma)','invnorm(p,mu,sigma)','binompdf(n,p,k)','binomcdf(n,p,k)','poissoncdf(lambda,k)','tcdf(a,b,df)','chi2cdf(a,b,df)','mean([])','std([])','variance([])','median([])','mad([])','quantileSeq([],p)','correlation([],[])','sum([])'],
     syn:'<span class="kw">mean</span>([…])  <span class="kw">std</span>([…])\n<span class="kw">variance</span>([…])  <span class="kw">median</span>([…])\n<span class="kw">quantileSeq</span>([…], 0.25)\n<span class="kw">correlation</span>(a,b)',
     ex:[
       {expr:'mean([2,4,6,8,10])', desc:'Arithmetic mean'},
       {expr:'std([1,2,3,4,5])', desc:'Standard deviation'},
       {expr:'quantileSeq([1,2,3,4,5,6,7,8,9,10], 0.75)', desc:'Third quartile'},
+      {expr:'normalcdf(-1.96, 1.96)', desc:'Central 95% of a normal'},
+      {expr:'invnorm(0.975)', desc:'Normal quantile'},
+      {expr:'binomcdf(20, 0.3, 6)', desc:'Binomial P(X ≤ 6)'},
+      {expr:'tcdf(-2.1, 2.1, 12)', desc:'Student t probability'},
     ]
   },
   trig:{
@@ -171,6 +212,12 @@ ACD.push(
   {n:'charpoly',s:'charpoly(matrix)',t:'matrix'},{n:'trigsimp',s:'trigsimp(expr)',t:'algebra'},
 );
 
+ACD.push(
+  ...Object.entries(TOOLS).map(([n, t]) => ({ n, s: t.sig, t: t.mode, d: t.desc })),
+  ...DISTRIBUTION_DOCS.map(d => ({ n: d.n, s: d.s, t: 'stats', d: d.desc })),
+  { n: 'plot', s: 'plot(f, x^2+y^2=4, [x(t), y(t)], r = f(theta), [x, a, b])', t: 'calc', d: 'Plot functions, implicit, parametric and polar curves' },
+);
+
 export const INSERT_MAP = {
   Simplify:'simplify(', Expand:'expand(', Factor:'factor(', Collect:'collect(', Apart:'apart(', Together:'together(',
   GCD:'gcd(', LCM:'lcm(', Derive:'derivative(', Integrate:'integrate(', Limit:'limit(', Sum:'sum(', Product:'product(',
@@ -179,4 +226,9 @@ export const INSERT_MAP = {
   Mean:'mean([', Std:'std([', Var:'variance([', Median:'median([', Quantile:'quantileSeq([', Corr:'correlation(',
   Basic:'sin(', Inverse:'asin(', Hyperbolic:'sinh(', Degrees:'sin(', Convert:'', SI:'', Imperial:'',
   Boolean:'and(', Bitwise:'bitAnd(', Combinatorics:'combinations(',
+  'Complete □':'completesquare(', Rewrite:'rewrite(', Extrema:'extrema(', Laplace:'laplace(', Plot:'plot(',
+  Diagonalize:'diagonalize(', Jordan:'jordan(', LU:'lu(', LinSolve:'linsolve(', 'N digits':'N(', Identify:'identify(',
+  NormalCDF:'normalcdf(', InvNorm:'invnorm(', BinomCDF:'binomcdf(', PoissonCDF:'poissoncdf(', TCDF:'tcdf(',
+  IsPrime:'isprime(', 'Factor n':'factorint(', Divisors:'divisors(', Totient:'totient(', ModInv:'modinv(', PowMod:'powmod(',
+  CRT:'crt([', ContFrac:'contfrac(',
 };

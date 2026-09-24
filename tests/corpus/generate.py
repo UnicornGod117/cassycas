@@ -47,6 +47,7 @@ def add(kind, inp, mode, **ref):
 
 
 def value_ref(v):
+    v = sp.sympify(v)
     v = sp.nsimplify(v) if v.is_Float else v
     ref = {'value': [float(sp.re(sp.N(v, 20))), float(sp.im(sp.N(v, 20)))]}
     if v.is_Rational:
@@ -220,6 +221,36 @@ for n in rng.sample(range(3, 12), 3):
     add('value', 'product(k, k, 1, %d)' % n, 'calculus', **value_ref(sp.factorial(n)))
 for e, n in [(1 / k ** 2, sp.oo), (sp.Rational(1, 2) ** k, sp.oo), (1 / sp.factorial(k), sp.oo), ((-1) ** (k + 1) / k, sp.oo)]:
     add('value', 'sum(%s, k, 1, %s)' % (plain(e), plain(n)), 'calculus', **value_ref(sp.summation(e, (k, 1, n))))
+
+# ── named tools (src/sympy/tools.py) ────────────────────────────────────────
+# Appended last so the problems above keep their ids and random draws.
+t, s = sp.symbols('t s')
+S_POINTS = [3.3, 4.7, 6.1, 8.5]
+for _ in range(8):
+    n = rng.randint(2, 5000)
+    add('value', 'totient(%d)' % n, 'numtheory', **value_ref(sp.totient(n)))
+    add('value', 'nextprime(%d)' % n, 'numtheory', **value_ref(sp.nextprime(n)))
+    m = rng.randint(3, 500)
+    a = rng.choice([c for c in range(2, m) if sp.gcd(c, m) == 1])
+    add('value', 'modinv(%d, %d)' % (a, m), 'numtheory', **value_ref(sp.mod_inverse(a, m)))
+    b, e = rng.randint(2, 99), rng.randint(10, 10 ** 12)
+    add('value', 'powmod(%d, %d, %d)' % (b, e, m), 'numtheory', **value_ref(pow(b, e, m)))
+for _ in range(15):
+    a, w = nz(-3, 3), rng.randint(1, 4)
+    f = rng.choice([t ** rng.randint(0, 4), sp.exp(a * t), sp.sin(w * t), sp.cos(w * t), t * sp.exp(a * t), sp.exp(a * t) * sp.sin(w * t),
+                    t * sp.cos(w * t), sp.sinh(w * t), 3 * t ** 2 - a * t + 1])
+    F = sp.laplace_transform(f, t, s, noconds=True)
+    add('function', 'laplace(%s, t, s)' % plain(f), 'calculus', var='s', points=S_POINTS,
+        values=[[float(sp.N(F.subs(s, sp.Rational(str(p))), 20)), 0.0] for p in S_POINTS])
+for _ in range(10):
+    p = sp.expand(sp.Mul(*[x - nz(-5, 5) for _ in range(rng.randint(2, 3))]) * nz(-3, 3))
+    add('value', 'discriminant(%s, x)' % plain(p), 'algebra', **value_ref(sp.discriminant(p, x)))
+for _ in range(10):
+    y = sp.Symbol('y')
+    f = rng.choice([x * y, x ** 2 + y ** 2, x ** rng.randint(1, 3) * y ** rng.randint(1, 3), sp.sin(x) * sp.cos(y), sp.exp(x + y), x + nz(-3, 3) * y])
+    a1, b1, a2, b2 = rng.randint(-2, 0), rng.randint(1, 3), rng.randint(-2, 0), rng.randint(1, 3)
+    add('value', 'integrate(%s, [x, %d, %d], [y, %d, %d])' % (plain(f), a1, b1, a2, b2), 'calculus',
+        **value_ref(sp.integrate(f, (x, a1, b1), (y, a2, b2))))
 
 (HERE / 'corpus.json').write_text(json.dumps(items, indent=0) + '\n', encoding='utf8')
 print(len(items), 'problems written to', HERE / 'corpus.json')
