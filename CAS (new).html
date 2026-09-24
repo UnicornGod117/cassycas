@@ -9,8 +9,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.2/math.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/mathlive@0.98.6/dist/mathlive.min.js" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/algebrite@1.4.0/dist/algebrite.bundle-for-browser.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mathlive@0.98.6/dist/mathlive.min.js" integrity="sha384-WLeEzLOmugVmm192+lsEqCmDa+rz0ynZ/dEeb32aAu67kUvOav4zVrHxgMYKN+BB" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/algebrite@1.4.0/dist/algebrite.bundle-for-browser.js" integrity="sha384-/ecOTd4I0kjaMwgM41ibmkM2LRZFRe+QA/o3w8Ic6t6vJzAsHFYv8LZoPJNp5G+r" crossorigin="anonymous"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Newsreader:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet"/>
@@ -741,11 +741,16 @@ mjx-container[display="true"]{margin:0!important;text-align:left!important;}
       <span class="rail-glyph">Ω</span>
       <span class="rail-label">Units</span>
     </button>
+    <div class="rail-spacer"></div>
+    <div class="rail-divider"></div>
+    <button class="rail-btn on" id="view-tab-panel" onclick="toggleSidebar()" title="Show / hide the side panel">
+      <span class="rail-glyph">☰</span>
+      <span class="rail-label">Panel</span>
+    </button>
   </nav>
 
   <!-- SIDEBAR (mode context) -->
   <aside class="sidebar" id="sidebar">
-    <button class="sidebar-collapse" id="sidebar-collapse" title="Collapse sidebar" onclick="toggleSidebar()">«</button>
     <div class="sb-head">
       <div class="sb-head-text">
         <div class="sb-eyebrow">Mode</div>
@@ -849,7 +854,6 @@ mjx-container[display="true"]{margin:0!important;text-align:left!important;}
             <div class="input-prompt">›</div>
             <span class="valid-indicator" id="valid-indicator"></span>
             <div class="ac" id="ac"></div>
-            <span class="valid-indicator" id="valid-indicator"></span>
             <div id="monwrap"></div>
             <div id="mlwrap"><math-field id="mf" virtual-keyboard-mode="off"></math-field></div>
           </div>
@@ -991,70 +995,164 @@ let darkTheme = true;
 let exactMode = true;
 let angleMode = 'rad';
 
-// 1. Web Worker Evaluation Kernel & 2. Exact Rational Arithmetic
-let evalWorker = null;
-let evalMsgMap = new Map();
-let evalMsgId = 0;
-function initEvalWorker() {
-  const code = `
-    importScripts("https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.2/math.min.js");
-    self.math.config({ number: 'Fraction' });
-    self.onmessage = (e) => {
-      const {id, expr, scopePayload, isExact, userFnsPayload} = e.data;
-      self.math.config({ number: isExact ? 'Fraction' : 'number' });
-      try {
-        const localScope = Object.assign({}, scopePayload);
-        if (userFnsPayload) {
-          for (let name in userFnsPayload) {
-            const {params, body} = userFnsPayload[name];
-            const compiled = self.math.compile(body);
-            localScope[name] = (...args) => {
-              const loc = Object.assign({}, localScope);
-              params.forEach((p,i) => loc[p] = args[i]);
-              return compiled.evaluate(loc);
-            };
-          }
-        }
-        const res = self.math.evaluate(expr, localScope);
-        self.postMessage({id, res: res && res.toString ? res.toString() : String(res)});
-      } catch(err) {
-        self.postMessage({id, error: err.message});
+// ══════════════════════════════════════════════════════
+//  EVALUATION KERNEL
+// ══════════════════════════════════════════════════════
+const CONSTANT_NAMES = ['pi','e','phi','tau'];
+const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const FORBIDDEN_NAMES = new Set(['__proto__','prototype','constructor']);
+// Workspace values that predate this session's cells (browser storage, loaded files).
+// Replaying the notebook always starts from this snapshot, so re-evaluation is idempotent.
+let baseScope = {};
+
+// The main-thread instance always works in IEEE doubles. Exact mode is purely a
+// presentation layer (see asRational), so numerical routines never see Fractions.
+math.config({ number: 'number' });
+
+// mathjs 12's replacer emits {mathjs:'number'} for ±Infinity/NaN but its reviver ignores it.
+function reviveJSON(key, value) {
+  if (value && value.mathjs === 'number') return Number(value.value);
+  return math.reviver(key, value);
+}
+
+// Degree mode shadows the trig functions in the evaluation scope (scope entries take
+// precedence over built-ins in mathjs). Unlike textual rewriting this converts the whole
+// argument, leaves explicit units (30 deg) alone and also applies inside user functions.
+function makeDegFns(m) {
+  const toRad = x => (x && x.isUnit) ? x : m.multiply(x, Math.PI / 180);
+  const fromRad = y => m.multiply(y, 180 / Math.PI);
+  const o = {};
+  ['sin','cos','tan','sec','csc','cot'].forEach(f => { o[f] = x => m[f](toRad(x)); });
+  ['asin','acos','atan','asec','acsc','acot'].forEach(f => { o[f] = x => fromRad(m[f](x)); });
+  o.atan2 = (y, x) => fromRad(m.atan2(y, x));
+  return o;
+}
+const DEG_FNS = makeDegFns(math);
+// Evaluation context: the workspace plus the angle-mode overrides.
+function ctx(extra) {
+  return Object.assign({}, scope, angleMode === 'deg' ? DEG_FNS : null, extra);
+}
+
+// ── Web Worker kernel ────────────────────────────────
+const WORKER_SRC = `
+  importScripts("https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.2/math.min.js");
+  const math = self.math;
+  ${makeDegFns.toString()}
+  const DEG = makeDegFns(math);
+  function reviveJSON(k, v) { return (v && v.mathjs === 'number') ? Number(v.value) : math.reviver(k, v); }
+  self.onmessage = (e) => {
+    const {id, expr, scopeJSON, fns, deg} = e.data;
+    try {
+      const local = Object.assign(JSON.parse(scopeJSON, reviveJSON), deg ? DEG : null);
+      for (const name in fns) {
+        const {params, body} = fns[name];
+        const compiled = math.compile(body);
+        local[name] = (...args) => {
+          const loc = Object.assign({}, local);
+          params.forEach((p, i) => loc[p] = args[i]);
+          return compiled.evaluate(loc);
+        };
       }
-    };
-  `;
-  const blob = new Blob([code], {type: 'application/javascript'});
-  evalWorker = new Worker(URL.createObjectURL(blob));
-  evalWorker.onmessage = (e) => {
-    if (evalMsgMap.has(e.data.id)) {
-      evalMsgMap.get(e.data.id)(e.data);
-      evalMsgMap.delete(e.data.id);
+      let res = math.evaluate(expr, local);
+      if (res && res.isResultSet) res = res.entries[res.entries.length - 1];
+      if (typeof res === 'function') throw new Error('Expression evaluates to a function, not a value');
+      self.postMessage({id, json: JSON.stringify(res === undefined ? null : res, math.replacer)});
+    } catch (err) {
+      self.postMessage({id, error: err.message});
     }
+  };`;
+let evalWorker = null, workerBroken = false, evalMsgId = 0;
+const evalPending = new Map();
+function initEvalWorker() {
+  try {
+    evalWorker = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], {type: 'application/javascript'})));
+  } catch (e) { workerBroken = true; return; }
+  evalWorker.onmessage = (e) => {
+    const p = evalPending.get(e.data.id);
+    if (p) { evalPending.delete(e.data.id); p.resolve(e.data); }
   };
+  // If the worker cannot start (e.g. its script is blocked) fall back to the main thread.
+  evalWorker.onerror = (e) => {
+    e.preventDefault();
+    workerBroken = true;
+    const pending = [...evalPending.values()]; evalPending.clear();
+    pending.forEach(p => p.resolve(evalOnMainThread(p.expr)));
+  };
+}
+function restartWorker(reason) {
+  if (evalWorker) evalWorker.terminate();
+  const pending = [...evalPending.values()]; evalPending.clear();
+  pending.forEach(p => p.reject(new Error(reason)));
+  initEvalWorker();
+}
+function evalOnMainThread(expr) {
+  try {
+    let res = math.evaluate(expr, ctx());
+    if (res && res.isResultSet) res = res.entries[res.entries.length - 1];
+    if (typeof res === 'function') throw new Error('Expression evaluates to a function, not a value');
+    return {json: JSON.stringify(res === undefined ? null : res, math.replacer)};
+  } catch (err) { return {error: err.message}; }
+}
+function serializeScope() {
+  const o = {};
+  for (const k in scope) if (typeof scope[k] !== 'function') o[k] = scope[k];
+  return JSON.stringify(o, math.replacer);
+}
+function runInWorker(expr) {
+  if (workerBroken || !evalWorker) return Promise.resolve(evalOnMainThread(expr));
+  return new Promise((resolve, reject) => {
+    const id = ++evalMsgId;
+    const timer = setTimeout(() => {
+      // A timed-out worker is still busy; terminate it so later evaluations are not queued behind it.
+      if (evalPending.has(id)) restartWorker('Computation timed out — try a simpler expression or smaller bounds.');
+    }, 10000);
+    evalPending.set(id, {
+      expr,
+      resolve: d => { clearTimeout(timer); resolve(d); },
+      reject: err => { clearTimeout(timer); reject(err); },
+    });
+    const fns = {};
+    for (const k in userFns) fns[k] = {params: userFns[k].params, body: userFns[k].body};
+    evalWorker.postMessage({id, expr, scopeJSON: serializeScope(), fns, deg: angleMode === 'deg'});
+  });
+}
+// Evaluate in the worker and return a live mathjs value (matrices, units, complex… preserved).
+async function workerEval(expr) {
+  const r = await runInWorker(expr);
+  if (r.error) throw new Error(r.error);
+  return JSON.parse(r.json, reviveJSON);
 }
 initEvalWorker();
 
-math.config({ number: 'Fraction' });
-
-async function runInWorker(expr, localScope) {
-  return new Promise((resolve, reject) => {
-    const id = ++evalMsgId;
-    const timeoutId = setTimeout(() => {
-      evalMsgMap.delete(id);
-      reject(new Error('Computation timed out — try a simpler expression or smaller bounds.'));
-    }, 10000);
-    evalMsgMap.set(id, result => { clearTimeout(timeoutId); resolve(result); });
-    const scopePayload = {};
-    for (let k in localScope) { if (typeof localScope[k] !== 'function') scopePayload[k] = localScope[k]; }
-    const userFnsPayload = {};
-    for (let k in userFns) userFnsPayload[k] = {params: userFns[k].params, body: userFns[k].body};
-    evalWorker.postMessage({id, expr, scopePayload, isExact: exactMode, userFnsPayload});
-  });
+// ── Workspace persistence ────────────────────────────
+function sanitizeScope(obj) {
+  const out = {};
+  if (!obj || typeof obj !== 'object') return out;
+  for (const k of Object.keys(obj)) {
+    if (!IDENT_RE.test(k) || FORBIDDEN_NAMES.has(k) || CONSTANT_NAMES.includes(k)) continue;
+    let v = obj[k];
+    if (v && v.isFraction) v = math.number(v);   // sessions saved by older versions
+    const ok = v === null || ['number','boolean','string'].includes(typeof v)
+      || (v && (v.isMatrix || v.isUnit || v.isComplex || v.isBigNumber || Array.isArray(v)));
+    if (ok) out[k] = v;
+  }
+  return out;
 }
-
+function snapshotScope() {
+  const o = {};
+  for (const k of Object.keys(scope)) if (!CONSTANT_NAMES.includes(k) && typeof scope[k] !== 'function') o[k] = scope[k];
+  return o;
+}
+function restoreBaseScope() {
+  for (const k of Object.keys(scope)) if (!CONSTANT_NAMES.includes(k)) delete scope[k];
+  Object.assign(scope, baseScope);
+  for (const k of Object.keys(userFns)) delete userFns[k];
+}
 try {
   const s = localStorage.getItem('cas2-scope');
-  if (s) { const o=JSON.parse(s); Object.keys(o).forEach(k=>{ if(!['pi','e','phi','tau'].includes(k)) scope[k]=o[k]; }); }
+  if (s) Object.assign(scope, sanitizeScope(JSON.parse(s, reviveJSON)));
 } catch(e){}
+baseScope = snapshotScope();
 
 
 // ══════════════════════════════════════════════════════
@@ -1063,7 +1161,7 @@ try {
 function categorizeError(err) {
   const msg = (err && err.message) ? err.message : String(err);
   if (/undefined.*symbol|symbol.*undefined|is not defined/i.test(msg)) {
-    const sym = msg.match(/["'`]([^"'`]+)["'`]/);
+    const sym = msg.match(/["'`]([^"'`]+)["'`]/) || msg.match(/symbol\s+([A-Za-z_]\w*)/i);
     return sym ? `Unknown symbol: "${sym[1]}". Define it first (e.g. ${sym[1]} = 5).` : 'Unknown symbol — check spelling or define it first.';
   }
   if (/unexpected.*end|unexpected.*token|unexpected end/i.test(msg)) return 'Incomplete expression — check your brackets and parentheses.';
@@ -1083,30 +1181,47 @@ function normalise(raw) {
     .replace(/\bLn\s*\(/g,  'log(')
     .replace(/\barc(sin|cos|tan|sinh|cosh|tanh)\b/gi, (m,fn)=>'a'+fn.toLowerCase())
     .replace(/°/g,          ' deg')
-    .replace(/\bτ\b/g,      'tau')
+    .replace(/τ/g,          'tau')
+    // [1..10] range shorthand → mathjs range 1:10
+    .replace(/\[\s*(-?\d+)\s*\.\.\s*(-?\d+)\s*\]/g, '($1:$2)')
     .replace(/×/g, '*').replace(/÷/g, '/');
 }
 
-function wrapTrigForDeg(expr) {
-  if (angleMode === 'rad') return expr;
-  expr = expr.replace(/\b(sin|cos|tan|sec|csc|cot)\s*\(/g, (m, fn) => fn + '((pi/180)*');
-  expr = expr.replace(/\b(asin|acos|atan|atan2)\s*\(/g, (m, fn) => '(180/pi)*' + fn + '(');
-  return expr;
-}
-
-function applyExactMode(result, texStr) {
-  if (exactMode) {
-    try {
-      const node = math.parse(String(result));
-      return math.simplify(node, {}, {exactFractions: true}).toTex();
-    } catch { return texStr; }
+// ══════════════════════════════════════════════════════
+//  EXACT / APPROX PRESENTATION
+// ══════════════════════════════════════════════════════
+// Recover a simple rational p/q (q ≤ maxDen) from a double via continued fractions.
+function asRational(n, maxDen = 10000, tol = 1e-12) {
+  if (typeof n !== 'number' || !isFinite(n) || Number.isInteger(n)) return null;
+  const sign = n < 0 ? -1 : 1, x = Math.abs(n);
+  let h0 = 0, h1 = 1, k0 = 1, k1 = 0, b = x;
+  for (let i = 0; i < 40; i++) {
+    const a = Math.floor(b);
+    const h2 = a * h1 + h0, k2 = a * k1 + k0;
+    if (k2 > maxDen) break;
+    h0 = h1; h1 = h2; k0 = k1; k1 = k2;
+    if (Math.abs(x - h1 / k1) <= tol * Math.max(1, x)) return k1 === 1 ? null : {n: sign * h1, d: k1};
+    const frac = b - a;
+    if (frac < 1e-15) break;
+    b = 1 / frac;
   }
-  try {
-    const n = typeof result === 'number' ? result : math.evaluate(String(result), scope);
-    if (typeof n === 'number') return fmtN(n);
-    if (n && n.isComplex) return `${fmtN(n.re)} + ${fmtN(n.im)}i`;
-    return texStr;
-  } catch { return texStr; }
+  return null;
+}
+// Plain-text number, honouring the Exact/Approx toggle.
+function fmtNum(n) {
+  if (exactMode) { const r = asRational(n); if (r) return `${r.n}/${r.d}`; }
+  return fmtN(n);
+}
+// LaTeX number, honouring the Exact/Approx toggle.
+function texNum(n) {
+  if (typeof n !== 'number') return toTex(n);
+  if (!isFinite(n)) return isNaN(n) ? '\\text{Undefined}' : (n > 0 ? '\\infty' : '-\\infty');
+  if (exactMode) {
+    const r = asRational(n);
+    if (r) return `${r.n < 0 ? '-' : ''}\\frac{${Math.abs(r.n)}}{${r.d}}`;
+  }
+  const s = fmtN(n), m = s.match(/^(-?[\d.]+)e([+-]?\d+)$/);
+  return m ? `${m[1]}\\times 10^{${parseInt(m[2], 10)}}` : s;
 }
 
 // ══════════════════════════════════════════════════════
@@ -1130,8 +1245,8 @@ const MODES = {
     label:'Calculus', glyph:'∫',
     sub:'Differentiation, integration, limits, series.',
     sm:['Derive','Integrate','Definite ∫','Limit','Sum','Product','Series'],
-    qr:['derivative(f,x)','integrate(f,x)','integrate(f,x,a,b)','limit(f,x,0)','sum(f,n,1,10)','product(f,n,1,5)','derivative(f,x,2)','series(f,x)','gradient(f,[x,y])','ode(dy/dx,x,y,0,1,5)'],
-    syn:'<span class="kw">derivative</span>(expr, <span class="var">x</span>)\n<span class="kw">derivative</span>(expr, <span class="var">x</span>, n)  nth order\n<span class="kw">integrate</span>(expr, <span class="var">x</span>)\n<span class="kw">integrate</span>(expr, <span class="var">x</span>, a, b)\n<span class="kw">limit</span>(expr, <span class="var">x</span>, a)\n<span class="kw">series</span>(expr, <span class="var">x</span>, a, n)',
+    qr:['derivative(f,x)','integrate(f,x)','integrate(f,x,a,b)','limit(f,x,0)','sum(f,n,1,10)','product(f,n,1,5)','derivative(f,x,2)','series(f,x)','gradient(f,[x,y])','ode(x+y,x,y,0,1,1)'],
+    syn:'<span class="kw">derivative</span>(expr, <span class="var">x</span>)\n<span class="kw">derivative</span>(expr, <span class="var">x</span>, n)  nth order\n<span class="kw">integrate</span>(expr, <span class="var">x</span>)\n<span class="kw">integrate</span>(expr, <span class="var">x</span>, a, b)\n<span class="kw">limit</span>(expr, <span class="var">x</span>, a, "+")\n<span class="kw">series</span>(expr, <span class="var">x</span>, a, n)',
     ex:[
       {expr:'derivative(sin(x)*x^2, x)', desc:'Product rule'},
       {expr:'integrate(x*sin(x), x)', desc:'Integration by parts'},
@@ -1184,7 +1299,7 @@ const MODES = {
     ex:[
       {expr:'mean([2,4,6,8,10])', desc:'Arithmetic mean'},
       {expr:'std([1,2,3,4,5])', desc:'Standard deviation'},
-      {expr:'quantileSeq([1..10], 0.75)', desc:'Third quartile'},
+      {expr:'quantileSeq([1,2,3,4,5,6,7,8,9,10], 0.75)', desc:'Third quartile'},
     ]
   },
   trig:{
@@ -1229,8 +1344,8 @@ const ACD = [
   {n:'simplify',s:'simplify(expr)',t:'algebra'},{n:'expand',s:'expand(expr)',t:'algebra'},
   {n:'factor',s:'factor(expr)',t:'algebra'},{n:'collect',s:'collect(expr,x)',t:'algebra'},
   {n:'derivative',s:'derivative(expr,x)',t:'calc'},{n:'integrate',s:'integrate(expr,x)',t:'calc'},
-  {n:'limit',s:'limit(expr,x,a)',t:'calc'},{n:'sum',s:'sum(expr,n,a,b)',t:'calc'},
-  {n:'product',s:'product(expr,n,a,b)',t:'calc'},{n:'series',s:'series(expr,x,a,n)',t:'calc'},,
+  {n:'limit',s:'limit(expr,x,a[,"+"|"-"])',t:'calc'},{n:'sum',s:'sum(expr,n,a,b)',t:'calc'},
+  {n:'product',s:'product(expr,n,a,b)',t:'calc'},{n:'series',s:'series(expr,x,a,n)',t:'calc'},{n:'apart',s:'apart(expr,x)',t:'algebra'},
   {n:'solve',s:'solve(equation,x)',t:'solve'},
   {n:'zeros',s:'zeros(expr,x)',t:'solve'},{n:'det',s:'det(matrix)',t:'matrix'},
   {n:'inv',s:'inv(matrix)',t:'matrix'},{n:'transpose',s:'transpose(matrix)',t:'matrix'},
@@ -1332,7 +1447,7 @@ function initMonaco() {
           })),
           ...Object.keys(scope).filter(k=>k.toLowerCase().startsWith(w.word.toLowerCase())&&k!==w.word).map(k=>({
             label:k,kind:monaco.languages.CompletionItemKind.Variable,
-            insertText:k,detail:fmtR(scope[k]),range
+            insertText:k,detail:typeof scope[k]==='function'?'function':fmtR(scope[k]),range
           }))
         ];
         return {suggestions:items};
@@ -1374,14 +1489,14 @@ function updateAC(val){
   const q=m[1].toLowerCase();
   const matches=[
     ...ACD.filter(d=>d.n.toLowerCase().startsWith(q)&&d.n!==m[1]),
-    ...Object.keys(scope).filter(k=>k.toLowerCase().startsWith(q)&&k!==m[1]).map(k=>({n:k,s:k+'='+fmtR(scope[k]).slice(0,18),t:'var'})),
+    ...Object.keys(scope).filter(k=>k.toLowerCase().startsWith(q)&&k!==m[1]).filter(k=>typeof scope[k]!=='function').map(k=>({n:k,s:k+'='+fmtR(scope[k]).slice(0,18),t:'var'})),
     ...Object.keys(userFns).filter(k=>k.toLowerCase().startsWith(q)&&k!==m[1]).map(k=>({n:k,s:`${k}(${userFns[k].params.join(',')})`,t:'fn'})),
   ].slice(0,8);
   if(!matches.length){closeAC();return;}
   const ac=document.getElementById('ac');
   ac.innerHTML=matches.map((d,i)=>
-    `<div class="aci ${i===0?'sel':''}" onclick="insertAC('${d.n}','${d.n}(')" data-i="${i}">
-      <span class="aci-name">${d.n}</span><span class="aci-sig">${d.s}</span><span class="aci-tag">${d.t}</span>
+    `<div class="aci ${i===0?'sel':''}" onclick="insertAC('${esc2(d.n)}','${esc2(d.t==='var'?d.n:d.n+'(')}')" data-i="${i}">
+      <span class="aci-name">${escH(d.n)}</span><span class="aci-sig">${escH(d.s)}</span><span class="aci-tag">${escH(d.t)}</span>
     </div>`
   ).join('');
   acIdx=0;ac.classList.add('open');
@@ -1409,7 +1524,7 @@ async function showPrev(v){
     const node=math.parse(v.trim());
     const tex=node.toTex?node.toTex():'';
     if(tex){
-      el.innerHTML=`\\(${tex}\\)`;el.classList.add('on');
+      el.innerHTML=`\\(${escH(tex)}\\)`;el.classList.add('on');
       if(window.MathJax&&MathJax.typesetPromise) await MathJax.typesetPromise([el]);
     }
   }catch{el.classList.remove('on');}
@@ -1532,274 +1647,423 @@ function insText(t){
 // ══════════════════════════════════════════════════════
 //  DEFINE SYSTEM
 // ══════════════════════════════════════════════════════
-async function parseDef(expr){
-  const fn=expr.match(/^([a-zA-Z_]\w*)\s*\(([^)]*)\)\s*=\s*(.+)$/);
-  if(fn){
-    const name=fn[1], params=fn[2].split(',').map(s=>s.trim()).filter(Boolean), body=fn[3].trim();
-    const compiled=math.compile(body);
-    userFns[name]={params,body,compiled};
-    scope[name]=(...args)=>{const loc=Object.assign({},scope);params.forEach((p,i)=>loc[p]=args[i]);return compiled.evaluate(loc);};
-    return {type:'funcdef',name,params,body};
+const FN_DEF_RE = /^([a-zA-Z_]\w*)\s*\(([^)]*)\)\s*=(?!=)\s*(.+)$/;
+const VAR_DEF_RE = /^([a-zA-Z_][a-zA-Z0-9_]*)\s*=(?!=)\s*(.+)$/;
+function isDefinableName(name) {
+  // Built-in functions and the fixed constants cannot be redefined (so `sin(x) = 1/2` stays an equation).
+  return IDENT_RE.test(name) && !FORBIDDEN_NAMES.has(name) && !CONSTANT_NAMES.includes(name)
+    && typeof math[name] !== 'function';
+}
+// Classify an input as a function/variable definition without evaluating anything.
+function classifyDef(expr) {
+  const fn = expr.match(FN_DEF_RE);
+  if (fn) {
+    const params = fn[2].split(',').map(s => s.trim()).filter(Boolean);
+    if (isDefinableName(fn[1]) && params.every(p => IDENT_RE.test(p)))
+      return {kind: 'fn', name: fn[1], params, rhs: fn[3].trim()};
+    return null;
   }
-  const va=expr.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/);
-  if(va&&!expr.includes('==')&&!expr.includes('solve(')){
-    const name=va[1];
-    const workerRes = await runInWorker(va[2], scope);
-    if (workerRes.error) throw new Error(workerRes.error);
-    const val = math.evaluate(workerRes.res);
-    scope[name]=val;
-    return {type:'vardef',name,value:val};
-  }
+  const va = expr.match(VAR_DEF_RE);
+  if (va && isDefinableName(va[1])) return {kind: 'var', name: va[1], rhs: va[2].trim()};
   return null;
+}
+async function parseDef(expr){
+  const def = classifyDef(expr);
+  if (!def) return null;
+  if (def.kind === 'fn') {
+    const {name, params, rhs: body} = def;
+    const compiled = math.compile(body);
+    userFns[name] = {params, body, compiled};
+    scope[name] = (...args) => { const loc = ctx(); params.forEach((p, i) => loc[p] = args[i]); return compiled.evaluate(loc); };
+    return {type: 'funcdef', name, params, body};
+  }
+  const value = await workerEval(def.rhs);
+  delete userFns[def.name];
+  scope[def.name] = value;
+  return {type: 'vardef', name: def.name, value};
+}
+
+// Substitute user-defined function bodies into an expression, so symbolic operations
+// (derivative, integrate, solve…) can see through f(x). Recursive definitions are left alone.
+function inlineUserFns(expr) {
+  const names = Object.keys(userFns);
+  if (!names.length) return expr;
+  const re = new RegExp(`\\b(${names.join('|')})\\s*\\(`);
+  let out = expr;
+  for (let pass = 0; pass < 64; pass++) {
+    const m = re.exec(out);
+    if (!m) return out;
+    const open = m.index + m[0].length;
+    let depth = 0, close = -1;
+    for (let j = open; j < out.length; j++) {
+      const c = out[j];
+      if (c === '(' || c === '[') depth++;
+      else if (c === ')' || c === ']') { if (depth === 0) { close = j; break; } depth--; }
+    }
+    if (close < 0) return expr;
+    const fn = userFns[m[1]], args = parseTopLevelArgs(out.slice(open, close));
+    if (args.length !== fn.params.length) return expr;
+    let body;
+    try {
+      body = math.parse(fn.body).transform((n, path, parent) => {
+        if (n.isSymbolNode && !(parent && parent.isFunctionNode && path === 'fn')) {
+          const i = fn.params.indexOf(n.name);
+          if (i >= 0) return new math.ParenthesisNode(math.parse(args[i]));
+        }
+        return n;
+      }).toString();
+    } catch { return expr; }
+    out = out.slice(0, m.index) + `(${body})` + out.slice(close + 1);
+  }
+  return expr;
 }
 
 // ══════════════════════════════════════════════════════
-//  EVALUATOR (preserved verbatim)
+//  SYMBOLIC HELPERS (Algebrite bridge + numerical verification)
+// ══════════════════════════════════════════════════════
+function algebriteRun(cmd) {
+  if (!window.Algebrite) throw new Error('Algebrite is still loading — try again in a moment.');
+  const out = Algebrite.run(cmd);
+  if (!out || /Stop|Unsupported|error|nil/i.test(out)) throw new Error(out || 'Algebrite could not evaluate this');
+  return out;
+}
+// mathjs syntax → Algebrite syntax (explicit products, e → exp(1), reciprocal trig).
+function toAlgebrite(str) {
+  const recip = {sec: 'cos', csc: 'sin', cot: 'tan'};
+  return math.parse(str).transform((n, path, parent) => {
+    if (n.isSymbolNode && n.name === 'e' && !(parent && parent.isFunctionNode && path === 'fn')) return math.parse('exp(1)');
+    if (n.isFunctionNode && recip[n.fn.name] && n.args.length === 1)
+      return new math.OperatorNode('/', 'divide', [new math.ConstantNode(1), new math.FunctionNode(recip[n.fn.name], n.args)]);
+    if (n.isFunctionNode && n.fn.name === 'log10' && n.args.length === 1)
+      return math.parse(`log(${n.args[0]})/log(10)`);
+    return n;
+  }).toString({implicit: 'show'});
+}
+function fromAlgebrite(s) {
+  return s.replace(/\barcsinh\b/g,'asinh').replace(/\barccosh\b/g,'acosh').replace(/\barctanh\b/g,'atanh')
+          .replace(/\barcsin\b/g,'asin').replace(/\barccos\b/g,'acos').replace(/\barctan\b/g,'atan');
+}
+function toReal(y) {
+  if (typeof y === 'number') return y;
+  if (y && y.isComplex) return Math.abs(y.im) < 1e-9 * (1 + Math.abs(y.re)) ? y.re : NaN;
+  if (y && y.isFraction) return math.number(y);
+  if (typeof y === 'boolean') return +y;
+  return NaN;
+}
+// Free (non-function, non-constant) symbols of an expression.
+function freeSymbols(expr) {
+  const out = new Set();
+  const node = typeof expr === 'string' ? math.parse(expr) : expr;
+  node.traverse((n, path, parent) => {
+    if (!n.isSymbolNode || (parent && parent.isFunctionNode && path === 'fn')) return;
+    if (CONSTANT_NAMES.includes(n.name) || ['i','Infinity','NaN','true','false','null'].includes(n.name)) return;
+    if (n.name in math && typeof math[n.name] !== 'function' && typeof math[n.name] !== 'object') return;
+    out.add(n.name);
+  });
+  return [...out];
+}
+// True when two expressions agree at several sample points (every free symbol is sampled).
+// Symbolic results are always in radians, so this deliberately ignores degree mode.
+function numericallyEqual(a, b) {
+  let ca, cb;
+  try { ca = math.compile(a); cb = math.compile(b); } catch { return false; }
+  const syms = [...new Set([...freeSymbols(a), ...freeSymbols(b)])];
+  const pts = [0.37, 0.61, -0.83, 0.21, -0.47, 1.31, 2.17, -1.7, 3.3];
+  let good = 0;
+  for (let t = 0; t < pts.length; t++) {
+    const loc = Object.assign({}, scope);
+    syms.forEach((s, i) => { loc[s] = pts[(t + 2 * i) % pts.length] + 0.013 * i; });
+    let va, vb;
+    try { va = toReal(ca.evaluate(loc)); vb = toReal(cb.evaluate(loc)); } catch { continue; }
+    if (!isFinite(va) || !isFinite(vb)) continue;
+    if (Math.abs(va - vb) > 1e-7 * (1 + Math.abs(va))) return false;
+    good++;
+  }
+  return good >= 3;
+}
+function texOf(str) { try { return math.parse(str).toTex(); } catch { return `\\text{${escTex(str)}}`; } }
+function escTex(s) { return String(s).replace(/[\\{}$&#^_%~]/g, c => '\\' + c); }
+// Pretty-print an Algebrite/mathjs expression string through mathjs (u^(1/2) → sqrt(u)).
+function prettify(str) {
+  try {
+    return math.parse(str).transform(n => {
+      if (n.isOperatorNode && n.fn === 'pow') {
+        const ex = stripParens(n.args[1]);
+        let half = false;
+        try { half = !freeSymbols(ex).length && toReal(ex.evaluate({})) === 0.5; } catch {}
+        if (half) return new math.FunctionNode('sqrt', [stripParens(n.args[0])]);
+      }
+      return n;
+    }).toString({parenthesis: 'auto'});
+  } catch { return str; }
+}
+// Replace workspace variables holding plain numbers by their values.
+function substituteKnown(str, keep) {
+  return math.parse(str).transform((n, path, parent) => {
+    if (n.isSymbolNode && n.name !== keep && !(parent && parent.isFunctionNode && path === 'fn')
+        && !CONSTANT_NAMES.includes(n.name) && typeof scope[n.name] === 'number')
+      return new math.ConstantNode(scope[n.name]);
+    return n;
+  }).toString({implicit: 'show'});
+}
+
+// ══════════════════════════════════════════════════════
+//  EVALUATOR
 // ══════════════════════════════════════════════════════
 async function dispatch(rawExpr, mode){
   const expr = normalise(rawExpr);
-  const def=await parseDef(expr);
-  if(def){renderDefs();return def;}
-  if(/\bto\b/.test(expr)&&mode!=='calculus') return await evalUnits(expr);
-  const exprForEval = (mode==='trig'||/\b(sin|cos|tan|sec|csc|cot)\s*\(/.test(expr)) ? wrapTrigForDeg(expr) : expr;
+  const def = await parseDef(expr);
+  if (def) { renderDefs(); return def; }
+  const e = inlineUserFns(expr);
+  if (/\bto\b/.test(e) && mode !== 'calculus') return await evalUnits(e);
   switch(mode){
-    case 'calculus': return await evalCalc(exprForEval);
-    case 'solve':    return await evalSolve(exprForEval);
-    case 'matrix':   return await evalMatrix(exprForEval);
+    case 'calculus': return await evalCalc(e);
+    case 'solve':    return await evalSolve(e);
+    case 'matrix':   return await evalMatrix(e);
     case 'stats':    case 'logic': case 'numeric': case 'trig': case 'units':
-      return await evalGeneric(exprForEval);
-    default: return await evalAlgebra(exprForEval);
+      return await evalGeneric(e);
+    default: return await evalAlgebra(e);
   }
 }
+function symResult(tex, plain, steps, plot) { return {type: 'sym', out: tex, plain, steps, plot: plot || null}; }
 
 async function evalAlgebra(expr){
   const steps=[];
   if(/^apart\s*\(/.test(expr)){
-    const inner=xarg(expr,'apart');
-    try {
-      const res = window.Algebrite ? Algebrite.run(`apart(${inner})`) : "";
-      if (!res || res === "" || res.includes('Stop:')) throw new Error('apart failed');
-      const s = math.parse(res);
-      steps.push({d:'Input', e:inner}, {d:'Partial fractions (Algebrite)', e:res});
-      return {type:'sym', out:s.toTex(), plain:res, steps, plot:/\bx\b/.test(res)?res:null};
-    } catch(err) {
-      steps.push({d:'Input', e:inner}, {d:'Error', e:'Could not decompose'});
-      return {type:'sym', out:math.parse(inner).toTex(), plain:inner, steps};
-    }
+    const args = parseTopLevelArgs(xarg(expr,'apart'));
+    const f = args[0], v = args[1] || freeSymbols(f)[0] || 'x';
+    steps.push({d:'Input', e:f});
+    const pf = partialFractions(f, v);
+    if (!pf) throw new Error('Could not decompose — apart() needs a rational function with a factorable denominator.');
+    steps.push({d:`Denominator factored over ℚ`, e:pf.den}, {d:'Partial fractions', e:pf.plain});
+    return symResult(pf.tex, pf.plain, steps, freeSymbols(f).length === 1 ? f : null);
   }
   if (/^polydiv\s*\(/.test(expr)) {
     const args = parseTopLevelArgs(xarg(expr, 'polydiv'));
-    if (args.length >= 3) {
-      const [pdp, pdq, pdv] = args;
-      const stepsPD = [{ d: 'Dividend', e: pdp }, { d: 'Divisor', e: pdq }];
-      if (window.Algebrite) {
-        try {
-          const algQ = Algebrite.run(`quotient(${pdp}, ${pdq}, ${pdv})`);
-          const algR = Algebrite.run(`remainder(${pdp}, ${pdq}, ${pdv})`);
-          if (algQ && !algQ.includes('Stop')) {
-            stepsPD.push({ d: 'Quotient', e: algQ }, { d: 'Remainder', e: algR });
-            let tex;
-            try { tex = `\\frac{${math.parse(pdp).toTex()}}{${math.parse(pdq).toTex()}} = ${math.parse(algQ).toTex()} + \\frac{${math.parse(algR).toTex()}}{${math.parse(pdq).toTex()}}`; }
-            catch { tex = escH(`${algQ} remainder ${algR}`); }
-            return { type: 'sym', out: tex, plain: `quotient: ${algQ}, remainder: ${algR}`, steps: stepsPD };
-          }
-        } catch(e) {}
-      }
-      return { type: 'sym', out: `\\text{polydiv requires Algebrite — loading…}`, plain: 'polydiv requires Algebrite', steps: stepsPD };
-    }
+    if (args.length < 2) throw new Error('polydiv(p, q, x) needs a dividend, a divisor and a variable.');
+    const [p, q] = args, v = args[2] || freeSymbols(p)[0] || 'x';
+    const pa = toAlgebrite(p), qa = toAlgebrite(q);
+    const quo = prettify(fromAlgebrite(algebriteRun(`quotient(${pa},${qa},${v})`)));
+    const rem = prettify(fromAlgebrite(algebriteRun(`expand((${pa})-(${qa})*(${toAlgebrite(quo)}))`)));
+    if (!numericallyEqual(`(${quo})*(${q})+(${rem})`, p)) throw new Error('Polynomial division failed verification.');
+    steps.push({d:'Dividend', e:p}, {d:'Divisor', e:q}, {d:'Quotient', e:quo}, {d:'Remainder', e:rem});
+    const tex = rem === '0'
+      ? `\\frac{${texOf(p)}}{${texOf(q)}} = ${texOf(quo)}`
+      : `\\frac{${texOf(p)}}{${texOf(q)}} = ${texOf(quo)} + \\frac{${texOf(rem)}}{${texOf(q)}}`;
+    return symResult(tex, `quotient: ${quo}, remainder: ${rem}`, steps);
   }
   if(/^simplify\s*\(/.test(expr)){
     const inner=xarg(expr,'simplify');
     const node=math.parse(inner);
-    const s=math.simplify(node,{},{exactFractions:true});
-    const changed = s.toString() !== node.toString();
-    steps.push({d:'Input', e:inner},{d:changed?'Simplified':'Already simplified', e:s.toString()});
-    return{type:'sym',out:s.toTex(),plain:s.toString(),steps,plot:/\bx\b/.test(inner)?inner:null};
+    let best=math.simplify(node,{},{exactFractions:true}).toString();
+    // mathjs does not cancel polynomial factors; let Algebrite try and keep the shorter verified form.
+    try {
+      const alt = prettify(fromAlgebrite(algebriteRun(`simplify(${toAlgebrite(inner)})`)));
+      if (alt.length < best.length && numericallyEqual(alt, inner)) best = alt;
+    } catch {}
+    const changed = best !== node.toString();
+    steps.push({d:'Input', e:inner},{d:changed?'Simplified':'Already simplified', e:best});
+    return symResult(texOf(best), best, steps, freeSymbols(best).length === 1 ? best : null);
   }
   if(/^expand\s*\(/.test(expr)){
     const inner=xarg(expr,'expand');
+    let out = null;
     try {
-      const expNode = doExpand(inner);
-      const s = math.simplify(expNode, {}, {exactFractions:true});
-      const sStr = s.toString();
-      steps.push({d:'Input', e:inner}, {d:'Expanded & collected', e:sStr});
-      return{type:'sym',out:s.toTex(),plain:sStr,steps,plot:/\bx\b/.test(sStr)?sStr:null};
-    } catch(err) {
-      const node = math.parse(inner);
-      steps.push({d:'Input', e:inner}, {d:'Note', e:'Could not expand — returned as-is'});
-      return{type:'sym',out:node.toTex(),plain:inner,steps};
-    }
+      const alt = prettify(fromAlgebrite(algebriteRun(`expand(${toAlgebrite(inner)})`)));
+      if (numericallyEqual(alt, inner)) out = alt;
+    } catch {}
+    if (!out) { try { out = math.simplify(doExpand(inner), {}, {exactFractions:true}).toString(); } catch { out = inner; } }
+    steps.push({d:'Input', e:inner}, {d:'Expanded', e:out});
+    return symResult(texOf(out), out, steps, freeSymbols(out).length === 1 ? out : null);
   }
   if(/^factor\s*\(/.test(expr)){
-    const inner=xarg(expr,'factor');
+    const args=parseTopLevelArgs(xarg(expr,'factor'));
+    const inner=args[0];
+    const fvar=args[1] || freeSymbols(inner).filter(k=>typeof scope[k]==='undefined')[0] || 'x';
     steps.push({d:'Input', e:inner});
-    const varSet=new Set();
-    try{math.parse(inner).traverse(n=>{if(n.isSymbolNode&&!math[n.name]&&!['pi','e','phi','tau','i'].includes(n.name))varSet.add(n.name);});}catch{}
-    const fv=[...varSet].filter(k=>typeof scope[k]==='undefined');
-    const fvar=fv.length>=1?fv[0]:'x';
-    const factored=doFactor(inner,fvar);
-    if(factored){
-      try{
-        const fNode=math.parse(factored);
-        steps.push({d:'Factored form', e:factored});
-        return{type:'sym',out:fNode.toTex(),plain:factored,steps};
-      }catch{}
+    let factored = null;
+    try {
+      const alt = prettify(fromAlgebrite(algebriteRun(`factor(${toAlgebrite(inner)},${fvar})`)));
+      if (numericallyEqual(alt, inner)) factored = alt;
+    } catch {}
+    if (!factored) { const f = doFactor(inner, fvar); if (f && numericallyEqual(f, inner)) factored = prettify(f); }
+    if (factored && factored !== prettify(inner)) {
+      steps.push({d:'Factored over ℚ', e:factored});
+      return symResult(texOf(factored), factored, steps);
     }
-    const simplified=math.simplify(math.parse(inner),{},{exactFractions:true});
-    steps.push({d:'No rational factors found — simplified', e:simplified.toString()});
-    return{type:'sym',out:simplified.toTex(),plain:simplified.toString(),steps};
+    const simplified=math.simplify(math.parse(inner),{},{exactFractions:true}).toString();
+    steps.push({d:'Irreducible over ℚ — simplified', e:simplified});
+    return symResult(texOf(simplified), simplified, steps);
   }
   if(/^collect\s*\(/.test(expr)){
     const args=parseTopLevelArgs(xarg(expr,'collect'));
     const f=args[0]||'', v=args[1]||'x';
-    try{
-      // Rationalize collects polynomial in v (mathjs)
-      const r=math.rationalize(math.parse(f),{},{exactFractions:true});
-      steps.push({d:`Input`,e:f},{d:`Collected in ${v}`,e:r.toString()});
-      return{type:'sym',out:r.toTex(),plain:r.toString(),steps};
-    }catch{
-      const s=math.simplify(math.parse(f),{},{exactFractions:true});
-      steps.push({d:'Input',e:f},{d:'Simplified (collect fallback)',e:s.toString()});
-      return{type:'sym',out:s.toTex(),plain:s.toString(),steps};
-    }
+    let out = null;
+    try {
+      const p = `expand(${toAlgebrite(f)})`;
+      const d = parseInt(algebriteRun(`deg(${p},${v})`), 10);
+      if (!(d >= 0 && d <= 50)) throw new Error('not a polynomial');
+      const terms = [];
+      for (let k = d; k >= 0; k--) {
+        const c = prettify(fromAlgebrite(algebriteRun(`coeff(${p},${v},${k})`)));
+        if (c === '0') continue;
+        const cNode = math.parse(c), mono = k === 0 ? null : math.parse(k === 1 ? v : `${v}^${k}`);
+        // Built as nodes so mathjs inserts only the parentheses precedence requires.
+        terms.push(!mono ? cNode : c === '1' ? mono : new math.OperatorNode('*', 'multiply', [cNode, mono]));
+      }
+      const cand = terms.length ? terms.reduce((acc, t) => new math.OperatorNode('+', 'add', [acc, t])).toString() : '0';
+      if (numericallyEqual(cand, f)) out = prettify(cand);
+    } catch {}
+    if (!out) out = math.simplify(math.parse(f),{},{exactFractions:true}).toString();
+    steps.push({d:'Input',e:f},{d:`Collected in powers of ${v}`,e:out});
+    return symResult(texOf(out), out, steps);
   }
-  // General algebra expression — try numeric then fall back to symbolic
-  try {
-    const workerRes = await runInWorker(expr, scope);
-    if (workerRes.error) throw new Error(workerRes.error);
-    const result = math.evaluate(workerRes.res);
-    const plain=fmtR(result);
-    const hasX=/\bx\b/.test(expr)&&!Array.isArray(result)&&typeof result!=='boolean';
-    return{type:'val',out:toTex(result),plain,plot:hasX?expr:null};
-  } catch {
+  // General algebra expression — evaluate numerically, fall back to symbolic
+  let result;
+  try { result = await workerEval(expr); } catch (err) {
+    if (/timed out/i.test(err.message)) throw err;
     return evalSymbolic(expr);
   }
+  return valResult(result, expr);
+}
+function valResult(result, expr) {
+  const plottable = typeof result === 'number' || (result && result.isComplex);
+  return {type:'val', value:result, out:toTex(result), plain:fmtR(result),
+          plot: plottable && freeSymbols(expr).includes('x') ? expr : null};
 }
 
 async function evalCalc(expr){
   const steps=[];
-  const dm=expr.match(/^derivative\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*(?:,\s*(\d+))?\s*\)$/);
-  if(dm){
-    const[,f,v,os]=dm, order=parseInt(os||'1');
+  if(/^derivative\s*\(/.test(expr)){
+    const args = parseTopLevelArgs(xarg(expr,'derivative'));
+    const f = args[0], v = args[1] || 'x', order = args[2] ? parseInt(args[2], 10) : 1;
+    if (!IDENT_RE.test(v)) throw new Error('derivative(f, x, n): x must be a variable name.');
+    if (!(order >= 1 && order <= 20)) throw new Error('derivative order must be an integer between 1 and 20.');
     steps.push({d:`f(${v}) = ${f}`,e:f});
     let node=math.parse(f);
     for(let i=0;i<order;i++){node=math.derivative(node,v);steps.push({d:`d/d${v} (order ${i+1})`,e:node.toString()});}
     const s=math.simplify(node);
     steps.push({d:'Simplify',e:s.toString()});
     const oTex=order>1?`\\frac{d^{${order}}}{d${v}^{${order}}}`:`\\frac{d}{d${v}}`;
-    return{type:'sym',out:`${oTex}\\left[${math.parse(f).toTex()}\\right] = ${s.toTex()}`,plain:`${s}`,steps,plot:s.toString().includes(v)?s.toString():null};
+    return symResult(`${oTex}\\left[${texOf(f)}\\right] = ${s.toTex()}`, s.toString(), steps,
+      freeSymbols(s).length === 1 && freeSymbols(s)[0] === 'x' ? s.toString() : null);
   }
-  const im=expr.match(/^integrate\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*(?:,\s*(.+?)\s*,\s*(.+?))?\s*\)$/);
-  if(im){
-    const[,f,v,a,b]=im;
-    if(a!==undefined){
-      const av=math.evaluate(a,scope), bv=math.evaluate(b,scope);
-      const r=numInt(math.compile(f),v,av,bv);
-      steps.push({d:'Definite integral (Simpson n=1000)',e:`∫[${a},${b}] ${f} d${v}`},{d:'Result',e:fmtN(r)});
-      return{type:'sym',out:`\\int_{${toTex(av)}}^{${toTex(bv)}} ${math.parse(f).toTex()} \\, d${v} = ${fmtN(r)}`,plain:fmtN(r),steps};
-    } else {
-      const antideriv = symbolicIntegrate(f, v);
-      if (antideriv.noForm && window.Algebrite) {
-        const algRes = Algebrite.run(`integral(${f}, ${v})`);
-        if (algRes && !algRes.includes('Stop:') && !algRes.includes('integral')) {
-          steps.push({d:'Integrand', e:f},{d:'Risch Algorithm (Algebrite)', e: algRes + ' + C'});
+  if(/^integrate\s*\(/.test(expr)){
+    const args = parseTopLevelArgs(xarg(expr,'integrate'));
+    const f = args[0], v = args[1] || 'x';
+    if (!f || !IDENT_RE.test(v)) throw new Error('Use integrate(f, x) or integrate(f, x, a, b).');
+    if (args.length >= 4) {
+      const [a, b] = [args[2], args[3]];
+      const av = toReal(math.evaluate(a, ctx())), bv = toReal(math.evaluate(b, ctx()));
+      if (isNaN(av) || isNaN(bv)) throw new Error('Integration bounds must be real numbers.');
+      let r = numInt(math.compile(f), v, av, bv);
+      let method = 'Adaptive Simpson quadrature';
+      // Prefer the fundamental theorem when a verified antiderivative is continuous on [a, b].
+      if (isFinite(av) && isFinite(bv) && angleMode === 'rad') {
+        const F = symbolicIntegrate(f, v);
+        if (!F.noForm) {
           try {
-            const tex = math.parse(algRes).toTex();
-            return {type:'sym',out:`\\int ${math.parse(f).toTex()} \\, d${v} = ${tex} + C`,plain:`∫ ${f} d${v} = ${algRes} + C`,steps};
-          } catch(e) {}
+            const Fc = math.compile(F.plain), at = x => toReal(Fc.evaluate(Object.assign({}, scope, {[v]: x})));
+            const exact = at(bv) - at(av);
+            if (isFinite(exact) && Math.abs(exact - r) <= 1e-6 * (1 + Math.abs(exact))) { r = exact; method = `F(${b}) − F(${a}),  F = ${F.plain}`; }
+          } catch {}
         }
       }
-      if (antideriv.noForm) {
-        steps.push({d:'Pattern match', e:'No closed form found'},{d:'Tip', e:`Use integrate(${f}, ${v}, a, b) for a numerical result`});
-        return{type:'sym',out:`\\int ${math.parse(f).toTex()} \\, d${v} \\quad \\text{(no closed form)}`,plain:`∫ ${f} d${v} — no closed form. Try integrate(f,x,a,b).`,steps};
-      }
-      steps.push({d:'Integrand', e:f},{d:'Antiderivative', e: antideriv.plain + ' + C'});
-      return{
-        type:'sym',
-        out:`\\int ${math.parse(f).toTex()} \\, d${v} = ${antideriv.tex} + C`,
-        plain:`∫ ${f} d${v} = ${antideriv.plain} + C`,
-        steps
-      };
+      if (isNaN(r)) throw new Error('The integral does not converge numerically on this interval.');
+      steps.push({d:'Definite integral', e:`∫[${a}, ${b}] ${f} d${v}`},{d:'Method', e:method},{d:'Result',e:fmtNum(r)});
+      return symResult(`\\int_{${texOf(a)}}^{${texOf(b)}} ${texOf(f)} \\, d${v} = ${texNum(r)}`, fmtNum(r), steps);
     }
+    const F = symbolicIntegrate(f, v);
+    if (F.noForm) {
+      steps.push({d:'Integrand', e:f},{d:'Result', e:'No elementary antiderivative found'},{d:'Tip', e:`Use integrate(${f}, ${v}, a, b) for a numerical value`});
+      return symResult(`\\int ${texOf(f)} \\, d${v} \\quad \\text{(no elementary antiderivative found)}`,
+        `∫ ${f} d${v} — no elementary antiderivative found. Try integrate(f, ${v}, a, b).`, steps);
+    }
+    steps.push({d:'Integrand', e:f},{d:`Antiderivative (${F.method}, verified by differentiation)`, e: F.plain + ' + C'});
+    return symResult(`\\int ${texOf(f)} \\, d${v} = ${F.tex} + C`, `${F.plain} + C`, steps);
   }
-  const lm=expr.match(/^limit\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*,\s*(.+?)\s*\)$/);
-  if(lm){
-    const[,f,v,pt]=lm, a=math.evaluate(pt,scope);
-    const r=numLim(f,v,a);
-    let rOut = fmtN(r);
-    let rTex = fmtN(r);
-    if (!isFinite(r)) {
-      if (isNaN(r)) { rOut = 'Undefined'; rTex = '\\text{Undefined}'; }
-      else { rOut = r > 0 ? 'Infinity' : '-Infinity'; rTex = r > 0 ? '\\infty' : '-\\infty'; }
+  if(/^limit\s*\(/.test(expr)){
+    const args = parseTopLevelArgs(xarg(expr,'limit'));
+    if (args.length < 3) throw new Error('Use limit(f, x, a) or limit(f, x, a, "+"/"-").');
+    const [f, v, pt] = args;
+    const dirArg = (args[3] || '').replace(/["']/g, '').trim().toLowerCase();
+    const dir = ['+','right'].includes(dirArg) ? 1 : ['-','left'].includes(dirArg) ? -1 : 0;
+    const a = toReal(math.evaluate(pt, ctx()));
+    if (isNaN(a)) throw new Error('The limit point must be a real number or ±Infinity.');
+    const L = numLim(f, v, a, dir);
+    const arrow = `${v}\\to ${texOf(pt)}${dir > 0 ? '^{+}' : dir < 0 ? '^{-}' : ''}`;
+    steps.push({d:`Approach ${v} → ${pt}${dir > 0 ? ' from the right' : dir < 0 ? ' from the left' : ''}`, e:f});
+    if (L.left !== undefined) steps.push({d:'Left-hand limit', e:fmtLim(L.left)}, {d:'Right-hand limit', e:fmtLim(L.right)});
+    if (L.note) steps.push({d:'Note', e:L.note});
+    if (L.dne) {
+      steps.push({d:'Result', e:'The limit does not exist'});
+      return symResult(`\\lim_{${arrow}} ${texOf(f)} \\ \\text{does not exist}`, 'does not exist', steps);
     }
-    steps.push({d:`Evaluate ${v} → ${fmtN(a)}`,e:f},{d:'Numerical limit',e:rOut});
-    return{type:'sym',out:`\\lim_{${v}\\to ${toTex(a)}} ${math.parse(f).toTex()} = ${rTex}`,plain:rOut,steps};
+    steps.push({d:'Numerical limit', e:fmtLim(L.value)});
+    return symResult(`\\lim_{${arrow}} ${texOf(f)} = ${texNum(L.value)}`, fmtLim(L.value), steps);
   }
-  const sm=expr.match(/^sum\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*,\s*(.+?)\s*,\s*(.+?)\s*\)$/);
-  if(sm){
-    const[,f,v,s,e]=sm, st=Math.round(math.evaluate(s,scope)), en=Math.round(math.evaluate(e,scope));
-    if (Math.abs(en - st) > 10000) throw new Error(`Sum range too large (${st} to ${en}). Use a smaller range.`);
-    const fn=math.compile(f);
-    const freeVars = getFreeVars(f, v);
-    const loc=Object.assign({},scope);
-    let tot=0, hasSymbolic=false;
-    try {
-      for(let i=st;i<=en;i++){loc[v]=i;tot=math.add(tot,fn.evaluate(loc));}
-    } catch(err) { hasSymbolic=true; }
-    if(hasSymbolic || freeVars.some(fv=>scope[fv]===undefined)) {
-      const terms=[];
-      for(let i=st;i<=en;i++){
-        const t=f.replace(new RegExp(`\\b${v}\\b`,'g'),`(${i})`);
-        terms.push(t);
-      }
-      const sumExpr = terms.join('+');
-      let simplified=sumExpr;
-      try{ simplified=math.simplify(math.parse(sumExpr)).toString(); }catch{}
-      const node=math.parse(f);
-      steps.push({d:`Summation index: ${v} from ${st} to ${en}`, e:f});
-      steps.push({d:`Expand ${en-st+1} terms`, e:terms.slice(0,3).join(' + ')+(terms.length>3?' + …':'')});
-      steps.push({d:'Collect', e:simplified});
-      return{type:'sym',out:`\\sum_{${v}=${st}}^{${en}} ${node.toTex()} = ${escH(simplified)}`,plain:simplified,steps};
+  const sm = /^sum\s*\(/.test(expr) ? parseTopLevelArgs(xarg(expr,'sum')) : null;
+  if (sm && sm.length === 4 && IDENT_RE.test(sm[1])) {
+    const [f, v, s, e] = sm;
+    const st = Math.round(toReal(math.evaluate(s, ctx()))), en = Math.round(toReal(math.evaluate(e, ctx())));
+    if (!isFinite(st) || !isFinite(en)) throw new Error('Summation bounds must be finite numbers.');
+    if (Math.abs(en - st) > 100000) throw new Error(`Sum range too large (${st} to ${en}). Use a smaller range.`);
+    const unbound = freeSymbols(f).filter(fv => fv !== v && scope[fv] === undefined);
+    if (unbound.length) {
+      if (en - st > 200) throw new Error('Symbolic sums are limited to 200 terms.');
+      const terms = [];
+      for (let i = st; i <= en; i++) terms.push(math.parse(f).transform(n => n.isSymbolNode && n.name === v ? new math.ConstantNode(i) : n).toString());
+      let simplified = terms.join(' + ') || '0';
+      try { simplified = math.simplify(simplified).toString(); } catch {}
+      steps.push({d:`Summation index: ${v} from ${st} to ${en}`, e:f},
+                 {d:`Expand ${en-st+1} terms`, e:terms.slice(0,3).join(' + ')+(terms.length>3?' + …':'')},
+                 {d:'Collect', e:simplified});
+      return symResult(`\\sum_{${v}=${st}}^{${en}} ${texOf(f)} = ${texOf(simplified)}`, simplified, steps);
     }
+    const fn = math.compile(f), loc = ctx();
+    let tot = 0;
+    for (let i = st; i <= en; i++) { loc[v] = i; tot = math.add(tot, fn.evaluate(loc)); }
     steps.push({d:`Sum ${v}=${st}..${en}`,e:f},{d:`${en-st+1} terms`,e:fmtR(tot)});
-    return{type:'sym',out:`\\sum_{${v}=${st}}^{${en}} ${math.parse(f).toTex()} = ${toTex(tot)}`,plain:fmtR(tot),steps};
+    return symResult(`\\sum_{${v}=${st}}^{${en}} ${texOf(f)} = ${toTex(tot)}`, fmtR(tot), steps);
   }
-  const pm=expr.match(/^product\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*,\s*(.+?)\s*,\s*(.+?)\s*\)$/);
-  if(pm){
-    const[,f,v,s,e]=pm, st=Math.round(math.evaluate(s,scope)), en=Math.round(math.evaluate(e,scope));
-    if (Math.abs(en - st) > 10000) throw new Error(`Product range too large (${st} to ${en}). Use a smaller range.`);
-    const fn=math.compile(f), loc=Object.assign({},scope);
-    let tot=1;
-    for(let i=st;i<=en;i++){loc[v]=i;tot=math.multiply(tot,fn.evaluate(loc));}
-    return{type:'sym',out:`\\prod_{${v}=${st}}^{${en}} ${math.parse(f).toTex()} = ${toTex(tot)}`,plain:fmtR(tot),steps:[{d:`Product ${v}=${st}..${en}`,e:fmtR(tot)}]};
+  const pm = /^product\s*\(/.test(expr) ? parseTopLevelArgs(xarg(expr,'product')) : null;
+  if (pm && pm.length === 4 && IDENT_RE.test(pm[1])) {
+    const [f, v, s, e] = pm;
+    const st = Math.round(toReal(math.evaluate(s, ctx()))), en = Math.round(toReal(math.evaluate(e, ctx())));
+    if (!isFinite(st) || !isFinite(en)) throw new Error('Product bounds must be finite numbers.');
+    if (Math.abs(en - st) > 100000) throw new Error(`Product range too large (${st} to ${en}). Use a smaller range.`);
+    const fn = math.compile(f), loc = ctx();
+    let tot = 1;
+    for (let i = st; i <= en; i++) { loc[v] = i; tot = math.multiply(tot, fn.evaluate(loc)); }
+    return symResult(`\\prod_{${v}=${st}}^{${en}} ${texOf(f)} = ${toTex(tot)}`, fmtR(tot), [{d:`Product ${v}=${st}..${en}`,e:fmtR(tot)}]);
   }
   // ── Gradient ──────────────────────────────────────────
-  const gradM = expr.match(/^gradient\s*\(\s*(.+?)\s*,\s*\[(.+?)\]\s*\)$/);
-  if (gradM) {
-    const [, gf, varsStr] = gradM;
-    const gvars = varsStr.split(',').map(s => s.trim());
-    const partials = gvars.map(gv => {
-      try { return math.simplify(math.derivative(math.parse(gf), gv)).toString(); }
-      catch { return '?'; }
-    });
+  if (/^gradient\s*\(/.test(expr)) {
+    const args = parseTopLevelArgs(xarg(expr, 'gradient'));
+    const gf = args[0], gvars = (args[1] || '').replace(/^\[|\]$/g, '').split(',').map(s => s.trim()).filter(Boolean);
+    if (!gf || !gvars.length || !gvars.every(g => IDENT_RE.test(g))) throw new Error('Use gradient(f, [x, y, …]).');
+    const partials = gvars.map(gv => math.simplify(math.derivative(math.parse(gf), gv)).toString());
     const stepArr = partials.map((p, i) => ({ d: `∂f/∂${gvars[i]}`, e: p }));
-    const vecTex = partials.map(p => { try { return math.parse(p).toTex(); } catch { return escH(p); } }).join(' \\\\ ');
-    return { type: 'sym', out: `\\nabla f = \\begin{pmatrix} ${vecTex} \\end{pmatrix}`, plain: `[${partials.join(', ')}]`, steps: stepArr };
+    const vecTex = partials.map(texOf).join(' \\\\ ');
+    return symResult(`\\nabla f = \\begin{pmatrix} ${vecTex} \\end{pmatrix}`, `[${partials.join(', ')}]`, stepArr);
   }
   // ── ODE (RK4) ──────────────────────────────────────────
-  const odeM = expr.match(/^ode\s*\(\s*(.+?)\s*,\s*([a-zA-Z_]\w*)\s*,\s*([a-zA-Z_]\w*)\s*,\s*(.+?)\s*,\s*(.+?)\s*,\s*(.+?)\s*\)$/);
-  if (odeM) {
-    const [, of_, oxv, oyv, ox0s, oy0s, ox1s] = odeM;
-    const ox0 = math.evaluate(ox0s, scope), oy0 = math.evaluate(oy0s, scope), ox1 = math.evaluate(ox1s, scope);
+  if (/^ode\s*\(/.test(expr)) {
+    const args = parseTopLevelArgs(xarg(expr, 'ode'));
+    if (args.length !== 6 || !IDENT_RE.test(args[1]) || !IDENT_RE.test(args[2])) throw new Error('Use ode(f(x, y), x, y, x0, y0, x1) for dy/dx = f(x, y).');
+    const [of_, oxv, oyv, ox0s, oy0s, ox1s] = args;
+    const ox0 = toReal(math.evaluate(ox0s, ctx())), oy0 = toReal(math.evaluate(oy0s, ctx())), ox1 = toReal(math.evaluate(ox1s, ctx()));
+    if (![ox0, oy0, ox1].every(isFinite)) throw new Error('ODE initial values must be finite real numbers.');
     const { xs: odeXs, ys: odeYs } = rk4Solve(of_, oxv, oyv, ox0, oy0, ox1);
     const yFinal = odeYs[odeYs.length - 1];
+    if (!isFinite(yFinal)) throw new Error('The ODE solution blows up (or f is undefined) on this interval.');
     return {
       type: 'sym',
-      out: `${oyv}(${fmtN(ox1)}) \\approx ${fmtN(yFinal)}`,
-      plain: `${oyv}(${ox1}) ≈ ${fmtN(yFinal)}`,
+      out: `${oyv}(${texNum(ox1)}) \\approx ${fmtN(yFinal)}`,
+      plain: `${oyv}(${fmtN(ox1)}) ≈ ${fmtN(yFinal)}`,
       steps: [
-        { d: `ODE: d${oyv}/d${oxv} = ${of_}`, e: `IC: ${oyv}(${ox0}) = ${oy0}` },
-        { d: 'Method', e: 'RK4, 500 steps' },
+        { d: `ODE: d${oyv}/d${oxv} = ${of_}`, e: `IC: ${oyv}(${fmtN(ox0)}) = ${fmtN(oy0)}` },
+        { d: 'Method', e: 'Classical RK4, 500 steps' },
         { d: `${oyv}(${fmtN(ox1)})`, e: fmtN(yFinal) }
       ],
       odeData: { xs: odeXs, ys: odeYs, xv: oxv, yv: oyv }
@@ -1808,361 +2072,305 @@ async function evalCalc(expr){
   // ── Taylor / Maclaurin series ──────────────────────
   if(/^series\s*\(/.test(expr)){
     const args=parseTopLevelArgs(xarg(expr,'series'));
-    if(args.length>=2){
-      const f=args[0], v=args[1];
-      const aStr=args[2]||'0', nOrd=args[3]?Math.min(parseInt(args[3]),20):6;
-      const a=math.evaluate(aStr,scope);
-      const xTerm=Math.abs(a)<1e-12?v:`(${v}-${fmtN(a)})`;
-      let dNode=math.parse(f), factorial=1;
-      const coeffs=[];
-      for (let k = 0; k <= nOrd; k++) {
-        try {
-          const loc = { ...scope, [v]: a };
-          let val = math.evaluate(dNode.toString(), loc);
-          // If NaN at this point, try limit from both sides (removable singularity)
-          if (typeof val !== 'number' || isNaN(val)) {
-            const l1 = math.evaluate(dNode.toString(), { ...scope, [v]: a + 1e-6 });
-            const l2 = math.evaluate(dNode.toString(), { ...scope, [v]: a - 1e-6 });
-            if (typeof l1 === 'number' && typeof l2 === 'number' && Math.abs(l1 - l2) < 1e-4) {
-              val = (l1 + l2) / 2;
-            } else {
-              coeffs.push(null);
-              steps.push({ d: `k=${k}: f${'\''.repeat(k)}(${fmtN(a)})/k!`, e: '(singularity — skipped)' });
-              if (k < nOrd) { try { dNode = math.derivative(dNode, v); } catch { break; } factorial *= (k + 1); }
-              continue;
-            }
-          }
-          coeffs.push(typeof val === 'number' ? val / factorial : null);
-          steps.push({ d: `k=${k}: f${'\''.repeat(k)}(${fmtN(a)})/${factorial}`, e: fmtN(typeof val === 'number' ? val / factorial : NaN) });
-        } catch { coeffs.push(null); }
-        if (k < nOrd) { try { dNode = math.derivative(dNode, v); } catch { break; } factorial *= (k + 1); }
+    if(args.length<2 || !IDENT_RE.test(args[1])) throw new Error('Use series(f, x, a, n).');
+    const f=args[0], v=args[1];
+    const aStr=args[2]||'0', nOrd=args[3]?Math.max(0, Math.min(parseInt(args[3], 10), 20)):6;
+    const a=toReal(math.evaluate(aStr,scope));
+    if (!isFinite(a)) throw new Error('The expansion point must be a finite real number.');
+    const centered = Math.abs(a) > 1e-15;
+    const xPlain = centered ? `(${v} - ${aStr})` : v;
+    const xTex = centered ? `\\left(${v} - ${texOf(aStr)}\\right)` : v;
+    const at = (node, x) => { try { return toReal(node.evaluate(Object.assign({}, scope, {[v]: x}))); } catch { return NaN; } };
+    let dNode=math.parse(f), factorial=1;
+    const plainTerms=[], texTerms=[];
+    for (let k = 0; k <= nOrd; k++) {
+      if (k > 0) { dNode = math.derivative(dNode, v); factorial *= k; }
+      let val = at(dNode, a);
+      if (!isFinite(val)) {
+        // removable singularity: average the values on both sides
+        const l1 = at(dNode, a + 1e-6), l2 = at(dNode, a - 1e-6);
+        if (isFinite(l1) && isFinite(l2) && Math.abs(l1 - l2) < 1e-4 * (1 + Math.abs(l1))) val = (l1 + l2) / 2;
+        else throw new Error(`${f} is not analytic at ${v} = ${aStr} (derivative ${k} is undefined) — no Taylor series there.`);
       }
-      // Build expression string with exact fractions where possible
-      const termExprs=[];
-      for(let k=0;k<=nOrd;k++){
-        const c=coeffs[k];
-        if(c===null||Math.abs(c)<1e-12) continue;
-        let cStr;
-        try{const fr=math.fraction(c);cStr=fr.d===1?String(fr.s*fr.n):`(${fr.s*fr.n}/${fr.d})`;}
-        catch{cStr=c.toPrecision(8);}
-        if(k===0) termExprs.push(cStr);
-        else if(k===1) termExprs.push(`${cStr}*${xTerm}`);
-        else termExprs.push(`${cStr}*(${xTerm})^${k}`);
-      }
-      const seriesStr=termExprs.join('+')||'0';
-      let texOut=seriesStr, plainOut=seriesStr;
-      try{
-        const sNode=math.simplify(math.parse(seriesStr),{},{exactFractions:true});
-        texOut=sNode.toTex(); plainOut=sNode.toString();
-      }catch{}
-      const orderTex=`O\\!\\left(${xTerm}^{${nOrd+1}}\\right)`;
-      return{type:'sym',out:`${texOut} + ${orderTex}`,plain:`${plainOut} + O(${xTerm}^${nOrd+1})`,steps};
+      const c = val / factorial;
+      steps.push({ d: `k=${k}: f${'′'.repeat(Math.min(k,3))}${k>3?`(${k})`:''}(${aStr})/${k}!`, e: fmtN(c) });
+      if (Math.abs(c) < 1e-12) continue;
+      const isInt = Math.abs(c - Math.round(c)) < 1e-10, r = isInt ? null : asRational(c, 100000);
+      const mag = Math.abs(c);
+      const cPlain = isInt ? String(Math.round(mag)) : r ? `${Math.abs(r.n)}/${r.d}` : mag.toPrecision(10).replace(/\.?0+$/,'');
+      const cTex = isInt ? String(Math.round(mag)) : r ? `\\frac{${Math.abs(r.n)}}{${r.d}}` : cPlain;
+      const monoPlain = k === 0 ? '' : k === 1 ? xPlain : `${xPlain}^${k}`;
+      const monoTex = k === 0 ? '' : k === 1 ? xTex : `${xTex}^{${k}}`;
+      const sign = c < 0 ? '-' : '+';
+      plainTerms.push([sign, k === 0 ? cPlain : cPlain === '1' ? monoPlain : `${cPlain}*${monoPlain}`]);
+      texTerms.push([sign, k === 0 ? cTex : cTex === '1' ? monoTex : `${cTex}\\,${monoTex}`]);
     }
+    const join = ts => ts.length ? ts.map(([s, t], i) => i === 0 ? (s === '-' ? '-' : '') + t : ` ${s} ${t}`).join('') : '0';
+    return symResult(`${join(texTerms)} + O\\!\\left(${xTex}^{${nOrd+1}}\\right)`, `${join(plainTerms)} + O(${xPlain}^${nOrd+1})`, steps);
   }
-  try {
-    const workerRes = await runInWorker(expr, scope);
-    if (workerRes.error) throw new Error(workerRes.error);
-    const r = math.evaluate(workerRes.res);
-    return{type:'val',out:toTex(r),plain:fmtR(r)};
-  } catch(e) { return evalSymbolic(expr); }
+  let r;
+  try { r = await workerEval(expr); } catch (err) {
+    if (/timed out/i.test(err.message)) throw err;
+    return evalSymbolic(expr);
+  }
+  return valResult(r, expr);
+}
+function fmtLim(x) { return isNaN(x) ? 'Undefined' : !isFinite(x) ? (x > 0 ? 'Infinity' : '-Infinity') : fmtNum(x); }
+
+// Split an equation at its single top-level '=' (ignoring ==, <=, >=, !=).
+function splitEquation(eq) {
+  const parts = eq.split(/(?<![<>!=])=(?!=)/);
+  if (parts.length === 1) return [eq.trim(), '0'];
+  if (parts.length === 2) return parts.map(s => s.trim());
+  throw new Error('An equation may contain only one "=".');
 }
 
 async function evalSolve(expr){
-  const sys=expr.match(/^solve\s*\(\s*\[(.+)\]\s*,\s*\[(.+)\]\s*\)$/);
-  if(sys){
-    const eqs=sys[1].split(',').map(s=>s.trim()), vars=sys[2].split(',').map(s=>s.trim());
+  const solveM = expr.match(/^(solve|zeros)\s*\(/);
+  if (!solveM) return evalGeneric(expr);
+  const args = parseTopLevelArgs(xarg(expr, solveM[1]));
+  if (args.length < 2) throw new Error('Use solve(equation, x) or solve([eq1, eq2], [x, y]).');
+  // ── Systems ─────────────────────────────────────────
+  if (/^\[.*\]$/.test(args[0]) && /^\[.*\]$/.test(args[1])) {
+    const eqs = parseTopLevelArgs(args[0].slice(1, -1)), vars = parseTopLevelArgs(args[1].slice(1, -1));
+    if (!vars.every(v => IDENT_RE.test(v))) throw new Error('Unknowns must be variable names.');
     const sol = solveSys(eqs, vars);
-    const tex = sol.map(r => `${r.v} = ${fmtN(r.x)}`).join(',\\quad ');
-    const warnMsg = sol[0]?.warn ? `\\ \\small{\\color{orange}{⚠ may not have converged, residual ≈ ${sol[0].residual?.toExponential(2)}}}` : '';
-    return { type: 'sym', out: tex + warnMsg, plain: sol.map(r => `${r.v}=${fmtN(r.x)}`).join(', '),
-      steps: [
-        { d: 'System of equations', e: eqs.join(', ') },
-        { d: "Newton's method (multi-start)", e: sol.map(r => `${r.v}=${fmtN(r.x)}`).join(', ') },
-        ...(sol[0]?.warn ? [{ d: '⚠ Warning', e: `Residual: ${sol[0].residual?.toExponential(2)} — result may be approximate` }] : [])
-      ]
-    };
+    const tex = sol.map(r => `${r.v} = ${texNum(r.x)}`).join(',\\quad ');
+    const warnMsg = sol[0]?.warn ? `\\ \\small{\\color{orange}{\\text{⚠ may not have converged, residual ≈ ${sol[0].residual?.toExponential(2)}}}}` : '';
+    return symResult(tex + warnMsg, sol.map(r => `${r.v}=${fmtNum(r.x)}`).join(', '), [
+      { d: 'System of equations', e: eqs.join(', ') },
+      { d: "Newton's method (multi-start)", e: sol.map(r => `${r.v}=${fmtN(r.x)}`).join(', ') },
+      ...(sol[0]?.warn ? [{ d: '⚠ Warning', e: `Residual: ${sol[0].residual?.toExponential(2)} — result may be approximate` }] : [])
+    ]);
   }
-  // Parse solve(eq, var) robustly — split at top-level comma before the last identifier
-  let sm = null;
-  const solveM = expr.match(/^(?:solve|zeros)\s*\(\s*([\s\S]+)\s*\)$/);
-  if (solveM) {
-    const inner = solveM[1].trim();
-    // Find last top-level comma followed by a variable name
-    let depth = 0, splitIdx = -1;
-    for (let i = 0; i < inner.length; i++) {
-      if (inner[i]==='('||inner[i]==='[') depth++;
-      else if (inner[i]===')'||inner[i]===']') depth--;
-      else if (depth === 0 && inner[i] === ',') splitIdx = i;
-    }
-    if (splitIdx !== -1) {
-      const eqPart = inner.slice(0, splitIdx).trim();
-      const varPart = inner.slice(splitIdx + 1).trim();
-      if (/^[a-zA-Z_]\w*$/.test(varPart)) sm = [null, eqPart, varPart];
-    }
-  }
-  if(sm){
-    let[,eq,v]=sm, lhs, rhs;
-    if(eq.includes('=')&&!eq.includes('=='))[lhs,rhs]=eq.split('=').map(s=>s.trim());
-    else if(eq.includes('=='))[lhs,rhs]=eq.split('==').map(s=>s.trim());
-    else{lhs=eq;rhs='0';}
-    const f=`(${lhs})-(${rhs})`;
-    const freeVars = getFreeVars(f, v);
-    const hasUnbound = freeVars.some(fv => scope[fv] === undefined);
-    if (hasUnbound) {
-      const symResult = symbolicSolve(lhs, rhs, v, freeVars);
-      if (symResult) {
-        const steps = [
-          {d:`Equation: ${lhs} = ${rhs}`, e:`Free parameters: ${freeVars.join(', ')}`},
-          {d:`Solve for ${v}`, e:symResult.plain},
-        ];
-        const knownSubs = freeVars.filter(fv => scope[fv] !== undefined);
-        if (knownSubs.length) {
-          let substituted = symResult.plain;
-          knownSubs.forEach(fv => { substituted = substituted.replace(new RegExp(`\\b${fv}\\b`,'g'), scope[fv]); });
-          try { substituted = fmtN(math.evaluate(substituted, scope)); } catch {}
-          steps.push({d:`With ${knownSubs.map(fv=>`${fv}=${scope[fv]}`).join(', ')}`, e:`${v} = ${substituted}`});
-          return{type:'sym',out:`${v} = ${symResult.tex} \\quad \\Rightarrow \\quad ${v} = ${substituted}`,
-            plain:`${v} = ${symResult.plain}  →  ${v} = ${substituted}`, steps};
-        }
-        return{type:'sym',out:`${v} = ${symResult.tex}`,plain:`${v} = ${symResult.plain}`,steps};
-      }
-    }
-    let roots=findRoots(f,v);
-    // Explicitly handle exact quadratic roots if symbolic solver can evaluate them cleanly
-    const exactSym = symbolicSolve(lhs, rhs, v, []);
-    if (exactSym && exactSym.plain.includes('or')) {
-      const [r1, r2] = exactSym.plain.split(' or ');
-      try {
-        const nr1 = math.evaluate(r1, scope);
-        const nr2 = math.evaluate(r2, scope);
-        if (typeof nr1 === 'number' && typeof nr2 === 'number' && !isNaN(nr1) && !isNaN(nr2)) {
-          roots = [nr1, nr2].sort((a,b) => a-b);
-        }
-      } catch(e) {}
-    }
-
-    // Deduplicate roots just in case
-    roots = roots.filter((r, i, arr) => arr.findIndex(x => Math.abs(x - r) < 1e-6) === i);
-
-    const tex=roots.length
-      ? roots.map((r,i)=>`${v}_{${i+1}}=${fmtN(r)}`).join(',\\quad ')
-      : `\\text{No real roots found}`;
-    return{type:'sym',out:tex,plain:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'No real roots found',
-      steps:[{d:'Rewrite as f=0',e:`${lhs}-(${rhs})=0`},{d:'Numerical root search',e:roots.length?roots.length+' root(s) found':'none found in [-10000, 10000]'},{d:'Solutions',e:roots.map(r=>`${v}=${fmtN(r)}`).join(', ')||'none'}]};
-  }
-  return evalGeneric(expr);
-}
-
-function symbolicSolve(lhs, rhs, v, freeVars) {
+  // ── Single equation ─────────────────────────────────
+  const v = args[args.length - 1], eq = args.slice(0, -1).join(', ');
+  if (!IDENT_RE.test(v)) throw new Error('The last argument of solve() must be the unknown, e.g. solve(x^2 = 4, x).');
+  const [lhs, rhs] = splitEquation(eq);
+  const f = `(${lhs})-(${rhs})`;
+  const steps = [{d:'Rewrite as f = 0', e:`${lhs} - (${rhs}) = 0`}];
+  const fKnown = substituteKnown(f, v);
+  const params = freeSymbols(fKnown).filter(s => s !== v && scope[s] === undefined);
+  // Exact roots for polynomial equations (Algebrite), parameters allowed.
+  let exact = null;
   try {
-    const f = `(${lhs})-(${rhs})`;
-    const node = math.parse(f);
-    const dfNode = math.derivative(node, v);
-    const dfStr = dfNode.toString();
-    if (!dfStr.includes(v)) {
-      const f0 = math.parse(f.replace(new RegExp(`\\b${v}\\b`,'g'), '0'));
-      const result = math.simplify(math.parse(`-(${f0.toString()})/(${dfStr})`));
-      return {tex: result.toTex(), plain: result.toString()};
-    }
-    const d2 = math.derivative(dfNode, v);
-    if (!d2.toString().includes(v)) {
-      const a_node = math.simplify(d2);
-      const b_node = math.simplify(math.parse(`(${dfStr})-(${a_node.toString()})*${v}`));
-      const c_node = math.simplify(node.transform(n => (n.isSymbolNode && n.name === v) ? new math.ConstantNode(0) : n));
-      const aS = a_node.toString(), bS = b_node.toString(), cS = c_node.toString();
-      const disc = `((${bS})^2 - 2*(${aS})*(${cS}))`;
-      const r1 = math.simplify(math.parse(`(-(${bS}) + sqrt(${disc})) / (${aS})`));
-      const r2 = math.simplify(math.parse(`(-(${bS}) - sqrt(${disc})) / (${aS})`));
-      return {
-        tex: `\\frac{-(${b_node.toTex()}) \\pm \\sqrt{(${b_node.toTex()})^2 - 2(${a_node.toTex()})(${c_node.toTex()})}}{${a_node.toTex()}}`,
-        plain: `(${r1}) or (${r2})`
-      };
-    }
-    return null;
-  } catch(e) { return null; }
+    const raw = fromAlgebrite(algebriteRun(`roots(${toAlgebrite(fKnown)},${v})`));
+    const list = /^\[.*\]$/.test(raw) ? parseTopLevelArgs(raw.slice(1, -1)) : [raw];
+    exact = list.map(prettify);
+  } catch {}
+  if (exact && exact.length) {
+    const roots = exact.map(r => {
+      let num = null;
+      if (!params.length) { try { num = math.evaluate(r); } catch {} }
+      return {expr: r, num};
+    });
+    // Discard anything that does not actually satisfy the equation (e.g. removed denominators).
+    const valid = roots.filter(r => {
+      if (r.num === null) return true;
+      try { const y = math.evaluate(fKnown, Object.assign({}, scope, {[v]: r.num})); return math.abs(y) < 1e-6 * (1 + math.abs(r.num)); } catch { return false; }
+    });
+    steps.push({d: params.length ? `Solve for ${v} (parameters: ${params.join(', ')})` : 'Exact roots (polynomial)', e: valid.map(r => r.expr).join(', ')});
+    const isReal = r => r.num !== null && (typeof r.num === 'number' || Math.abs(r.num.im) < 1e-12);
+    // Real roots in ascending order first, then complex roots.
+    const key = r => r.num === null ? [2, 0] : isReal(r) ? [0, toReal(r.num)] : [1, r.num.re, r.num.im];
+    valid.sort((p, q) => { const a = key(p), b = key(q); return a[0] - b[0] || a[1] - b[1] || (a[2] || 0) - (b[2] || 0); });
+    const shown = valid.map(r => {
+      const simple = r.expr.length <= 60 && !/\(-1\)\s*\^/.test(r.expr);
+      if (r.num === null) return {tex: texOf(r.expr), plain: r.expr};
+      const numPlain = fmtR(isReal(r) ? toReal(r.num) : r.num), numTex = toTex(isReal(r) ? toReal(r.num) : r.num);
+      const compact = r.expr.replace(/\s/g, '');
+      const needsApprox = compact !== numPlain.replace(/\s/g, '') && !/^-?\d+(\/\d+)?$/.test(compact);
+      if (!exactMode || !simple) return {tex: numTex, plain: numPlain};
+      return needsApprox ? {tex: `${texOf(r.expr)} \\approx ${numTex}`, plain: `${r.expr} ≈ ${numPlain}`} : {tex: texOf(r.expr), plain: r.expr};
+    });
+    if (!shown.length) return symResult('\\text{No solutions}', 'No solutions', steps);
+    const nonReal = valid.filter(r => r.num !== null && !isReal(r)).length;
+    if (nonReal) steps.push({d:'Note', e:`${nonReal} complex root(s)`});
+    return symResult(shown.map((s, i) => `${v}_{${i+1}} = ${s.tex}`).join(',\\quad '),
+                     shown.map(s => `${v} = ${s.plain}`).join(', '), steps);
+  }
+  if (params.length) throw new Error(`Cannot solve for ${v} symbolically; assign values to ${params.join(', ')} for a numerical solution.`);
+  const {roots, truncated} = findRoots(fKnown, v);
+  steps.push({d:'Numerical root search', e: roots.length ? `${roots.length} root(s) found${truncated ? ' (showing the 20 nearest the origin)' : ''}` : 'none found in [-10000, 10000]'});
+  if (!roots.length) return symResult('\\text{No real roots found}', 'No real roots found', steps);
+  steps.push({d:'Solutions', e: roots.map(r => `${v}=${fmtN(r)}`).join(', ')});
+  return symResult(roots.map((r,i)=>`${v}_{${i+1}}=${texNum(r)}`).join(',\\quad ') + (truncated ? ',\\ \\ldots' : ''),
+                   roots.map(r=>`${v} = ${fmtNum(r)}`).join(', '), steps);
 }
 
 async function evalMatrix(expr){
   if(/^eigs\s*\(/.test(expr)){
-    const inner=xarg(expr,'eigs');
-    const A=math.evaluate(inner,scope);
-    const res=math.eigs(A);
-    return{type:'sym',out:`\\text{Eigenvalues: }${toTex(res.values)}`,plain:`λ = ${fmtR(res.values)}`};
+    const A = await workerEval(xarg(expr,'eigs'));
+    const res = math.eigs(A);
+    // mathjs 12 exposes eigenvectors as [{value, vector}] (the old .vectors getter throws).
+    const vecSteps = (res.eigenvectors || []).map(ev => ({d:`λ = ${fmtR(ev.value)}`, e:`v = ${fmtR(ev.vector)}`}));
+    return symResult(`\\text{Eigenvalues: }${toTex(res.values)}`, `λ = ${fmtR(res.values)}`, [
+      {d:'Eigenvalues', e:fmtR(res.values)}, ...vecSteps]);
   }
   return evalGeneric(expr);
 }
 
 async function evalGeneric(expr){
-  try {
-    const workerRes = await runInWorker(expr, scope);
-    if (workerRes.error) throw new Error(workerRes.error);
-    const result = math.evaluate(workerRes.res);
-
-    if (result && result.isComplex) {
-      const re = result.re, im = result.im;
-      const reSmall = Math.abs(re) < 1e-10;
-      const imSmall = Math.abs(im) < 1e-10;
-      if (reSmall && imSmall) return { type: 'sym', out: '0', plain: '0' };
-      if (reSmall) {
-        const imTex = Math.abs(Math.abs(im) - 1) < 1e-10 ? '' : fmtN(Math.abs(im));
-        return { type: 'sym', out: `${im < 0 ? '-' : ''}${imTex}i`, plain: `${im < 0 ? '-' : ''}${imTex || '1'}i` };
-      }
-      if (imSmall) return { type: 'sym', out: fmtN(re), plain: fmtN(re) };
-      const imSign = im < 0 ? ' - ' : ' + ';
-      const absImTex = Math.abs(Math.abs(im) - 1) < 1e-10 ? '' : fmtN(Math.abs(im));
-      const out = `${fmtN(re)}${imSign}${absImTex}i`;
-      return { type: 'sym', out, plain: out };
-    }
-
-    if (typeof result === 'number') {
-      if (isNaN(result)) return {type:'sym', out:'\\text{Undefined}', plain:'Undefined'};
-      if (!isFinite(result)) return {type:'sym', out:(result > 0 ? '\\infty' : '-\\infty'), plain:(result > 0 ? 'Infinity' : '-Infinity')};
-    }
-
-    const hasX=/\bx\b/.test(expr)&&!Array.isArray(result)&&typeof result!=='boolean';
-    return{type:'val',out:toTex(result),plain:fmtR(result),plot:hasX?expr:null};
-  } catch(e) { return evalSymbolic(expr); }
+  let result;
+  try { result = await workerEval(expr); } catch (err) {
+    if (/timed out/i.test(err.message)) throw err;
+    return evalSymbolic(expr);
+  }
+  return valResult(result, expr);
 }
 
 function evalSymbolic(expr) {
-  try {
-    const node = math.parse(expr);
-    const simplified = math.simplify(node);
-    return {type:'sym', out: simplified.toTex(), plain: simplified.toString()};
-  } catch(e2) {
-    try {
-      const node = math.parse(expr);
-      return {type:'sym', out: node.toTex(), plain: node.toString()};
-    } catch(e3) { throw new Error(e3.message || String(e3)); }
-  }
+  const node = math.parse(expr);
+  let s = node;
+  try { s = math.simplify(node); } catch {}
+  return symResult(s.toTex(), s.toString(), null);
 }
 
 function getFreeVars(expr, excludeVar) {
-  try {
-    const node = math.parse(expr);
-    const vars = new Set();
-    node.traverse(n => {
-      if (n.isSymbolNode && !math[n.name] && n.name !== excludeVar) vars.add(n.name);
-    });
-    return [...vars];
-  } catch { return []; }
+  try { return freeSymbols(expr).filter(n => n !== excludeVar); } catch { return []; }
 }
 
 async function evalUnits(expr){
-  const workerRes = await runInWorker(expr, scope);
-  if (workerRes.error) throw new Error(workerRes.error);
-  const r = math.evaluate(workerRes.res);
-  const plain=r&&r.toString?r.toString():fmtR(r);
-  return{type:'unit',out:escH(plain),plain};
+  const r = await workerEval(expr);
+  const plain = r && r.isUnit ? math.format(r, {precision: 10}) : fmtR(r);
+  return {type:'unit', out:escH(plain), plain};
 }
 
 // ══════════════════════════════════════════════════════
 //  RUN CELL
 // ══════════════════════════════════════════════════════
-async function runCell(){
-  const expr=getCurInput();
-  if(!expr) return;
-  iHist.unshift(expr); iIdx=-1;
-  clrInput(); closeAC();
+// All evaluations go through one queue so replays, reactive updates and new cells never interleave.
+let evalQueue = Promise.resolve();
+function enqueue(task) {
+  const p = evalQueue.then(task, task);
+  evalQueue = p.catch(() => {});
+  return p;
+}
+function createCellElement(expr, mode) {
   const w=document.getElementById('welcome');
   if(w) w.style.display='none';
   cellN++;
   const id='c'+cellN;
-  const nb=document.getElementById('notebook');
   const el=document.createElement('div');
-  el.className='cell'; el.id=id; el.dataset.mode=curMode;
+  el.className='cell'; el.id=id; el.dataset.mode=mode;
   el.innerHTML=`
     <div class="cin">
       <span class="cprompt"><span class="cprompt-num">${cellN}</span><span class="cprompt-arrow">›</span></span>
       <span class="cexpr" onclick="reload('${esc2(expr)}')" title="Click to load">${escH(expr)}</span>
-      <span class="cmeta"><span class="cbadge">${curMode}</span></span>
+      <span class="cmeta"><span class="cbadge">${escH(mode)}</span></span>
     </div>
     <div class="cout loading" id="o${id}"><div class="spin"></div></div>
     <div class="steps" id="st${id}"></div>
     <div class="cell-plot" id="pl${id}"></div>
     <div class="cacts" id="ac${id}"></div>`;
-  nb.appendChild(el);
+  document.getElementById('notebook').appendChild(el);
   scrollNB();
-  const cm=curMode;
-  notebookHistory.push({id, expr, mode:cm});
-  setTimeout(async ()=>{
-    try{const res=await dispatch(expr,cm); await renderCell(id,res,expr,cm);}
-    catch(e){
-      try{const res=await evalGeneric(normalise(expr)); await renderCell(id,res,expr,cm);}
-      catch(e2){renderErr(id,categorizeError(e2));}
-    }
+  const item = {id, expr, mode};
+  notebookHistory.push(item);
+  return item;
+}
+async function evaluateCell(item) {
+  try {
+    const res = await dispatch(item.expr, item.mode);
+    await renderCell(item.id, res, item.expr, item.mode);
+    return res;
+  } catch (e) {
+    renderErr(item.id, categorizeError(e));
+    return null;
+  }
+}
+function runCell(){
+  const expr=getCurInput();
+  if(!expr) return Promise.resolve();
+  iHist.unshift(expr); iIdx=-1;
+  clrInput(); closeAC();
+  const item = createCellElement(expr, curMode);
+  return enqueue(async () => {
+    await new Promise(r => setTimeout(r, 0));   // let the spinner paint
+    const res = await evaluateCell(item);
     persistScope();
-    const def = await parseDef(normalise(expr));
-    if (def) triggerReactive(def.name, id);
-  },30);
+    if (res && (res.type === 'vardef' || res.type === 'funcdef')) await triggerReactive(res.name, item.id);
+  });
 }
 
+// Re-evaluate the cells that depend (transitively) on a redefined name.
 async function triggerReactive(varName, skipId) {
+  const changed = new Set([varName]);
+  const mentions = (text) => [...changed].some(n => new RegExp(`\\b${n}\\b`).test(text));
   for (const item of notebookHistory) {
     if (item.id === skipId) continue;
-    if (new RegExp(`\\b${varName}\\b`).test(item.expr) && !item.expr.includes('=')) {
-      const oEl = document.getElementById('o'+item.id);
-      if(oEl) {
-        oEl.classList.add('loading');
-        oEl.innerHTML = '<div class="spin"></div>';
-      }
-      try {
-        const res = await dispatch(item.expr, item.mode);
-        await renderCell(item.id, res, item.expr, item.mode);
-      } catch(e) {}
-    }
+    const def = classifyDef(normalise(item.expr));
+    if (def) {
+      if (!mentions(def.rhs) || changed.has(def.name)) continue;
+      changed.add(def.name);
+      // Functions read the workspace when called; self-referential updates (n = n + 1) must not re-run.
+      if (def.kind === 'fn' || new RegExp(`\\b${def.name}\\b`).test(def.rhs)) continue;
+    } else if (!mentions(item.expr)) continue;
+    const oEl = document.getElementById('o'+item.id);
+    if (oEl) { oEl.className = 'cout loading'; oEl.innerHTML = '<div class="spin"></div>'; }
+    await evaluateCell(item);
   }
+  persistScope();
+}
+
+// Replay the whole notebook from the base workspace (used when a global mode changes).
+function replayNotebook() {
+  return enqueue(async () => {
+    restoreBaseScope();
+    for (const item of notebookHistory) {
+      const oEl = document.getElementById('o'+item.id);
+      if (oEl) { oEl.className = 'cout loading'; oEl.innerHTML = '<div class="spin"></div>'; }
+    }
+    for (const item of notebookHistory) await evaluateCell(item);
+    persistScope();
+  });
 }
 
 async function renderCell(id,res,expr,mode){
   const oEl=document.getElementById('o'+id);
   const sEl=document.getElementById('st'+id);
   const aEl=document.getElementById('ac'+id);
+  const pEl=document.getElementById('pl'+id);
   if(!oEl) return;
   let html='', latex='', plain='';
   if(res.type==='funcdef'){
-    latex=`${res.name}(${res.params.join(',')}) := ${res.body}`;
-    plain=latex;
-    html=`<div class="cout-prompt">≔</div><div class="cout-body"><div class="mjrender">\\[${res.name}(${res.params.join(',')}) = ${escH(res.body)}\\]</div></div>`;
+    latex=`${res.name}(${res.params.join(',')}) = ${texOf(res.body)}`;
+    plain=`${res.name}(${res.params.join(',')}) = ${res.body}`;
+    html=`<div class="cout-prompt">≔</div><div class="cout-body"><div class="mjrender">\\[${escH(latex)}\\]</div></div>`;
   } else if(res.type==='vardef'){
     latex=`${res.name} = ${toTex(res.value)}`;
     plain=`${res.name} = ${fmtR(res.value)}`;
-    html=`<div class="cout-prompt">≔</div><div class="cout-body"><div class="mjrender">\\[${latex}\\]</div></div>`;
+    html=`<div class="cout-prompt">≔</div><div class="cout-body"><div class="mjrender">\\[${escH(latex)}\\]</div></div>`;
   } else if(res.type==='sym'||res.type==='val'){
-    latex=applyExactMode(res.plain||res.out, res.out); plain=res.plain||res.out;
-    html=`<div class="cout-prompt">⇒</div><div class="cout-body"><div class="mjrender">\\[${latex}\\]</div></div>`;
+    latex=res.out; plain=res.plain!=null?res.plain:res.out;
+    html=`<div class="cout-prompt">⇒</div><div class="cout-body"><div class="mjrender">\\[${escH(latex)}\\]</div></div>`;
   } else if(res.type==='unit'){
     html=`<div class="cout-prompt">⇒</div><div class="cout-body"><div class="unit-result">${res.out}<span class="unit-tag">unit</span></div></div>`;
-    plain=res.plain; latex=res.plain;
+    plain=res.plain; latex=`\\text{${escTex(res.plain)}}`;
   }
   oEl.className='cout ok'; oEl.innerHTML=html;
+  const cellEl = document.getElementById(id);
+  if (cellEl) { cellEl.dataset.latex = latex; cellEl.dataset.plain = plain; }
   try {
-    if(window.MathJax){
-      if(MathJax.typesetPromise) await MathJax.typesetPromise([oEl]);
-      else if(MathJax.Hub) MathJax.Hub.Queue(['Typeset',MathJax.Hub,oEl]);
-    }
+    if(window.MathJax && MathJax.typesetPromise) await MathJax.typesetPromise([oEl]);
   } catch(e){ console.warn('MathJax typeset error',e); }
 
-  if(res.odeData){
-    const pEl=document.getElementById('pl'+id);
-    if(pEl){
-      const div=document.createElement('div');
-      div.className='cell-plot-inner'; div.id='plo'+id;
-      pEl.innerHTML=''; pEl.appendChild(div); pEl.classList.add('open');
-      try{
-        Plotly.newPlot('plo'+id,[{x:res.odeData.xs,y:res.odeData.ys,type:'scatter',mode:'lines',line:{color:'#a99cf2',width:2},name:`${res.odeData.yv}(${res.odeData.xv})`}],
-          pLayout(`${res.odeData.yv}(${res.odeData.xv}) — RK4`),{responsive:true,displayModeBar:false});
-      }catch(e){}
-    }
+  if (pEl) { pEl.innerHTML=''; pEl.classList.remove('open'); }
+  if(res.odeData && pEl){
+    const div=document.createElement('div');
+    div.className='cell-plot-inner'; div.id='plo'+id;
+    pEl.appendChild(div); pEl.classList.add('open');
+    try{
+      Plotly.newPlot('plo'+id,[{x:res.odeData.xs,y:res.odeData.ys,type:'scatter',mode:'lines',line:{color:'#a99cf2',width:2},name:`${res.odeData.yv}(${res.odeData.xv})`}],
+        pLayout(`${res.odeData.yv}(${res.odeData.xv}) — RK4`),{responsive:true,displayModeBar:false});
+    }catch(e){}
   }
 
-  if(res.steps&&res.steps.length){
-    sEl.innerHTML=res.steps.map((s,i)=>
-      `<div class="step"><div class="step-n">${i+1}</div><div class="step-body"><div class="step-d">${escH(s.d)}</div><div class="step-e">${escH(s.e)}</div></div></div>`
-    ).join('');
-  }
+  sEl.innerHTML = (res.steps && res.steps.length) ? res.steps.map((s,i)=>
+    `<div class="step"><div class="step-n">${i+1}</div><div class="step-body"><div class="step-d">${escH(s.d)}</div><div class="step-e">${escH(s.e)}</div></div></div>`
+  ).join('') : '';
 
-  const plotCand=res.plot||(detectPlot(expr));
+  const plotCand=res.plot||(res.type==='val'?null:detectPlot(expr));
   const acts=[];
   if(res.steps&&res.steps.length) acts.push(`<button class="cact" onclick="toggleSteps('${id}')">∴ Steps</button>`);
   if(plotCand) {
@@ -2170,8 +2378,8 @@ async function renderCell(id,res,expr,mode){
     acts.push(`<button class="cact" onclick="exportPlot('${id}')" style="display:none;" id="exp${id}">Download Plot</button>`);
   }
   acts.push(`<div class="cact-spacer"></div>`);
-  acts.push(`<button class="cact" onclick="cpTxt('${esc2(latex)}')">Copy LaTeX</button>`);
-  acts.push(`<button class="cact" onclick="cpTxt('${esc2(plain)}')">Copy Plain</button>`);
+  acts.push(`<button class="cact" onclick="cpTxt(this.closest('.cell').dataset.latex)">Copy LaTeX</button>`);
+  acts.push(`<button class="cact" onclick="cpTxt(this.closest('.cell').dataset.plain)">Copy Plain</button>`);
   acts.push(`<button class="cact warm" onclick="reload('${esc2(expr)}')">Edit</button>`);
   aEl.innerHTML=acts.join('');
   scrollNB();
@@ -2179,28 +2387,13 @@ async function renderCell(id,res,expr,mode){
 
 function renderErr(id,msg){
   const o=document.getElementById('o'+id);
-  const friendly = categorizeError({message: msg});
-  if(o){o.className='cout err';o.innerHTML=`<div class="cout-prompt" style="color:var(--rose);">!</div><div class="cout-body" style="padding-left:32px;">${escH(friendly)}</div>`;}
+  if(o){o.className='cout err';o.innerHTML=`<div class="cout-prompt" style="color:var(--rose);">!</div><div class="cout-body" style="padding-left:32px;">${escH(msg)}</div>`;}
+  const cellEl=document.getElementById(id);
+  if(cellEl){cellEl.dataset.latex=`\\text{Error: ${escTex(msg)}}`;cellEl.dataset.plain='Error: '+msg;}
+  const aEl=document.getElementById('ac'+id); if(aEl) aEl.innerHTML='';
+  const sEl=document.getElementById('st'+id); if(sEl) sEl.innerHTML='';
 }
 
-function renderODEPlot(id, odeData) {
-  const { xs, ys, xv, yv } = odeData;
-  const nb = document.getElementById('notebook');
-  let pd = document.getElementById('pd'+id);
-  if (!pd) {
-    pd = document.createElement('div');
-    pd.id = 'pd'+id;
-    pd.style.cssText = 'border-top:1px solid var(--b0);height:260px;background:var(--s1);';
-    const cell = document.getElementById(id);
-    if (cell) cell.insertBefore(pd, cell.querySelector('.cout'));
-  }
-  pd.style.display = 'block';
-  const trace = {x:xs,y:ys,type:'scatter',mode:'lines',line:{color:'#6ee7b7',width:2},name:`${yv}(${xv})`};
-  const layout = {paper_bgcolor:'transparent',plot_bgcolor:'transparent',margin:{t:20,r:20,b:40,l:50},
-    xaxis:{color:'#6b7280',title:xv,gridcolor:'#2a2d38'},yaxis:{color:'#6b7280',title:yv,gridcolor:'#2a2d38'},
-    font:{color:'#dde1ec',family:'JetBrains Mono,monospace',size:11}};
-  Plotly.newPlot(pd,[trace],layout,{responsive:true,displayModeBar:false});
-}
 function toggleSteps(id){document.getElementById('st'+id).classList.toggle('open');}
 
 // ══════════════════════════════════════════════════════
@@ -2220,10 +2413,13 @@ function plotExpr(expr,id){
   const div=document.createElement('div');
   div.className='cell-plot-inner'; div.id='plo'+id;
   pEl.innerHTML=''; pEl.appendChild(div); pEl.classList.add('open');
-  const xs=[],ys=[],fn=math.compile(expr),loc=Object.assign({},scope);
+  let fn;
+  try { fn = math.compile(inlineUserFns(normalise(expr))); }
+  catch(e) { pEl.innerHTML = `<div class="cout err" style="padding:12px 18px;">${escH(categorizeError(e))}</div>`; return; }
+  const xs=[],ys=[],loc=ctx();
   for(let i=0;i<=500;i++){
     const x=-10+i*20/500; loc.x=x; xs.push(x);
-    try{const y=fn.evaluate(loc);ys.push(isFinite(y)?y:null);}catch{ys.push(null);}
+    try{const y=toReal(fn.evaluate(loc));ys.push(isFinite(y)?y:null);}catch{ys.push(null);}
   }
   Plotly.newPlot('plo'+id,[{x:xs,y:ys,type:'scatter',mode:'lines',line:{color:'#7eef9c',width:2},name:expr}],
     pLayout(expr),{responsive:true,displayModeBar:false});
@@ -2243,8 +2439,11 @@ function plotGraph(is3D){
   const xmin=parseFloat(document.getElementById('gxmin').value);
   const xmax=parseFloat(document.getElementById('gxmax').value);
   const panel=document.getElementById('gplot');
+  if(!isFinite(xmin)||!isFinite(xmax)||xmin>=xmax){panel.innerHTML='<div class="cout err" style="padding:14px 18px;">The x range must satisfy min &lt; max.</div>';return;}
+  const exprs=parseTopLevelArgs(raw).map(e=>inlineUserFns(normalise(e)));
+  try { exprs.forEach(e=>math.parse(e)); }
+  catch(e){panel.innerHTML=`<div class="cout err" style="padding:14px 18px;">${escH(categorizeError(e))}</div>`;return;}
   panel.innerHTML='<div id="gplotinner" style="width:100%;height:100%;min-height:380px;"></div>';
-  const exprs=raw.split(',').map(s=>s.trim()).filter(Boolean);
   const colors=['#7eef9c','#a99cf2','#7fc5e0','#e8b87a','#e88a99','#f0a06f'];
 
   if(is3D){
@@ -2255,8 +2454,8 @@ function plotGraph(is3D){
     for(let j=0;j<=n;j++){
       const row=[];
       for(let i=0;i<=n;i++){
-        const loc=Object.assign({},scope,{x:xs[i],y:ys[j]});
-        try{const z=fn.evaluate(loc);row.push(isFinite(z)?z:null);}catch{row.push(null);}
+        const loc=ctx({x:xs[i],y:ys[j]});
+        try{const z=toReal(fn.evaluate(loc));row.push(isFinite(z)?z:null);}catch{row.push(null);}
       }
       zs.push(row);
     }
@@ -2267,8 +2466,8 @@ function plotGraph(is3D){
       const fn=math.compile(e),xs=[],ys=[];
       for(let i=0;i<=500;i++){
         const x=xmin+i*(xmax-xmin)/500; xs.push(x);
-        const loc=Object.assign({},scope,{x});
-        try{const y=fn.evaluate(loc);ys.push(isFinite(y)?y:null);}catch{ys.push(null);}
+        const loc=ctx({x});
+        try{const y=toReal(fn.evaluate(loc));ys.push(isFinite(y)?y:null);}catch{ys.push(null);}
       }
       return{x:xs,y:ys,type:'scatter',mode:'lines',line:{color:colors[idx%colors.length],width:2.4},name:e};
     });
@@ -2311,11 +2510,8 @@ async function evalUnit(){
   if(!expr){el.innerHTML='<span class="units-result-empty">Enter a unit expression to convert…</span>';return;}
   try{
     el.innerHTML='<div class="spin" style="margin-left: 10px;"></div>';
-    const workerRes = await runInWorker(expr, scope);
-    if (workerRes.error) throw new Error(workerRes.error);
-    const r = math.evaluate(workerRes.res);
-    const plain=r&&r.toString?r.toString():fmtR(r);
-    el.innerHTML=`<span>${escH(plain)}</span>`;
+    const r = await workerEval(normalise(expr));
+    el.innerHTML=`<span>${escH(r && r.isUnit ? math.format(r,{precision:10}) : fmtR(r))}</span>`;
   }catch(e){el.innerHTML=`<span style="color:var(--rose);font-size:14px;">! ${escH(e.message)}</span>`;}
 }
 function setUnitInp(s){document.getElementById('uinp').value=s;evalUnit();}
@@ -2331,174 +2527,216 @@ function buildConsts(){
 // ══════════════════════════════════════════════════════
 //  TEXT BLOCK
 // ══════════════════════════════════════════════════════
-function addText(){
+function addText(content){
   const w=document.getElementById('welcome');if(w)w.style.display='none';
   const el=document.createElement('div');
   el.className='cell text-cell';
   el.innerHTML=`<textarea class="text-cell-edit" placeholder="Notes, headings, derivations…" rows="2" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>`;
   document.getElementById('notebook').appendChild(el);
-  el.querySelector('textarea').focus();
+  const ta=el.querySelector('textarea');
+  if(typeof content==='string'){ta.value=content;ta.style.height=ta.scrollHeight+'px';}
+  else ta.focus();
   scrollNB();
 }
 
 // ══════════════════════════════════════════════════════
 //  SYMBOLIC ANTIDERIVATIVE ENGINE
 // ══════════════════════════════════════════════════════
+// 1. Structural integration over the mathjs expression tree (linearity, power rule,
+//    linear substitution, elementary table); 2. a table of classic special forms;
+// 3. Algebrite. Every candidate is differentiated back and compared numerically
+// with the integrand before it is accepted, so a wrong antiderivative is never shown.
+function stripParens(n) { while (n && n.isParenthesisNode) n = n.content; return n; }
+function dependsOn(node, v) {
+  let d = false;
+  node.traverse((n, path, parent) => {
+    if (n.isSymbolNode && n.name === v && !(parent && parent.isFunctionNode && path === 'fn')) d = true;
+  });
+  return d;
+}
+// du/dv when u is linear in v (constant, non-zero derivative), otherwise null.
+function linearCoeff(u, v) {
+  try {
+    const d = math.simplify(math.derivative(u, v));
+    if (dependsOn(d, v)) return null;
+    if (d.isConstantNode && Number(d.value) === 0) return null;
+    return d.toString();
+  } catch { return null; }
+}
+function integrateTree(node, v) {
+  node = stripParens(node);
+  const s = node.toString();
+  if (!dependsOn(node, v)) return `(${s}) * ${v}`;
+  if (node.isSymbolNode) return `${v}^2 / 2`;
+  if (node.isOperatorNode) {
+    const [a, b] = node.args;
+    switch (node.fn) {
+      case 'unaryPlus': return integrateTree(a, v);
+      case 'unaryMinus': { const r = integrateTree(a, v); return r && `-(${r})`; }
+      case 'add': case 'subtract': {
+        const ra = integrateTree(a, v), rb = integrateTree(b, v);
+        return ra && rb && `(${ra}) ${node.op} (${rb})`;
+      }
+      case 'multiply': {
+        if (!dependsOn(a, v)) { const r = integrateTree(b, v); return r && `(${a}) * (${r})`; }
+        if (!dependsOn(b, v)) { const r = integrateTree(a, v); return r && `(${b}) * (${r})`; }
+        return null;
+      }
+      case 'divide': {
+        if (!dependsOn(b, v)) { const r = integrateTree(a, v); return r && `(${r}) / (${b})`; }
+        if (!dependsOn(a, v)) {
+          const den = stripParens(b), k = linearCoeff(den, v);
+          if (k) return `(${a}) * log(abs(${den})) / (${k})`;
+          if (den.isOperatorNode && den.fn === 'pow' && !dependsOn(den.args[1], v))
+            return integrateTree(math.parse(`(${a}) * (${den.args[0]})^(-(${den.args[1]}))`), v);
+        }
+        return null;
+      }
+      case 'pow': {
+        const base = stripParens(a);
+        if (!dependsOn(b, v)) {
+          const k = linearCoeff(base, v);
+          if (!k) return null;
+          let n = null; try { n = toReal(b.evaluate({})); } catch {}
+          if (n === -1) return `log(abs(${base})) / (${k})`;
+          return `(${base})^((${b}) + 1) / (((${b}) + 1) * (${k}))`;
+        }
+        if (!dependsOn(base, v)) {
+          const k = linearCoeff(stripParens(b), v);
+          return k && `(${base})^(${b}) / ((${k}) * log(${base}))`;
+        }
+        return null;
+      }
+    }
+    return null;
+  }
+  if (node.isFunctionNode && node.args.length === 1) {
+    const u = stripParens(node.args[0]), k = linearCoeff(u, v);
+    if (!k) return null;
+    const U = `(${u})`;
+    const table = {
+      sin: `-cos(${U})`, cos: `sin(${U})`, tan: `-log(abs(cos(${U})))`,
+      sec: `log(abs(sec(${U}) + tan(${U})))`, csc: `-log(abs(csc(${U}) + cot(${U})))`, cot: `log(abs(sin(${U})))`,
+      sinh: `cosh(${U})`, cosh: `sinh(${U})`, tanh: `log(cosh(${U}))`,
+      exp: `exp(${U})`, log: `${U} * log(${U}) - ${U}`, sqrt: `2/3 * ${U}^(3/2)`,
+      asin: `${U} * asin(${U}) + sqrt(1 - ${U}^2)`, acos: `${U} * acos(${U}) - sqrt(1 - ${U}^2)`,
+      atan: `${U} * atan(${U}) - log(1 + ${U}^2) / 2`, abs: `${U} * abs(${U}) / 2`,
+    };
+    const name = node.fn.name;
+    return name in table ? `(${table[name]}) / (${k})` : null;
+  }
+  return null;
+}
+// Classic forms that need more than linearity (written in x; renamed to the actual variable).
+const INTEGRAL_FORMS = [
+  ['sec(x)^2','tan(x)'], ['csc(x)^2','-cot(x)'], ['sec(x)*tan(x)','sec(x)'], ['csc(x)*cot(x)','-csc(x)'],
+  ['sin(x)^2','x/2 - sin(2*x)/4'], ['cos(x)^2','x/2 + sin(2*x)/4'], ['tan(x)^2','tan(x) - x'],
+  ['1/(1+x^2)','atan(x)'], ['1/sqrt(1-x^2)','asin(x)'], ['-1/sqrt(1-x^2)','acos(x)'],
+  ['1/(x*sqrt(x^2-1))','asec(abs(x))'], ['x*exp(x)','(x-1)*exp(x)'], ['x*sin(x)','sin(x) - x*cos(x)'],
+  ['x*cos(x)','cos(x) + x*sin(x)'], ['x*log(x)','x^2/2*log(x) - x^2/4'], ['x^2*exp(x)','(x^2 - 2*x + 2)*exp(x)'],
+].map(([f, F]) => [math.parse(f).toString(), F]);
+function integralForm(f, v) {
+  let key;
+  try {
+    if (v !== 'x' && freeSymbols(f).includes('x')) return null;
+    key = math.parse(f).transform(n => n.isSymbolNode && n.name === v ? new math.SymbolNode('x') : n).toString();
+  } catch { return null; }
+  const hit = INTEGRAL_FORMS.find(([k]) => k === key);
+  if (!hit) return null;
+  return math.parse(hit[1]).transform(n => n.isSymbolNode && n.name === 'x' ? new math.SymbolNode(v) : n).toString();
+}
+function verifyAntiderivative(F, f, v) {
+  try { return numericallyEqual(math.derivative(F, v).toString(), f); } catch { return false; }
+}
 function symbolicIntegrate(f, v) {
-  const x = v;
-  f = f.trim();
-  function verify(antiderivExpr) {
-    try {
-      const dA = math.derivative(math.parse(antiderivExpr), x).toString();
-      const fn1 = math.compile(f), fn2 = math.compile(dA);
-      const loc = {[x]: 1.7};
-      const v1 = fn1.evaluate(loc), v2 = fn2.evaluate(loc);
-      return Math.abs(v1-v2) < 1e-6 * (Math.abs(v1)+1e-10);
-    } catch { return false; }
-  }
-  if (!f.includes(x)) {
-    const val = f;
-    return { tex:`${math.parse(val).toTex()} ${x}`, plain:`(${val})*${x}` };
-  }
-  if (f === x) return { tex:`\\frac{${x}^{2}}{2}`, plain:`${x}^2/2` };
-  if (f === `sqrt(${x})`) return { tex: `\\frac{2}{3}${x}^{3/2}`, plain: `(2/3)*${x}^(3/2)` };
-  if (f === `1/${x}` || f === `${x}^(-1)`) return { tex: `\\ln|${x}|`, plain: `log(abs(${x}))` };
-  let pm = f.match(new RegExp(`^${x}\\^\\(?(.+?)\\)?$`));
-  if (!pm) pm = f.match(new RegExp(`^\\(${x}\\)\\^\\(?(.+?)\\)?$`));
-  if (pm) {
-    const n = pm[1].trim();
-    if (n === '-1' || n === '(-1)') return { tex:`\\ln|${x}|`, plain:`log(abs(${x}))` };
-    try {
-      const nv = math.evaluate(n);
-      if (nv === -1) return { tex:`\\ln|${x}|`, plain:`log(abs(${x}))` };
-      const np1 = math.simplify(math.parse(`${n}+1`)).toString();
-      return { tex:`\\frac{${x}^{${np1}}}{${np1}}`, plain:`${x}^(${np1})/(${np1})` };
-    } catch {}
-  }
-  let cm = f.match(new RegExp(`^(-?[\\d\\.]+(?:\\/[\\d\\.]+)?)\\s*\\*\\s*(.+)$`));
-  if (!cm) cm = f.match(new RegExp(`^(.+?)\\s*\\*\\s*(-?[\\d\\.]+(?:\\/[\\d\\.]+)?)$`));
-  if (cm) {
-    const c = cm[1], inner = cm[2];
-    if (!inner.includes(x) && c.includes(x)) {} else if (!inner.includes(x)) {
-      const sub = symbolicIntegrate(c.includes(x) ? c : inner, x);
-      const const2 = c.includes(x) ? inner : c;
-      return { tex: `${math.parse(const2).toTex()} \\cdot ${sub.tex}`, plain: `(${const2})*(${sub.plain})` };
-    } else if (!c.includes(x)) {
-      const sub = symbolicIntegrate(inner, x);
-      return { tex: `${math.parse(c).toTex()} \\cdot ${sub.tex}`, plain: `(${c})*(${sub.plain})` };
+  const candidates = [];
+  try { const r = integrateTree(math.parse(f), v); if (r) candidates.push([r, 'structural rules']); } catch {}
+  const form = integralForm(f, v); if (form) candidates.push([form, 'table of standard forms']);
+  try { candidates.push([fromAlgebrite(algebriteRun(`integral(${toAlgebrite(f)},${v})`)), 'Algebrite']); } catch {}
+  for (const [c, method] of candidates) {
+    let node; try { node = math.parse(c); } catch { continue; }
+    let simp = null; try { simp = math.simplify(node); } catch {}
+    for (const cand of [simp, node]) {
+      if (cand && verifyAntiderivative(cand, f, v)) return {tex: cand.toTex(), plain: cand.toString(), method};
     }
   }
-  // Division by constant: expr/c
-  const divM = f.match(new RegExp(`^(.+?)\\s*\\/\\s*(-?[\\d\\.]+(?:\\/[\\d\\.]+)?)$`));
-  if (divM) {
-    const inner2 = divM[1], c2 = divM[2];
-    if (!inner2.includes('/') || inner2.includes('(')) {
-      try {
-        const cv = math.evaluate(c2);
-        if (typeof cv === 'number' && !inner2.includes(c2)) {
-          const sub2 = symbolicIntegrate(inner2, x);
-          if (!sub2.noForm) {
-            return { tex: `\\frac{1}{${math.parse(c2).toTex()}} \\cdot ${sub2.tex}`, plain: `(${sub2.plain})/(${c2})` };
-          }
-        }
-      } catch {}
-    }
-  }
-  const trigTable = [
-    [/^sin\(x\)$/,      {tex:`-\\cos(${x})`,         plain:`-cos(${x})`}],
-    [/^cos\(x\)$/,      {tex:`\\sin(${x})`,           plain:`sin(${x})`}],
-    [/^tan\(x\)$/,      {tex:`\\ln|\\sec(${x})|`,     plain:`log(abs(sec(${x})))`}],
-    [/^sec\(x\)^2$/,    {tex:`\\tan(${x})`,           plain:`tan(${x})`}],
-    [/^csc\(x\)^2$/,    {tex:`-\\cot(${x})`,          plain:`-cot(${x})`}],
-    [/^sec\(x\)\*tan\(x\)$/, {tex:`\\sec(${x})`,      plain:`sec(${x})`}],
-    [/^csc\(x\)\*cot\(x\)$/, {tex:`-\\csc(${x})`,     plain:`-csc(${x})`}],
-    [/^sinh\(x\)$/,     {tex:`\\cosh(${x})`,          plain:`cosh(${x})`}],
-    [/^cosh\(x\)$/,     {tex:`\\sinh(${x})`,          plain:`sinh(${x})`}],
-    [/^tanh\(x\)$/,     {tex:`\\ln(\\cosh(${x}))`,    plain:`log(cosh(${x}))`}],
-  ];
-  const fv = f.replace(new RegExp(`\\b${x}\\b`,'g'), 'x');
-  for (const [re, res] of trigTable) {
-    if (re.test(fv)) {
-      const tex = res.tex.replace(/x/g, v);
-      const plain = res.plain.replace(/\bx\b/g, v);
-      return {tex, plain};
-    }
-  }
-  const linArgTrig = [
-    {re: /^sin\((.+)\)$/, sign:'-', fn:'cos'},
-    {re: /^cos\((.+)\)$/, sign:'+',  fn:'sin'},
-    {re: /^exp\((.+)\)$/, sign:'+',  fn:'exp'},
-  ];
-  for (const {re, sign, fn} of linArgTrig) {
-    const m = f.match(re);
-    if (m) {
-      const arg = m[1];
-      try {
-        const darg = math.derivative(math.parse(arg), x).toString();
-        const dval = math.evaluate(darg.replace(new RegExp(`\\b${x}\\b`,'g'),'0'));
-        if (Math.abs(dval) > 1e-12) {
-          const antiFn = fn === 'exp' ? `exp(${arg})` : `${fn}(${arg})`;
-          const tex = `${sign === '-' ? '-' : ''}\\frac{${fn==='exp'?'e^{'+math.parse(arg).toTex()+'}': fn+'\\left('+math.parse(arg).toTex()+'\\right)'}}{${math.parse(darg).toTex()}}`;
-          const plain = `${sign}${antiFn}/(${darg})`;
-          if (verify(plain.replace(/^\+/,''))) return {tex, plain: plain.replace(/^\+/,'')};
-        }
-      } catch {}
-    }
-  }
-  if (f === `exp(${x})` || f === `e^${x}`) return {tex:`e^{${x}}`, plain:`exp(${x})`};
-  const expM = f.match(/^(\d+(?:\.\d+)?)\^x$/);
-  if (expM) {
-    const a = expM[1];
-    return {tex:`\\frac{${a}^{${x}}}{\\ln(${a})}`, plain:`${a}^${x}/log(${a})`};
-  }
-  if (f === `log(${x})`) return {tex:`${x}\\ln(${x}) - ${x}`, plain:`${x}*log(${x})-${x}`};
-  if (f === `log10(${x})`) return {tex:`\\frac{${x}(\\ln(${x})-1)}{\\ln(10)}`, plain:`${x}*(log(${x})-1)/log(10)`};
-  // Inverse trig patterns
-  const fxN = f.replace(new RegExp(`\\b${x}\\b`,'g'),'x');
-  if (fxN.match(/^1\s*\/\s*sqrt\s*\(1\s*-\s*x\^2\)$/) || fxN === '1/sqrt(1-x^2)') return {tex:`\\arcsin(${x})`, plain:`asin(${x})`};
-  if (fxN.match(/^1\s*\/\s*\(1\s*\+\s*x\^2\)$/) || fxN === '1/(1+x^2)') return {tex:`\\arctan(${x})`, plain:`atan(${x})`};
-  if (fxN.match(/^-1\s*\/\s*sqrt\s*\(1\s*-\s*x\^2\)$/)) return {tex:`\\arccos(${x})`, plain:`acos(${x})`};
-  if (fxN.match(/^1\s*\/\s*\(x\s*\*\s*sqrt\s*\(x\^2\s*-\s*1\)\)$/) || fxN === '1/(x*sqrt(x^2-1))') return {tex:`\\text{arcsec}(${x})`, plain:`acos(1/abs(${x}))`};
-  // Integration by parts: x·f(x) patterns
-  if (fxN === `x*exp(x)` || fxN === `exp(x)*x`) return {tex:`(${x}-1)e^{${x}}`, plain:`(${x}-1)*exp(${x})`};
-  if (fxN === `x*sin(x)` || fxN === `sin(x)*x`) return {tex:`\\sin(${x})-${x}\\cos(${x})`, plain:`sin(${x})-${x}*cos(${x})`};
-  if (fxN === `x*cos(x)` || fxN === `cos(x)*x`) return {tex:`\\cos(${x})+${x}\\sin(${x})`, plain:`cos(${x})+${x}*sin(${x})`};
-  if (fxN === `x^2*exp(x)` || fxN === `exp(x)*x^2`) return {tex:`(${x}^{2}-2${x}+2)e^{${x}}`, plain:`(${x}^2-2*${x}+2)*exp(${x})`};
-  if (fxN === `x*log(x)` || fxN === `log(x)*x`) return {tex:`\\frac{${x}^2}{2}\\ln(${x})-\\frac{${x}^2}{4}`, plain:`${x}^2/2*log(${x})-${x}^2/4`};
-  // Half-angle identities
-  if (fxN === `sin(x)^2`) return {tex:`\\frac{${x}}{2}-\\frac{\\sin(2${x})}{4}`, plain:`${x}/2-sin(2*${x})/4`};
-  if (fxN === `cos(x)^2`) return {tex:`\\frac{${x}}{2}+\\frac{\\sin(2${x})}{4}`, plain:`${x}/2+sin(2*${x})/4`};
-  if (fxN === `tan(x)^2`) return {tex:`\\tan(${x})-${x}`, plain:`tan(${x})-${x}`};
-  // 1/(a²+x²) → arctan pattern
-  const arcPat = fxN.match(/^1\s*\/\s*\((\d+(?:\.\d+)?)\s*\+\s*x\^2\)$/);
-  if (arcPat) {
-    const aVal = arcPat[1]; const sqrtA = Math.sqrt(parseFloat(aVal));
-    const sqrtStr = Number.isInteger(sqrtA)?String(sqrtA):`sqrt(${aVal})`;
-    return {tex:`\\frac{1}{${sqrtStr}}\\arctan\\!\\left(\\frac{${x}}{${sqrtStr}}\\right)`, plain:`atan(${x}/${sqrtStr})/${sqrtStr}`};
-  }
-  // sqrt(a²-x²) → arcsin pattern
-  const sqrtArcPat = fxN.match(/^sqrt\s*\((\d+(?:\.\d+)?)\s*-\s*x\^2\)$/);
-  if (sqrtArcPat) {
-    const aVal = sqrtArcPat[1]; const sqrtA = Math.sqrt(parseFloat(aVal));
-    const aStr = Number.isInteger(sqrtA)?String(sqrtA):`sqrt(${aVal})`;
-    return {tex:`\\frac{${x}}{2}\\sqrt{${aVal}-${x}^{2}}+\\frac{${aVal}}{2}\\arcsin\\!\\left(\\frac{${x}}{${aStr}}\\right)`, plain:`${x}/2*sqrt(${aVal}-${x}^2)+${aVal}/2*asin(${x}/${aStr})`};
-  }
-  // abs(x) → x*abs(x)/2 (i.e. sign(x)*x²/2)
-  if (fxN === `abs(x)`) return {tex:`\\frac{${x}|${x}|}{2}`, plain:`${x}*abs(${x})/2`};
-  const terms = splitTopLevel(f);
-  if (terms.length > 1) {
-    const parts = terms.map(t => symbolicIntegrate(t.expr.trim(), v));
-    const combined_tex = parts.map((p,i) => terms[i].sign === '-' ? '-'+p.tex : (i===0?p.tex:'+'+p.tex)).join('');
-    const combined_plain = parts.map((p,i) => terms[i].sign === '-' ? `-(${p.plain})` : p.plain).join('+');
-    return {tex: combined_tex, plain: combined_plain};
-  }
-  return {
-    tex: `\\int ${math.parse(f).toTex()} \\, d${v}`,
-    plain: `∫ ${f} d${v}  — no closed form found`,
-    noForm: true
-  };
+  return {noForm: true};
 }
 
+// ── Partial fractions ────────────────────────────────
+// Factor the denominator over ℚ (Algebrite), posit Σ P_ij(x)/b_i(x)^j with deg P < deg b,
+// solve for the coefficients from sample points, rationalise, then verify.
+function flattenProduct(node, out = []) {
+  node = stripParens(node);
+  if (node.isOperatorNode && node.fn === 'multiply') node.args.forEach(a => flattenProduct(a, out));
+  else if (node.isOperatorNode && node.fn === 'unaryMinus') flattenProduct(node.args[0], out);
+  else out.push(node);
+  return out;
+}
+function niceNumber(c) {
+  if (Math.abs(c - Math.round(c)) < 1e-8) return String(Math.round(c));
+  const r = asRational(c, 100000);
+  return r ? `${r.n}/${r.d}` : null;
+}
+function partialFractions(f, v) {
+  let rat;
+  try { rat = math.rationalize(math.parse(f), {}, true); } catch { return null; }
+  if (!rat.denominator) return null;
+  const num = rat.numerator.toString(), den = rat.denominator.toString();
+  try {
+    const quo = prettify(fromAlgebrite(algebriteRun(`quotient(${toAlgebrite(num)},${toAlgebrite(den)},${v})`)));
+    const fac = fromAlgebrite(algebriteRun(`factor(${toAlgebrite(den)},${v})`));
+    const groups = [];   // [base, multiplicity, degree]
+    for (const factor of flattenProduct(math.parse(fac))) {
+      if (!dependsOn(factor, v)) continue;
+      let base = factor, mult = 1;
+      if (factor.isOperatorNode && factor.fn === 'pow') { base = stripParens(factor.args[0]); mult = toReal(factor.args[1].evaluate({})); }
+      if (!Number.isInteger(mult) || mult < 1) return null;
+      const d = parseInt(algebriteRun(`deg(${toAlgebrite(base.toString())},${v})`), 10);
+      if (!(d >= 1)) return null;
+      groups.push([base.toString(), mult, d]);
+    }
+    const basis = [];   // {g, j, p}: x^p / base^j
+    groups.forEach(([b, m, d], g) => { for (let j = 1; j <= m; j++) for (let p = 0; p < d; p++) basis.push({b, j, p, g}); });
+    if (!basis.length || basis.length > 24) return null;
+    const target = math.compile(`(${num})/(${den}) - (${quo})`);
+    const cBasis = basis.map(t => math.compile(`${v}^${t.p} / (${t.b})^${t.j}`));
+    const A = [], rhs = [];
+    for (let i = 0; A.length < basis.length && i < basis.length * 4; i++) {
+      const loc = Object.assign({}, scope, {[v]: 0.5 + i * 0.7314 + (i % 3) * 0.1177});
+      const row = cBasis.map(c => toReal(c.evaluate(loc))), y = toReal(target.evaluate(loc));
+      if (row.every(isFinite) && isFinite(y)) { A.push(row); rhs.push(y); }
+    }
+    const sol = solveL(A, rhs);
+    if (!sol) return null;
+    const coeffs = sol.map(niceNumber);
+    if (coeffs.some(c => c === null)) return null;
+    const parts = [];
+    if (quo !== '0') parts.push(quo);
+    const byGroupPower = {};
+    basis.forEach((t, i) => {
+      if (coeffs[i] === '0') return;
+      const key = `${t.g}:${t.j}`;
+      (byGroupPower[key] = byGroupPower[key] || {b: t.b, j: t.j, terms: []}).terms.unshift(
+        t.p === 0 ? coeffs[i] : `${coeffs[i]} * ${v}${t.p > 1 ? '^' + t.p : ''}`);
+    });
+    Object.values(byGroupPower).forEach(({b, j, terms}) => {
+      const numer = terms.join(' + ').replace(/\+ -/g, '- ');
+      parts.push(`(${numer}) / (${b})${j > 1 ? '^' + j : ''}`);
+    });
+    const result = parts.join(' + ') || '0';
+    if (!numericallyEqual(result, f)) return null;
+    const pretty = prettify(result);
+    return {plain: pretty, tex: texOf(pretty), den: prettify(fac)};
+  } catch { return null; }
+}
+
+// A +/- is unary (not a term separator) after an operator/opening bracket or inside 1e-5.
+function isUnarySign(expr, i) {
+  const before = expr.slice(0, i).trimEnd();
+  if (!before || /[*/^(,=]$/.test(before)) return true;
+  return /(^|[^\w.])\d+(\.\d*)?[eE]$/.test(before);   // exponent of a numeric literal
+}
 function splitTopLevel(expr) {
   const terms = [];
   let depth = 0, start = 0, sign = '+';
@@ -2506,7 +2744,7 @@ function splitTopLevel(expr) {
     const c = expr[i];
     if (c === '(' || c === '[') depth++;
     else if (c === ')' || c === ']') depth--;
-    else if (depth === 0 && (c === '+' || c === '-') && i > 0) {
+    else if (depth === 0 && (c === '+' || c === '-') && i > 0 && !isUnarySign(expr, i)) {
       const t = expr.slice(start, i).trim();
       if (t) terms.push({sign, expr: t});
       sign = c;
@@ -2537,20 +2775,20 @@ function parseTopLevelArgs(inner) {
   return args;
 }
 
+// Fallback expansion when Algebrite is unavailable: binomial theorem + distributive law.
 function doExpand(inner) {
   function binom(n, k) {
     let r = 1;
     for (let i = 0; i < k; i++) r = r * (n - i) / (i + 1);
     return Math.round(r);
   }
-  // Handle (a±b)^n via binomial theorem
   const pm = inner.trim().match(/^\((.+)\)\^(\d+)$/);
   if (pm) {
     const base = pm[1], n = parseInt(pm[2]);
     if (n >= 2 && n <= 15) {
       const ts = splitTopLevel(base);
       if (ts.length === 2) {
-        const a = ts[0].expr.trim();
+        const a = ts[0].sign === '-' ? `-(${ts[0].expr})` : ts[0].expr;
         const bSign = ts[1].sign === '-' ? '-' : '';
         const bExpr = ts[1].expr.trim();
         const termParts = [];
@@ -2568,7 +2806,6 @@ function doExpand(inner) {
       }
     }
   }
-  // General: distributive law, applied iteratively
   const rules = [
     {l:'n1*(n2+n3)', r:'n1*n2+n1*n3'},
     {l:'(n1+n2)*n3', r:'n1*n3+n2*n3'},
@@ -2585,285 +2822,257 @@ function doExpand(inner) {
   return node;
 }
 
+// Numerical fallback factoriser (used only if Algebrite fails); rational roots → linear factors.
 function doFactor(inner, v) {
-  const roots = findRoots(`(${inner})`, v, -100, 100, 8000);
+  const {roots} = findRoots(`(${inner})`, v, -100, 100);
   if (!roots.length) return null;
-  function toRat(r) {
-    for (let d = 1; d <= 12; d++) {
-      const n = Math.round(r * d);
-      if (Math.abs(r - n/d) < 1e-5) return n/d;
-    }
-    return null;
-  }
   const ratRoots = [];
   for (const r of roots) {
-    const rat = toRat(r);
-    if (rat !== null && !ratRoots.some(x => Math.abs(x - rat) < 1e-5)) ratRoots.push(rat);
+    const s = niceNumber(r);
+    if (s === null) continue;
+    const rat = math.evaluate(s);
+    if (!ratRoots.some(x => Math.abs(x - rat) < 1e-9)) ratRoots.push(rat);
   }
   if (!ratRoots.length) return null;
   const factors = ratRoots.map(r => {
-    if (Math.abs(r) < 1e-9) return `(${v})`;
-    const isInt = Math.abs(r - Math.round(r)) < 1e-8;
-    if (isInt) {
-      const n = Math.round(r);
-      return n > 0 ? `(${v}-${n})` : `(${v}+${Math.abs(n)})`;
-    }
-    for (let d = 2; d <= 12; d++) {
-      const num = Math.round(r * d);
-      if (Math.abs(r - num/d) < 1e-5) {
-        const g = gcdInt(Math.abs(num), d), p = num/g, q = d/g;
-        return p > 0 ? `(${q}*${v}-${p})` : `(${q}*${v}+${Math.abs(p)})`;
-      }
-    }
-    return `(${v}-(${r.toPrecision(6)}))`;
+    if (Math.abs(r) < 1e-12) return `(${v})`;
+    const q = asRational(r, 100000);
+    if (!q) { const n = Math.round(r); return n > 0 ? `(${v}-${n})` : `(${v}+${-n})`; }
+    const g = gcdInt(q.n, q.d), p = q.n / g, d = q.d / g;
+    return p > 0 ? `(${d}*${v}-${p})` : `(${d}*${v}+${-p})`;
   });
   const factorExpr = factors.join('*');
+  // The remaining cofactor must be a constant for this to be a complete factorisation.
+  const loc = t => Object.assign({}, scope, {[v]: t});
   try {
-    for (const t of [5.77, -3.13, 2.31]) {
-      const loc = {...scope, [v]: t};
-      const o = math.evaluate(inner, loc);
-      const f = math.evaluate(factorExpr, loc);
-      if (Math.abs(f) < 1e-8) continue;
-      const lc = o / f;
-      if (!isFinite(lc) || Math.abs(lc) > 1e6) continue;
-      let lcNice = null;
-      for (let d = 1; d <= 12; d++) {
-        const n = Math.round(lc * d);
-        if (Math.abs(lc - n/d) < 1e-4) { lcNice = n/d; break; }
-      }
-      if (lcNice === null) continue;
-      const fullExpr = Math.abs(lcNice - 1) < 1e-8 ? factorExpr
-                     : Math.abs(lcNice + 1) < 1e-8 ? `-(${factorExpr})`
-                     : `(${lcNice})*(${factorExpr})`;
-      const loc2 = {...scope, [v]: 11.17};
-      const o2 = math.evaluate(inner, loc2);
-      const f2 = math.evaluate(fullExpr, loc2);
-      if (Math.abs(o2 - f2) < 1e-4 * (Math.abs(o2) + 1) + 1e-8) return fullExpr;
-      break;
-    }
-  } catch {}
-  // Try to detect and keep irreducible quadratic factor
-  try {
-    const testVals = [1.1, 2.3, -1.7, 3.1, -2.2];
-    const yVals = testVals.map(t => { try { return math.evaluate(inner, { ...scope, [v]: t }); } catch { return NaN; } });
-    if (yVals.some(isNaN)) return null;
-    const [x1, x2, x3] = testVals, [y1, y2, y3] = yVals;
-    const M = [[x1*x1, x1, 1], [x2*x2, x2, 1], [x3*x3, x3, 1]];
-    const coeffArr = solveL(M, [y1, y2, y3]);
-    if (!coeffArr) return null;
-    const [A, B, C] = coeffArr;
-    if (Math.abs(A) < 1e-6) return null;
-    const disc = B*B - 4*A*C;
-    if (disc < -1e-6) {
-      const Astr = fmtN(A), Bstr = fmtN(B), Cstr = fmtN(C);
-      const quadFactor = `(${Astr}*${v}^2+${Bstr}*${v}+${Cstr})`;
-      let ok = true;
-      for (let i = 3; i < testVals.length; i++) {
-        const t = testVals[i];
-        const actual = yVals[i];
-        const predicted = math.evaluate(quadFactor, { ...scope, [v]: t });
-        if (Math.abs(actual - predicted) > 0.01 * (Math.abs(actual) + 1)) { ok = false; break; }
-      }
-      if (ok) return quadFactor;
-    }
-  } catch {}
-  return null;
+    const lc = toReal(math.evaluate(inner, loc(5.77))) / toReal(math.evaluate(factorExpr, loc(5.77)));
+    const lcs = niceNumber(lc);
+    if (lcs === null) return null;
+    const full = lcs === '1' ? factorExpr : lcs === '-1' ? `-(${factorExpr})` : `(${lcs})*(${factorExpr})`;
+    return numericallyEqual(full, inner) ? full : null;
+  } catch { return null; }
 }
 
 // ══════════════════════════════════════════════════════
-//  NUMERICAL HELPERS (preserved)
+//  NUMERICAL HELPERS
 // ══════════════════════════════════════════════════════
-function numInt(fn, v, a, b, n = 1000) {
-  const h = (b - a) / n;
-  const loc = Object.assign({}, scope);
-  let s = 0, count = 0;
-  for (let i = 0; i <= n; i++) {
-    const x = a + i * h;
-    loc[v] = x;
-    let fx;
-    try { fx = fn.evaluate(loc); } catch { continue; }
-    if (!isFinite(fx) || isNaN(fx)) continue; // skip singularities
-    const w = (i === 0 || i === n) ? 1 : (i % 2 === 0 ? 2 : 4);
-    s += w * fx;
-    count++;
+// Adaptive Simpson quadrature; infinite ranges are mapped onto finite ones.
+function numInt(fn, v, a, b) {
+  const loc = ctx();
+  let g = x => { loc[v] = x; try { return toReal(fn.evaluate(loc)); } catch { return NaN; } };
+  let sign = 1;
+  if (a > b) { [a, b] = [b, a]; sign = -1; }
+  if (a === b) return 0;
+  if (!isFinite(a) || !isFinite(b)) {
+    const h = g;
+    if (!isFinite(a) && !isFinite(b)) { g = t => { const x = t / (1 - t*t); return h(x) * (1 + t*t) / ((1 - t*t) ** 2); }; a = -1; b = 1; }
+    else if (!isFinite(b)) { const a0 = a; g = t => h(a0 + t / (1 - t)) / ((1 - t) ** 2); a = 0; b = 1; }
+    else { const b0 = b; g = t => h(b0 - (1 - t) / t) / (t * t); a = 0; b = 1; }
   }
-  if (count < n * 0.5) return NaN; // too many bad points
-  return s * h / 3;
+  const width = b - a;
+  // Integrable end-point singularities: nudge the sample inwards.
+  const safe = x => {
+    let y = g(x);
+    if (!isFinite(y)) { const d = width * 1e-10; y = g(x < a + width/2 ? x + d : x - d); }
+    return y;
+  };
+  let evals = 0;
+  function rec(l, r, fl, fm, fr, whole, eps, depth) {
+    const m = (l + r) / 2, lm = (l + m) / 2, rm = (m + r) / 2;
+    const flm = safe(lm), frm = safe(rm); evals += 2;
+    const left = (m - l) / 6 * (fl + 4*flm + fm), right = (r - m) / 6 * (fm + 4*frm + fr);
+    const delta = left + right - whole;
+    if (depth <= 0 || evals > 400000 || Math.abs(delta) <= 15 * eps) return left + right + delta / 15;
+    return rec(l, m, fl, flm, fm, left, eps/2, depth-1) + rec(m, r, fm, frm, fr, right, eps/2, depth-1);
+  }
+  const panels = 16, hw = width / panels;
+  let total = 0;
+  for (let i = 0; i < panels; i++) {
+    const l = a + i*hw, r = l + hw, fl = safe(l), fr = safe(r), fm = safe((l + r) / 2);
+    total += rec(l, r, fl, fm, fr, hw / 6 * (fl + 4*fm + fr), 1e-11 * Math.max(1, width), 40);
+  }
+  return sign * total;
 }
-function numLim(expr, varName, val) {
-  const e = math.compile(expr);
-  function evalAt(v) {
-    try {
-      const r = e.evaluate({[varName]: v, ...scope});
-      return (typeof r === 'number') ? r : (r && r.re !== undefined ? r.re : NaN);
-    } catch { return NaN; }
-  }
-  // Handle limit as x → ±∞: substitute x = 1/t, limit t→0+
-  if (!isFinite(val)) {
-    const sign = val > 0 ? 1 : -1;
-    const subExpr = expr.replace(new RegExp(`\\b${varName}\\b`, 'g'), `(${sign}/t___)`);
-    try {
-      const g = math.compile(subExpr);
-      const hs = [1e-3, 5e-4, 2.5e-4];
-      const vals = hs.map(h => { try { return g.evaluate({t___: h, ...scope}); } catch { return NaN; }});
-      if (vals.some(isNaN)) return NaN;
-      // Richardson: extrapolate L ≈ vals[2] + (vals[2]-vals[1])*3
-      const L = vals[2] + (vals[2] - vals[1]) * 3;
-      return isFinite(L) ? L : (Math.abs(vals[2]) > 1e6 ? (vals[2] > 0 ? Infinity : -Infinity) : NaN);
-    } catch { return NaN; }
-  }
-  // Use Richardson extrapolation with 3 levels
-  const hs = [1e-4, 5e-5, 2.5e-5];
-  const L = hs.map(h => {
-    const l = evalAt(val - h), r = evalAt(val + h);
-    return (l + r) / 2;
-  });
-  if (L.some(isNaN)) {
-    // Try one-sided (e.g. log at x=0)
-    const hs2 = [1e-5, 5e-6, 2.5e-6].map(h => evalAt(val + h));
-    if (!hs2.some(isNaN)) {
-      // Check if diverging
-      if (Math.abs(hs2[2]) > 1e8) return hs2[2] > 0 ? Infinity : -Infinity;
-      return hs2[2];
+
+// Numerical limit: one-sided sequences, continuity shortcut, divergence detection,
+// and a two-sided comparison (so a jump or a pole is reported as "does not exist").
+function numLim(expr, v, a, dir = 0) {
+  const fn = math.compile(expr);
+  const at = x => { const loc = ctx(); loc[v] = x; try { return toReal(fn.evaluate(loc)); } catch { return NaN; } };
+  const snap = x => {
+    if (!isFinite(x)) return x;
+    if (Math.abs(x) < 1e-7) return 0;
+    const n = Math.round(x);
+    if (Math.abs(x - n) < 1e-7 * (1 + Math.abs(x))) return n;
+    const r = asRational(x, 1000, 1e-7);
+    if (r) return r.n / r.d;
+    return x;
+  };
+  function sequence(s) {   // s = +1 approaches from the right (or towards +∞), -1 from the left
+    const hs = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7];
+    const xs = isFinite(a) ? hs.map(h => a + s*h) : hs.map(h => s / h * 10);
+    const vals = xs.map(at);
+    if (vals.every(isNaN)) return {value: NaN, outside: true};
+    const tail = vals.slice(-4);
+    // Divergence: monotone growth in magnitude, not slowing down.
+    const diffs = tail.slice(1).map((y, i) => y - tail[i]);
+    if (tail.some(y => !isFinite(y) && !isNaN(y))) {
+      const inf = tail.find(y => !isFinite(y) && !isNaN(y));
+      return {value: inf};
     }
-    return NaN;
+    if (tail.every(isFinite) && diffs.every(d => Math.sign(d) === Math.sign(diffs[0]) && d !== 0)
+        && Math.abs(diffs[2]) >= 0.5 * Math.abs(diffs[0]) && Math.abs(tail[3]) > 5) {
+      return {value: diffs[0] > 0 ? Infinity : -Infinity};
+    }
+    // Convergence: the closest pair of consecutive values (rounding error grows as h → 0).
+    let best = -1, bestD = Infinity;
+    for (let i = 1; i < vals.length; i++) {
+      if (!isFinite(vals[i]) || !isFinite(vals[i-1])) continue;
+      const d = Math.abs(vals[i] - vals[i-1]);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    if (best < 0) return {value: NaN};
+    const L = vals[best];
+    return bestD <= 1e-6 * (1 + Math.abs(L)) ? {value: snap(L)} : {value: NaN};
   }
-  // Check for divergence
-  if (Math.abs(L[2]) > 1e8 && Math.abs(L[2]) > Math.abs(L[0]) * 5) {
-    return L[2] > 0 ? Infinity : -Infinity;
+  if (!isFinite(a)) return {value: sequence(a > 0 ? 1 : -1).value};
+  if (dir) return {value: sequence(dir).value};
+  // Continuity shortcut: f(a) defined and agreeing with nearby values.
+  const fa = at(a);
+  if (isFinite(fa)) {
+    const l = at(a - 1e-7), r = at(a + 1e-7);
+    if (Math.abs(l - fa) < 1e-5 * (1 + Math.abs(fa)) && Math.abs(r - fa) < 1e-5 * (1 + Math.abs(fa))) return {value: fa};
   }
-  // Richardson extrapolation: eliminate O(h^2) error
-  const extrapolated = L[2] + (L[2] - L[1]) / 3;
-  // Verify stability: all three levels agree to 3 sig figs
-  const spread = Math.max(...L) - Math.min(...L);
-  if (spread > 1e-3 * (Math.abs(extrapolated) + 1e-10)) return NaN; // doesn't converge
-  return extrapolated;
+  const R = sequence(1), Lft = sequence(-1);
+  if (Lft.outside && !R.outside) return {value: R.value, note: 'Left side is outside the domain — one-sided (right) limit'};
+  if (R.outside && !Lft.outside) return {value: Lft.value, note: 'Right side is outside the domain — one-sided (left) limit'};
+  const same = (isFinite(R.value) && isFinite(Lft.value) && Math.abs(R.value - Lft.value) <= 1e-6 * (1 + Math.abs(R.value)))
+            || (!isFinite(R.value) && !isNaN(R.value) && R.value === Lft.value);
+  if (same) return {value: R.value, left: Lft.value, right: R.value};
+  return {dne: true, value: NaN, left: Lft.value, right: R.value};
 }
 function rk4Solve(fExpr, xVar, yVar, x0, y0, x1, n = 500) {
   const fn = math.compile(fExpr);
   const h = (x1 - x0) / n;
   const xs = [x0], ys = [y0];
+  const loc = ctx();
+  const ev = (xi, yi) => { loc[xVar] = xi; loc[yVar] = yi; try { return toReal(fn.evaluate(loc)); } catch { return NaN; } };
   let x = x0, y = y0;
   for (let i = 0; i < n; i++) {
-    const ev = (xi, yi) => { try { return fn.evaluate({ ...scope, [xVar]: xi, [yVar]: yi }); } catch { return 0; } };
     const k1 = ev(x, y);
     const k2 = ev(x + h/2, y + h/2 * k1);
     const k3 = ev(x + h/2, y + h/2 * k2);
     const k4 = ev(x + h, y + h * k3);
     y += h * (k1 + 2*k2 + 2*k3 + k4) / 6;
-    x += h;
-    xs.push(parseFloat(x.toPrecision(8)));
-    ys.push(parseFloat(y.toPrecision(8)));
+    x = x0 + (i + 1) * h;
+    xs.push(parseFloat(x.toPrecision(12)));
+    ys.push(y);
   }
   return { xs, ys };
 }
-function findRoots(f, v, mn = -10000, mx = 10000, steps = 50000) {
+// Real-root search: sign changes (bisection) and touching roots (minimisation of |f|),
+// scanning outwards from the origin so the reported roots are the ones nearest zero.
+function findRoots(f, v, mn = -1e4, mx = 1e4) {
   let fn;
-  try { fn = math.compile(f); } catch { return []; }
-  const loc = Object.assign({}, scope), roots = [], dx = (mx - mn) / steps;
-  let px = mn, ps = null, pAbsY = null;
-  for (let i = 0; i <= steps; i++) {
-    const x = mn + i * dx; loc[v] = x;
-    let y;
-    try {
-      y = fn.evaluate(loc);
-      if (y && y.isComplex) y = y.re;
-    } catch { ps = null; pAbsY = null; continue; }
-    if (typeof y !== 'number' || !isFinite(y)) { ps = null; pAbsY = null; continue; }
-    const s = Math.sign(y);
-    if (s === 0 || Math.abs(y) < 1e-12) {
-      if (!roots.some(r => Math.abs(r - x) < 1e-6)) roots.push(x);
-    } else if (ps !== null && ps !== 0 && s !== ps) {
-      const r = bisect(fn, v, px, x, Object.assign({}, scope));
-      if (r !== null && !roots.some(rr => Math.abs(rr - r) < 1e-6)) roots.push(r);
-    } else if (pAbsY !== null && Math.abs(y) < 1e-3 && Math.abs(y) < pAbsY) {
-      // Possible double root — refine with Newton
-      let nx = x, nfn = y;
-      for (let it = 0; it < 30; it++) {
-        const h = 1e-6; loc[v] = nx + h;
-        let fp; try { fp = fn.evaluate(loc); } catch { break; }
-        loc[v] = nx - h;
-        let fm; try { fm = fn.evaluate(loc); } catch { break; }
-        const df = (fp - fm) / (2 * h);
-        if (Math.abs(df) < 1e-15) break;
-        const step = -nfn / df;
-        nx += step; loc[v] = nx;
-        try { nfn = fn.evaluate(loc); } catch { break; }
-        if (Math.abs(step) < 1e-10) break;
+  try { fn = math.compile(f); } catch { return {roots: [], truncated: false}; }
+  const loc = ctx();
+  const at = x => { loc[v] = x; try { return toReal(fn.evaluate(loc)); } catch { return NaN; } };
+  const roots = [];
+  const add = r => {
+    if (!isFinite(r)) return;
+    const n = Math.round(r); if (Math.abs(r - n) < 1e-10 * (1 + Math.abs(r)) && at(n) === 0) r = n;
+    if (!roots.some(q => Math.abs(q - r) < 1e-8 * (1 + Math.abs(r)))) roots.push(r);
+  };
+  const passes = [[-10, 10, 4000], [-100, 100, 8000], [-1000, 1000, 8000], [mn, mx, 20000]]
+    .map(([l, r, n]) => [Math.max(l, mn), Math.min(r, mx), n]).filter(([l, r]) => l < r);
+  for (const [lo, hi, steps] of passes) {
+    const dx = (hi - lo) / steps;
+    let px = lo, py = at(lo), ppy = NaN;
+    for (let i = 1; i <= steps; i++) {
+      const x = lo + i * dx, y = at(x);
+      if (py === 0) add(px);
+      else if (isFinite(py) && isFinite(y) && Math.sign(y) !== Math.sign(py) && y !== 0) {
+        const r = bisect(at, px, x);
+        // Reject sign changes across poles (|f| grows instead of vanishing).
+        if (r !== null && Math.abs(at(r)) <= Math.min(Math.abs(py), Math.abs(y))) add(r);
+      } else if (isFinite(ppy) && isFinite(py) && isFinite(y) && Math.abs(py) < Math.abs(ppy) && Math.abs(py) <= Math.abs(y)) {
+        // local minimum of |f| without a sign change — possible double root
+        const r = minimiseAbs(at, px - dx, x);
+        if (r !== null && Math.abs(at(r)) < 1e-9 * (1 + Math.abs(py) + Math.abs(y))) add(r);
       }
-      loc[v] = nx;
-      let fcheck; try { fcheck = fn.evaluate(loc); } catch { fcheck = 1; }
-      if (Math.abs(fcheck) < 1e-6 && !roots.some(r => Math.abs(r - nx) < 1e-5)) roots.push(nx);
+      ppy = py; px = x; py = y;
     }
-    px = x; ps = s; pAbsY = Math.abs(y);
     if (roots.length >= 20) break;
   }
-  // Also check x=0 explicitly
-  loc[v] = 0;
-  try { if (Math.abs(fn.evaluate(loc)) < 1e-8 && !roots.some(r => Math.abs(r) < 1e-6)) roots.push(0); } catch {}
-  return roots.map(r => parseFloat(r.toPrecision(10)));
+  roots.sort((p, q) => Math.abs(p) - Math.abs(q));
+  const truncated = roots.length > 20;
+  return {roots: roots.slice(0, 20).sort((p, q) => p - q).map(r => parseFloat(r.toPrecision(12))), truncated};
 }
-function bisect(fn,v,a,b,s,it=60){
-  for(let i=0;i<it;i++){
-    const m=(a+b)/2;s[v]=m;
-    let fm;try{fm=fn.evaluate(s);}catch{return null;}
-    s[v]=a;let fa;try{fa=fn.evaluate(s);}catch{return null;}
-    if(Math.abs(fm)<1e-12) return m;
-    if(Math.sign(fa)!==Math.sign(fm)) b=m; else a=m;
+function bisect(at, a, b, it = 80) {
+  let fa = at(a);
+  for (let i = 0; i < it; i++) {
+    const m = (a + b) / 2, fm = at(m);
+    if (!isFinite(fm)) return null;
+    if (fm === 0 || (b - a) / 2 < 1e-15 * (1 + Math.abs(m))) return m;
+    if (Math.sign(fa) !== Math.sign(fm)) b = m; else { a = m; fa = fm; }
   }
-  return(a+b)/2;
+  return (a + b) / 2;
+}
+// Golden-section minimisation of |f| on [a, b].
+function minimiseAbs(at, a, b) {
+  const g = (Math.sqrt(5) - 1) / 2;
+  let c = b - g * (b - a), d = a + g * (b - a);
+  for (let i = 0; i < 100 && Math.abs(b - a) > 1e-14 * (1 + Math.abs(a)); i++) {
+    if (Math.abs(at(c)) < Math.abs(at(d))) b = d; else a = c;
+    c = b - g * (b - a); d = a + g * (b - a);
+  }
+  const r = (a + b) / 2;
+  return isFinite(at(r)) ? r : null;
 }
 function solveSys(eqs, vars) {
-  const fns = eqs.map(eq => {
-    let l, r;
-    if (eq.includes('=')) [l, r] = eq.split('=').map(s => s.trim());
-    else { l = eq; r = '0'; }
-    return math.compile(`(${l})-(${r})`);
-  });
+  const fns = eqs.map(eq => { const [l, r] = splitEquation(eq); return math.compile(`(${l})-(${r})`); });
+  const base = ctx();
+  const evalF = (fn, loc) => { try { return toReal(fn.evaluate(loc)); } catch { return NaN; } };
   function tryNewton(x0) {
     let xs = [...x0];
     for (let it = 0; it < 200; it++) {
-      const loc = Object.assign({}, scope);
+      const loc = Object.assign({}, base);
       vars.forEach((v, i) => loc[v] = xs[i]);
-      const F = fns.map(fn => { try { return fn.evaluate(loc); } catch { return NaN; } });
+      const F = fns.map(fn => evalF(fn, loc));
       if (F.some(isNaN)) return null;
       const J = fns.map(fn => vars.map((v2, j) => {
-        const s1 = Object.assign({}, loc), s2 = Object.assign({}, loc), h = 1e-7;
+        const s1 = Object.assign({}, loc), s2 = Object.assign({}, loc), h = 1e-7 * (1 + Math.abs(xs[j]));
         s1[v2] = xs[j] + h; s2[v2] = xs[j] - h;
-        try { return (fn.evaluate(s1) - fn.evaluate(s2)) / (2 * h); } catch { return 0; }
+        return (evalF(fn, s1) - evalF(fn, s2)) / (2 * h);
       }));
       const dx = solveL(J, F.map(f => -f));
-      if (!dx) break;
+      if (!dx || dx.some(isNaN)) break;
       xs = xs.map((x, i) => x + dx[i]);
-      if (dx.every(d => Math.abs(d) < 1e-12)) break;
+      if (dx.every((d, i) => Math.abs(d) < 1e-13 * (1 + Math.abs(xs[i])))) break;
     }
-    // Check residual
-    const loc2 = Object.assign({}, scope);
+    const loc2 = Object.assign({}, base);
     vars.forEach((v, i) => loc2[v] = xs[i]);
-    const residual = Math.sqrt(fns.reduce((s, fn) => { try { return s + fn.evaluate(loc2) ** 2; } catch { return s + 1e10; } }, 0));
+    const residual = Math.sqrt(fns.reduce((s, fn) => { const y = evalF(fn, loc2); return s + (isFinite(y) ? y*y : 1e20); }, 0));
     return { xs, residual };
   }
-  // Try multiple starting points
   const starts = [
-    vars.map(() => 1.0),
-    vars.map(() => 0.0),
-    vars.map(() => -1.0),
-    vars.map((_, i) => (i + 1) * 2.7),
-    vars.map((_, i) => -(i + 1) * 1.3),
+    vars.map(() => 1.0), vars.map(() => 0.0), vars.map(() => -1.0),
+    vars.map((_, i) => (i + 1) * 2.7), vars.map((_, i) => -(i + 1) * 1.3),
+    vars.map((_, i) => 10 * (i % 2 ? -1 : 1)),
   ];
   let best = null;
   for (const s0 of starts) {
     const res = tryNewton(s0);
     if (res && (best === null || res.residual < best.residual)) best = res;
-    if (best && best.residual < 1e-8) break;
+    if (best && best.residual < 1e-10) break;
   }
   if (!best) return vars.map(v => ({ v, x: NaN, warn: true }));
   const converged = best.residual < 1e-6;
-  return vars.map((v, i) => ({
-    v, x: parseFloat(best.xs[i].toPrecision(10)),
-    warn: !converged,
-    residual: best.residual
-  }));
+  return vars.map((v, i) => {
+    let x = best.xs[i];
+    const n = Math.round(x); if (Math.abs(x - n) < 1e-9 * (1 + Math.abs(x))) x = n;
+    return { v, x: parseFloat(x.toPrecision(12)), warn: !converged, residual: best.residual };
+  });
 }
 function solveL(A,b){
   const n=b.length,M=A.map((row,i)=>[...row,b[i]]);
@@ -2880,38 +3089,64 @@ function solveL(A,b){
 // ══════════════════════════════════════════════════════
 //  FORMAT / TEX
 // ══════════════════════════════════════════════════════
+function complexParts(re, im, num, tex) {
+  const reZ = Math.abs(re) < 1e-12 * (1 + Math.abs(im)), imZ = Math.abs(im) < 1e-12 * (1 + Math.abs(re));
+  if (imZ) return num(re);
+  const imAbs = Math.abs(im), unit = Math.abs(imAbs - 1) < 1e-12;
+  const imStr = (unit ? '' : num(imAbs)) + (tex && !unit ? '\\,' : '') + 'i';
+  if (reZ) return (im < 0 ? '-' : '') + imStr;
+  return `${num(re)} ${im < 0 ? '-' : '+'} ${imStr}`;
+}
 function toTex(val){
   try{
-    if(typeof val==='number') return fmtN(val);
-    if(val&&val.toTex) return val.toTex();
-    const node=math.parse(String(val));
-    return node.toTex?node.toTex():escH(String(val));
-  }catch{return escH(String(val));}
+    if(typeof val==='number') return texNum(val);
+    if(typeof val==='boolean') return `\\text{${val}}`;
+    if(typeof val==='string') return `\\text{“${escTex(val)}”}`;
+    if(val===null||val===undefined) return '\\text{null}';
+    if(val.isComplex) return complexParts(val.re, val.im, texNum, true);
+    if(val.isFraction) return texNum(math.number(val));
+    if(val.isUnit) return `\\text{${escTex(math.format(val,{precision:10}))}}`;
+    if(val.isMatrix || Array.isArray(val)){
+      const arr = val.isMatrix ? val.toArray() : val;
+      if (!arr.length) return '\\begin{bmatrix}\\end{bmatrix}';
+      const rows = Array.isArray(arr[0]) ? arr : arr.map(x => [x]);
+      if (rows.some(r => r.some(Array.isArray))) return `\\text{${escTex(fmtR(val))}}`;
+      return `\\begin{bmatrix}${rows.map(r => r.map(toTex).join('&')).join('\\\\')}\\end{bmatrix}`;
+    }
+    if(val.toTex) return val.toTex();
+    return `\\text{${escTex(String(val))}}`;
+  }catch{return `\\text{${escTex(String(val))}}`;}
 }
 function fmtR(val){
   if(val===null||val===undefined) return 'null';
   if(typeof val==='boolean') return String(val);
-  if(typeof val==='number') return fmtN(val);
-  if(val&&val.isComplex) return `${fmtN(val.re)} + ${fmtN(val.im)}i`;
-  if(Array.isArray(val)) return '['+val.map(r=>Array.isArray(r)?'['+r.map(fmtR).join(', ')+']':fmtR(r)).join(', ')+']';
-  if(val&&val.valueOf){const v=val.valueOf();if(Array.isArray(v))return fmtR(v);}
-  if(val&&val.toString) return val.toString();
+  if(typeof val==='number') return fmtNum(val);
+  if(typeof val==='string') return val;
+  if(val.isComplex) return complexParts(val.re, val.im, fmtNum, false);
+  if(val.isFraction) return fmtNum(math.number(val));
+  if(val.isUnit) return math.format(val,{precision:10});
+  if(val.isMatrix) return fmtR(val.toArray());
+  if(Array.isArray(val)) return '['+val.map(fmtR).join(', ')+']';
+  if(val.toString) return val.toString();
   return String(val);
 }
 function fmtN(n){
+  if(typeof n!=='number') return fmtR(n);
   if(!isFinite(n)) return String(n);
   if(Math.abs(n)<1e-12&&n!==0) return '0';
-  if(Math.abs(n)>=1e10||(Math.abs(n)<0.001&&n!==0)) return n.toExponential(6).replace(/\.?0+e/,'e');
+  if(Math.abs(n)>=1e10||(Math.abs(n)<0.001&&n!==0)) return n.toExponential(9).replace(/\.?0+e/,'e');
   return parseFloat(n.toPrecision(10)).toString();
 }
 function xarg(expr,fn){
   const i=expr.indexOf(fn+'(');if(i===-1)return expr;
   let d=0,s=i+fn.length+1;
-  for(let j=s;j<expr.length;j++){if(expr[j]==='(')d++;else if(expr[j]===')'){if(d===0)return expr.slice(s,j);d--;}}
+  for(let j=s;j<expr.length;j++){if(expr[j]==='('||expr[j]==='[')d++;else if(expr[j]===')'||expr[j]===']'){if(d===0)return expr.slice(s,j);d--;}}
   return expr.slice(s);
 }
-function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function esc2(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n');}
+function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+// Escape a string for a single-quoted JS literal inside a double-quoted inline HTML handler:
+// quotes and markup characters become \xNN escapes, so the attribute can never be broken out of.
+function esc2(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\x22').replace(/</g,'\\x3c').replace(/>/g,'\\x3e').replace(/&/g,'\\x26').replace(/\n/g,'\\n').replace(/\r/g,'\\r');}
 
 // ══════════════════════════════════════════════════════
 //  INTERACTIONS
@@ -2928,106 +3163,124 @@ function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t
 //  DEFS PANEL
 // ══════════════════════════════════════════════════════
 function renderDefs(){
-  const keys=Object.keys(scope).filter(k=>!['pi','e','phi','tau'].includes(k));
+  const keys=Object.keys(scope).filter(k=>!CONSTANT_NAMES.includes(k));
   const el=document.getElementById('deflist');
   if(!keys.length){el.innerHTML='<div class="def-empty">Nothing defined yet</div>';return;}
   el.innerHTML=keys.map(k=>{
     const val=scope[k], isF=typeof val==='function';
     const typeTag = isF ? '[Fn]' : '[Var]';
-    const disp=isF?`(${(userFns[k]||{}).params||[]}) = ${(userFns[k]||{}).body||'…'}`:fmtR(val).slice(0,28);
-    return `<div class="def" onclick="reload('${k}')" title="${escH(k)}">
+    const disp=isF?`(${((userFns[k]||{}).params||[]).join(', ')}) = ${(userFns[k]||{}).body||'…'}`:fmtR(val).slice(0,28);
+    return `<div class="def" data-name="${escH(k)}" title="${escH(k)}">
       <span class="def-name"><small style="opacity:0.5;margin-right:4px;">${typeTag}</small>${escH(k)}</span>
       <span class="def-val">${escH(disp)}</span>
     </div>`;
   }).join('');
 }
-function clearDefs(){
-  if(!confirm('Clear all workspace definitions?')) return;
-  const keys=Object.keys(scope).filter(k=>!['pi','e','phi','tau'].includes(k));
-  keys.forEach(k=>delete scope[k]);
+// Delegated handler: names are never interpolated into inline JavaScript.
+document.getElementById('deflist').addEventListener('click', e => {
+  const d = e.target.closest('.def');
+  if (d) reload(d.dataset.name);
+});
+function clearDefs(skipConfirm){
+  if(!skipConfirm && !confirm('Clear all workspace definitions?')) return false;
+  Object.keys(scope).filter(k=>!CONSTANT_NAMES.includes(k)).forEach(k=>delete scope[k]);
   Object.keys(userFns).forEach(k=>delete userFns[k]);
+  baseScope = {};
   renderDefs();persistScope();
+  return true;
 }
 
 // ══════════════════════════════════════════════════════
 //  PERSISTENCE
 // ══════════════════════════════════════════════════════
 function persistScope(){
-  try{
-    const c={};
-    Object.keys(scope).forEach(k=>{const v=scope[k];if(typeof v!=='function')c[k]=v;});
-    localStorage.setItem('cas2-scope',JSON.stringify(c));
-  }catch(e){}
+  try{ localStorage.setItem('cas2-scope', JSON.stringify(snapshotScope(), math.replacer)); }catch(e){}
   renderDefs();
+}
+function download(name, text, type){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([text],{type}));
+  a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
 }
 function saveSession(){
   const cells=[];
-  document.querySelectorAll('.cell').forEach(cell=>{
-    const ex=cell.querySelector('.cexpr'), tx=cell.querySelector('.text-cell-edit'), mb=cell.querySelector('.cbadge');
+  document.querySelectorAll('#notebook .cell').forEach(cell=>{
+    const ex=cell.querySelector('.cexpr'), tx=cell.querySelector('.text-cell-edit');
     if(tx) cells.push({type:'text',content:tx.value});
-    else if(ex) cells.push({type:'math',expr:ex.textContent,mode:mb?mb.textContent:'algebra'});
+    else if(ex) cells.push({type:'math',expr:ex.textContent,mode:cell.dataset.mode||'algebra'});
   });
-  const sc={};
-  Object.keys(scope).forEach(k=>{if(typeof scope[k]!=='function')sc[k]=scope[k];});
-  const data={version:2,scope:sc,cells};
-  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='session.cas';a.click();
+  // The cells rebuild everything defined during the session; the base workspace covers the rest.
+  const data={version:3,scope:baseScope,cells,exactMode,angleMode};
+  download('session.cas', JSON.stringify(data,math.replacer,2), 'application/json');
   toast('Saved');
 }
 function loadFile(ev){
   const file=ev.target.files[0];if(!file)return;
   const r=new FileReader();
   r.onload=e=>{
-    try{
-      const d=JSON.parse(e.target.result);
-      if(d.scope) Object.assign(scope,d.scope);
-      renderDefs();toast('Loaded');
-    }catch(err){alert('Load error: '+err.message);}
+    let d;
+    try{ d=JSON.parse(e.target.result, reviveJSON); }
+    catch(err){ alert('Load error: '+err.message); return; }
+    const imported = sanitizeScope(d && d.scope);
+    const cells = Array.isArray(d && d.cells) ? d.cells.slice(0, 1000) : [];
+    enqueue(async () => {
+      Object.assign(baseScope, imported);
+      Object.assign(scope, imported);
+      renderDefs();
+      for (const c of cells) {
+        if (!c || typeof c !== 'object') continue;
+        if (c.type === 'text' && typeof c.content === 'string') addText(c.content);
+        else if (c.type === 'math' && typeof c.expr === 'string' && c.expr.trim()) {
+          const item = createCellElement(c.expr, MODES[c.mode] ? c.mode : 'algebra');
+          await evaluateCell(item);
+        }
+      }
+      persistScope();
+      toast('Loaded');
+    });
   };
   r.readAsText(file);ev.target.value='';
 }
 function exportLatex(){
   const lines=["\\documentclass{article}", "\\usepackage{amsmath,amssymb}", "\\begin{document}", "\\title{CassyCAS Session}", "\\maketitle"];
-  document.querySelectorAll('.cell').forEach(cell=>{
-    const ex=cell.querySelector('.cexpr'), ou=cell.querySelector('.cout'), tx=cell.querySelector('.text-cell-edit');
-    if(tx) lines.push(`\\section*{${tx.value}}`);
+  document.querySelectorAll('#notebook .cell').forEach(cell=>{
+    const ex=cell.querySelector('.cexpr'), tx=cell.querySelector('.text-cell-edit');
+    if(tx) { if (tx.value.trim()) lines.push(escTex(tx.value)); }
     else if(ex) {
-      lines.push(`\\begin{verbatim}\nIn: ${ex.textContent}\n\\end{verbatim}`);
-      if(ou && ou.querySelector('.mjrender')) lines.push(ou.querySelector('.mjrender').innerText);
-      else if(ou) lines.push(`\\begin{verbatim}\nOut: ${ou.innerText}\n\\end{verbatim}`);
+      lines.push(`\\begin{verbatim}\nIn: ${ex.textContent.replace(/\\end\{verbatim\}/g,'')}\n\\end{verbatim}`);
+      if(cell.dataset.latex) lines.push(`\\[ ${cell.dataset.latex} \\]`);
     }
   });
   lines.push("\\end{document}");
-  const blob=new Blob([lines.join('\n\n')],{type:'text/plain'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='cas-export.tex';a.click();
+  download('cas-export.tex', lines.join('\n\n'), 'text/plain');
 }
 function exportTxt(){
   const lines=[];
-  document.querySelectorAll('.cell').forEach(cell=>{
-    const ex=cell.querySelector('.cexpr'),ou=cell.querySelector('.cout'),tx=cell.querySelector('.text-cell-edit');
+  document.querySelectorAll('#notebook .cell').forEach(cell=>{
+    const ex=cell.querySelector('.cexpr'),tx=cell.querySelector('.text-cell-edit');
     if(tx) lines.push('## '+tx.value);
-    else if(ex) lines.push(`>> ${ex.textContent}\n   ${ou?ou.innerText:''}`);
+    else if(ex) lines.push(`>> ${ex.textContent}\n   ${cell.dataset.plain||''}`);
   });
-  const blob=new Blob([lines.join('\n\n')],{type:'text/plain'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='cas-export.txt';a.click();
+  download('cas-export.txt', lines.join('\n\n'), 'text/plain');
 }
 function clearAll(){
-  if(!confirm('Clear all cells?')) return;
-  clearDefs();
+  if(!confirm('Clear all cells and workspace definitions?')) return;
+  clearDefs(true);
   notebookHistory = [];
   const nb=document.getElementById('notebook');
   nb.innerHTML='';
   nb.appendChild(buildWelcomeNode());
   buildWelcomeGrid();
   cellN=0;
-  localStorage.removeItem('cas2-scope');
+  try { localStorage.removeItem('cas2-scope'); } catch(e){}
 }
 
 function toggleSidebar(){
   const sb = document.querySelector('.sidebar');
-  const btn = document.querySelector('.sb-collapse');
   sb.classList.toggle('collapsed');
-  btn.textContent = sb.classList.contains('collapsed') ? '›' : '‹';
+  const collapsed = sb.classList.contains('collapsed');
+  document.getElementById('view-tab-panel').classList.toggle('on', !collapsed);
 }
 function toggleTheme(){
   darkTheme=!darkTheme;
@@ -3035,26 +3288,19 @@ function toggleTheme(){
   if(mon) monaco.editor.setTheme(darkTheme?'cas-dark':'cas-light');
 }
 
+// Exact/Approx only changes presentation; angle mode changes values. Both replay the notebook
+// from the base workspace, which is idempotent (definitions are rebuilt, not re-applied).
 function toggleExact(){
   exactMode=!exactMode;
   document.getElementById('tg-exact').classList.toggle('on',exactMode);
   document.getElementById('tg-approx').classList.toggle('on',!exactMode);
-  math.config({ number: exactMode ? 'Fraction' : 'number' });
-  refreshNotebook();
+  return replayNotebook();
 }
 function toggleAngle(){
   angleMode = angleMode==='rad' ? 'deg' : 'rad';
   document.getElementById('tg-rad').classList.toggle('on',angleMode==='rad');
   document.getElementById('tg-deg').classList.toggle('on',angleMode==='deg');
-  refreshNotebook();
-}
-function refreshNotebook(){
-  notebookHistory.forEach(async item => {
-    try {
-      const res = await dispatch(item.expr, item.mode);
-      await renderCell(item.id, res, item.expr, item.mode);
-    } catch(e) {}
-  });
+  return replayNotebook();
 }
 
 // ══════════════════════════════════════════════════════
@@ -3144,7 +3390,7 @@ function filterPalette(){
     ...Object.entries(MODES).map(([k,m])=>({type:'mode',cat:'Modes',k,label:m.label,desc:m.sub})),
     ...ACD.map(d=>({type:'fn',cat:'Functions',n:d.n,label:d.n,desc:d.s})),
     ...CONSTS.map(c=>({type:'const',cat:'Constants',e:c.e,label:c.n,desc:c.v})),
-  ].filter(i => !q || i.label.toLowerCase().includes(q) || (i.desc||'').toLowerCase().includes(q)).slice(0,40);
+  ].filter(i => i && (!q || i.label.toLowerCase().includes(q) || (i.desc||'').toLowerCase().includes(q))).slice(0,40);
   palItems = items; palIdx = 0;
   let html = '', lastCat = '';
   items.forEach((i,idx) => {

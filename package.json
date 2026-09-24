@@ -1,0 +1,17 @@
+{
+  "name": "cassycas",
+  "private": true,
+  "description": "Browser-native symbolic workstation (single HTML file).",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "algebrite": "1.4.0",
+    "mathjax": "3.2.2",
+    "mathjs": "12.4.2",
+    "mathlive": "0.98.6",
+    "monaco-editor": "0.45.0",
+    "playwright": "^1.55.0",
+    "plotly.js-dist-min": "2.27.0"
+  }
+}

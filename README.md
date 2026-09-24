@@ -1,6 +1,6 @@
 # CassyCAS — Symbolic Workstation
 
-A precision, browser-native instrument for symbolic mathematics. Single HTML file, no install, no backend, no telemetry — everything runs client-side and works offline once cached.
+A precision, browser-native instrument for symbolic mathematics. Single HTML file, no install, no backend, no telemetry — everything runs client-side. Libraries are loaded from public CDNs (see *Tech stack*), so a network connection is needed on first load.
 
 ---
 
@@ -8,17 +8,17 @@ A precision, browser-native instrument for symbolic mathematics. Single HTML fil
 
 | Domain | Capabilities |
 |--------|-------------|
-| **Algebra** | Simplify, expand (binomial theorem + iterative distribution), factor (rational-root construction with leading-coefficient verification), collect, rationalize |
-| **Calculus** | Symbolic differentiation (nth order), antiderivatives (60+ patterns + integration by parts), definite integration (Simpson's rule, n=1000), numerical limits (two-sided ε scan), sums, products, **Taylor / Maclaurin series** to arbitrary order |
-| **Solving** | Quadratic formula via second-derivative coefficients (exact), numerical root finding (sign-change scan + bisection refinement, ±100 000 range), nonlinear systems (Newton–Raphson with finite-difference Jacobian) |
+| **Algebra** | Simplify (including rational cancellation), expand, factor over ℚ, collect in powers of a variable, partial fractions (`apart`), polynomial division (`polydiv`) |
+| **Calculus** | Symbolic differentiation (nth order, sees through user functions), antiderivatives (structural rules + standard forms + Algebrite — every result is verified by differentiating it back), definite integration (fundamental theorem when a verified antiderivative exists, otherwise adaptive Simpson; infinite bounds supported), numerical limits (one- and two-sided, divergence and non-existence detection), sums, products, **Taylor / Maclaurin series** up to order 20, RK4 ODE solver |
+| **Solving** | Exact roots of polynomial equations, including symbolic parameters and complex roots; numerical root finding for everything else (bisection plus touching-root detection over ±10 000, nearest-to-origin first, poles rejected); nonlinear systems (multi-start Newton–Raphson with finite-difference Jacobian) |
 | **Linear Algebra** | Determinant, inverse, transpose, eigenvalues/vectors, trace, rank, cross/dot products, vector and matrix norms |
 | **Statistics** | Mean, std, variance, median, MAD, quantiles, correlation, skew/kurtosis (via MathJS) |
-| **Trigonometry** | All standard / inverse / hyperbolic functions, automatic degree↔radian wrapping based on global mode |
+| **Trigonometry** | All standard / inverse / hyperbolic functions; a global Deg/Rad mode (explicit units such as `30 deg` are always honoured) |
 | **Units** | Full dimensional analysis, SI/imperial/temperature conversion, prefix handling |
 | **Logic** | Boolean, bitwise, combinatorics (`combinations`, `permutations`, factorial) |
 | **Visualization** | Inline 2D plots per cell, full 2D/3D graph tab, multi-trace, PNG export |
 
-**Interface**: Monaco editor with custom CAS language tokens, MathLive visual input, live LaTeX preview, command palette (`⌘K`), step-by-step breakdowns, session save/load (`.cas` JSON), dark/light themes, accent palette, density modes.
+**Interface**: Monaco editor with custom CAS language tokens, MathLive visual input, live LaTeX preview, command palette (`⌘K`), step-by-step breakdowns, session save/load (`.cas` JSON — definitions *and* cells), reactive re-evaluation of dependent cells, dark/light themes, accent palette, density modes.
 
 ---
 
@@ -37,11 +37,17 @@ Definitions persist across cells:
 a = 5
 f(x) = a*x^2 + 3*x - 1
 derivative(f(x), x)              # 2*a*x + 3
-solve(f(x) = 0, x)               # exact symbolic + numeric
+solve(f(x) = 0, x)               # exact roots (in terms of a) + numeric values
 series(sin(x), x, 0, 8)          # Maclaurin to 8th order
-integrate(x*sin(x), x)           # by parts
+integrate(x*sin(x), x)           # sin(x) - x*cos(x) + C
 factor(x^3 - 6*x^2 + 11*x - 6)   # (x-1)(x-2)(x-3)
+limit(abs(x)/x, x, 0, "+")       # one-sided limit → 1
+apart((x^2+1)/(x^3-x), x)        # partial fractions
 ```
+
+**Exact vs Approx.** Arithmetic is always done in floating point. *Exact* mode presents results that are (to rounding) simple rationals as fractions — `1/3 + 1/6 → 1/2` — and shows closed forms such as `sqrt(2)` next to their values. *Approx* mode shows decimals. Switching modes re-evaluates the notebook without changing any definitions.
+
+**Degree mode** affects numerical evaluation (`sin(30+60) → 1`, including inside user-defined functions). Symbolic calculus — derivatives, antiderivatives, series — is always in radians.
 
 ---
 
@@ -49,13 +55,24 @@ factor(x^3 - 6*x^2 + 11*x - 6)   # (x-1)(x-2)(x-3)
 
 | Layer | Library | Role |
 |-------|---------|------|
-| Math kernel | **MathJS 12** | Parse, simplify, derivative, evaluate, units |
+| Math kernel | **MathJS 12** | Parse, simplify, derivative, evaluate, units (evaluation runs in a Web Worker with a 10 s watchdog) |
+| Computer algebra | **Algebrite 1.4** | Factoring, polynomial roots, rational simplification, integration fallback |
 | Visual input | **MathLive** | LaTeX ↔ ASCII math input |
 | Render | **MathJax 3** | High-quality LaTeX in output cells |
 | Plots | **Plotly.js** | 2D/3D interactive graphs |
 | Editor | **Monaco** | Code input with custom CAS language |
 
-No bundler, no transpiler, no `node_modules`. CDN scripts, plain JS, hand-rolled CSS variables for theming.
+No bundler, no transpiler. CDN scripts, plain JS, hand-rolled CSS variables for theming. The jsDelivr-hosted scripts carry Subresource Integrity hashes.
+
+## Development
+
+```
+npm install                 # test-only dependencies (pinned copies of the CDN libraries + Playwright)
+npx playwright install chromium
+npm test
+```
+
+The suite (`tests/`) loads the app in headless Chromium with every CDN request served from `node_modules`, so it runs offline. Set `CHROMIUM_PATH` to use an existing Chromium binary.
 
 ---
 
@@ -119,7 +136,7 @@ Implementing the rational case alone (Hermite + LRT) handles the vast majority o
 
 ### 1.5 Symbolic limit engine
 
-Replace numerical ε-evaluation with a symbolic engine:
+Replace numerical limit evaluation with a symbolic engine:
 
 - **Gruntz algorithm** — the modern complete algorithm for limits of meromorphic functions, based on most-rapidly-varying subexpression analysis
 - **L'Hôpital's rule** as automatic fallback for 0/0 and ∞/∞
@@ -145,7 +162,7 @@ sum(1/(k*(k+1)), k, 1, ∞)→  1
 
 ### 1.7 Symbolic equation solving
 
-Beyond the current quadratic-via-second-derivative trick:
+Beyond the current polynomial root finder:
 
 - **Cubic and quartic** via Cardano and Ferrari (closed-form exists; degrees ≥5 don't, by Abel–Ruffini)
 - **Galois group computation** to *prove* a quintic is unsolvable by radicals
