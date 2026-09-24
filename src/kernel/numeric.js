@@ -72,23 +72,54 @@ export function numLim(expr, v, a, dir = 0) {
       const d = Math.abs(vals[i] - vals[i - 1]);
       if (d < bestD) { bestD = d; best = i; }
     }
-    if (best < 0) return { value: NaN };
-    const L = vals[best];
-    return bestD <= 1e-6 * (1 + Math.abs(L)) ? { value: snap(L) } : { value: NaN };
+    if (best >= 0 && bestD <= 1e-6 * (1 + Math.abs(vals[best]))) return { value: snap(vals[best]) };
+    const A = aitken(vals);
+    if (!isNaN(A)) return { value: A };
+    // Bounded values whose steps neither shrink nor keep one sign (sin(1/x) at 0): oscillation.
+    const scale = Math.max(...vals.map(Math.abs));
+    const steps = vals.slice(1).map((y, i) => y - vals[i]);
+    if (vals.every(isFinite) && scale < 1e6 && steps.slice(-3).every(d => Math.abs(d) > 1e-2 * (1 + scale))
+        && steps.slice(-4).some((d, i, a) => i > 0 && Math.sign(d) !== Math.sign(a[i - 1]))) return { value: NaN, oscillates: true };
+    return { value: NaN };
   }
-  if (!isFinite(a)) return { value: sequence(a > 0 ? 1 : -1).value };
-  if (dir) return { value: sequence(dir).value };
+  // Slow convergence (e.g. x*log(x) as x → 0+): Aitken Δ² extrapolation over successive triples.
+  // Only accepted when two consecutive estimates agree and snap to a simple number.
+  function aitken(vals) {
+    const est = [];
+    for (let i = 0; i + 2 < vals.length; i++) {
+      const [p, q, r] = vals.slice(i, i + 3);
+      const den = (r - q) - (q - p);
+      est.push([p, q, r].every(isFinite) && den !== 0 ? r - (r - q) ** 2 / den : NaN);
+    }
+    let A = NaN, bestD = Infinity;
+    for (let i = 1; i < est.length; i++) {
+      const d = Math.abs(est[i] - est[i - 1]);
+      if (isFinite(d) && d < bestD) { bestD = d; A = est[i]; }
+    }
+    if (!isFinite(A) || bestD > 1e-4 * (1 + Math.abs(A))) return NaN;
+    const tol = 1e-5 * (1 + Math.abs(A));
+    if (Math.abs(A - Math.round(A)) <= tol) return Math.round(A) || 0;
+    const r = asRational(A, 12, 1e-5);
+    return r && Math.abs(A - r.n / r.d) <= tol ? r.n / r.d : NaN;
+  }
+  const oneSided = (S) => S.oscillates ? { dne: true, value: NaN, note: 'Oscillates without settling' } : { value: S.value };
+  if (!isFinite(a)) return oneSided(sequence(a > 0 ? 1 : -1));
+  if (dir) return oneSided(sequence(dir));
   const fa = at(a);
   if (isFinite(fa)) {
     const l = at(a - 1e-7), r = at(a + 1e-7);
     if (Math.abs(l - fa) < 1e-5 * (1 + Math.abs(fa)) && Math.abs(r - fa) < 1e-5 * (1 + Math.abs(fa))) return { value: fa };
   }
   const R = sequence(1), L = sequence(-1);
+  if (L.outside && R.outside) return { value: NaN, outside: true };
   if (L.outside && !R.outside) return { value: R.value, note: 'Left side is outside the domain — one-sided (right) limit' };
   if (R.outside && !L.outside) return { value: L.value, note: 'Right side is outside the domain — one-sided (left) limit' };
   const same = (isFinite(R.value) && isFinite(L.value) && Math.abs(R.value - L.value) <= 1e-6 * (1 + Math.abs(R.value)))
             || (!isFinite(R.value) && !isNaN(R.value) && R.value === L.value);
   if (same) return { value: R.value, left: L.value, right: R.value };
+  if (R.oscillates || L.oscillates) return { dne: true, value: NaN, left: L.value, right: R.value, note: 'Oscillates without settling' };
+  // A side that did not converge numerically says nothing about existence.
+  if (isNaN(R.value) || isNaN(L.value)) return { value: NaN, undetermined: true, left: L.value, right: R.value };
   return { dne: true, value: NaN, left: L.value, right: R.value };
 }
 

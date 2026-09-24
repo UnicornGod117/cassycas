@@ -417,13 +417,21 @@ def op_limit(req, b):
     v = _var(b, req['var'])
     a = b.build(req['point'])
     d = req.get('dir') or ''
+    # An AccumBounds result means the function oscillates: the limit does not exist.
+    osc = lambda r: {'dne': True, 'oscillates': [value(r.min), value(r.max)], 'steps': []}
     if d in ('+', '-'):
         r = sp.limit(f, v, a, d)
+        if isinstance(r, sp.AccumBounds):
+            return osc(r)
         return {'value': value(r), 'steps': limit_steps(f, v, a, d)}
     if a.is_infinite:
         r = sp.limit(f, v, a)
+        if isinstance(r, sp.AccumBounds):
+            return osc(r)
         return {'value': value(r), 'steps': limit_steps(f, v, a, '-' if a == sp.oo else '+')}
     left, right = sp.limit(f, v, a, '-'), sp.limit(f, v, a, '+')
+    if isinstance(left, sp.AccumBounds) or isinstance(right, sp.AccumBounds):
+        return osc(left if isinstance(left, sp.AccumBounds) else right)
     steps = limit_steps(f, v, a, '+')
     if left == right:
         return {'value': value(right), 'steps': steps}
@@ -438,8 +446,31 @@ def op_series(req, b):
     s = sp.series(f, v, a, n + 1)
     poly = s.removeO()
     order_tex = tex(sp.Order((v - a) ** (n + 1), (v, a))) if a != 0 else r'O\left(%s^{%d}\right)' % (tex(v), n + 1)
-    return {'value': value(poly), 'orderTex': order_tex,
+    out = value(poly)
+    out['plain'], out['latex'] = _ascending(poly, v, a)
+    return {'value': out, 'orderTex': order_tex,
             'orderPlain': 'O(%s)' % plain((v - a) ** (n + 1))}
+
+
+def _ascending(poly, v, a):
+    """Print a series in ascending powers of (v - a), e.g. -1 + (x - pi)^2/2."""
+    t = sp.Dummy('t')
+    shifted = sp.expand(poly.subs(v, t + a)) if a != 0 else sp.expand(poly.subs(v, t))
+    terms = sorted((term.as_coeff_exponent(t) for term in sp.Add.make_args(shifted)), key=lambda ce: ce[1])
+    if a == 0:
+        base, base_tex = v, None
+    else:
+        base = sp.Symbol('(%s)' % plain(v - a))
+        base_tex = {base: r'\left(%s\right)' % tex(v - a)}
+    ps, ts = [], []
+    for c, k in terms:
+        term = c * base ** k
+        ps.append(plain(term))
+        ts.append(sp.latex(term, ln_notation=True, symbol_names=base_tex) if base_tex else tex(term))
+    if not ps:
+        return '0', '0'
+    join = lambda parts: parts[0] + ''.join(' - ' + p[1:].lstrip() if p.startswith('-') else ' + ' + p for p in parts[1:])
+    return join(ps), join(ts)
 
 
 def op_sum(req, b, product=False):

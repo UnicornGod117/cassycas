@@ -80,6 +80,12 @@ function fallbackNote() {
   if (engine.status === 'loading' || engine.status === 'restarting') return 'pending';
   return null;
 }
+// Suffix for errors raised when only the exact engine can answer.
+function needsExactHint() {
+  if (!state.engineEnabled) return ' (SymPy), which is turned off in Tweaks';
+  if (engine.status === 'failed') return ' (SymPy), which could not be loaded';
+  return ' (SymPy, still loading — this cell will update automatically)';
+}
 const stepList = (steps) => (steps || []).map(s => ({ d: s.d, tex: s.tex }));
 
 // Present a SymPy value: exact form, plus ≈ decimal when it is an irrational number.
@@ -245,11 +251,32 @@ function jsExpand(inner) {
   out = prettify(out);
   return exprResult(out, { steps: [{ d: 'Input', e: inner }, { d: 'Expanded', e: out }], plot: plotFor(out) });
 }
+// Number of top-level factors that depend on v (x^2 counts as two).
+function factorCount(node, v) {
+  while (node.isParenthesisNode || (node.isOperatorNode && node.fn === 'unaryMinus')) node = node.isParenthesisNode ? node.content : node.args[0];
+  if (node.isOperatorNode && node.fn === 'multiply') return node.args.reduce((n, a) => n + factorCount(a, v), 0);
+  if (!node.filter(n => n.isSymbolNode && n.name === v).length) return 0;
+  if (node.isOperatorNode && node.fn === 'pow' && node.args[1].isConstantNode) return Number(node.args[1].value) || 1;
+  return 1;
+}
 function jsFactor(inner, v) {
+  const isProduct = (s) => { try { return factorCount(math.parse(s), v) >= 2; } catch { return false; } };
   let factored = null;
-  try { const alt = alg(`factor(${toAlgebrite(inner)},${v})`); if (numericallyEqual(alt, inner)) factored = alt; } catch {}
-  if (!factored) { const f = doFactor(inner, v); if (f && numericallyEqual(f, inner)) factored = prettify(f); }
-  if (factored && factored !== prettify(inner)) return exprResult(factored, { steps: [{ d: 'Input', e: inner }, { d: 'Factored over ℚ', e: factored }] });
+  try { const alt = alg(`factor(${toAlgebrite(inner)},${v})`); if (isProduct(alt) && numericallyEqual(alt, inner)) factored = alt; } catch {}
+  if (!factored) { const f = doFactor(inner, v); if (f && isProduct(f) && numericallyEqual(f, inner)) factored = prettify(f); }
+  if (factored) return exprResult(prettify(factored), { steps: [{ d: 'Input', e: inner }, { d: 'Factored over ℚ', e: prettify(factored) }] });
+  // Without a rational root, a polynomial of degree ≤ 3 is irreducible over ℚ; beyond that
+  // (e.g. a product of two quadratics) only the exact engine can tell.
+  // The rational-root search covers |root| ≤ 100, so the claim also needs the Cauchy bound.
+  let deg = NaN, bound = Infinity;
+  try {
+    const p = `expand(${toAlgebrite(inner)})`;
+    deg = parseInt(alg(`deg(${p},${v})`), 10);
+    const c = Array.from({ length: deg + 1 }, (_, i) => toReal(math.evaluate(alg(`coeff(${p},${v},${i})`))));
+    bound = 1 + Math.max(...c.slice(0, deg).map(a => Math.abs(a / c[deg])));
+  } catch {}
+  const onlyV = freeSymbols(inner).every(s => s === v);
+  if (!(deg <= 3) || !(bound <= 100) || !onlyV) throw new Error(`Could not factor this without the exact engine${needsExactHint()}.`);
   const s = prettify(math.simplify(math.parse(inner), {}, { exactFractions: true }).toString());
   return exprResult(s, { steps: [{ d: 'Input', e: inner }, { d: 'Irreducible over ℚ', e: s }] });
 }
@@ -396,8 +423,10 @@ async function evalLimit(e) {
   const r = a && ap ? await exact('limit', { expr: a, var: v, point: ap, dir }) : null;
   if (r && !r.error) {
     if (r.dne) {
-      return texResult(`${pre} \\ \\text{does not exist}`, 'does not exist', { engine: 'sympy', steps: [
-        ...stepList(r.steps), { d: 'Left-hand limit', tex: r.left.latex }, { d: 'Right-hand limit', tex: r.right.latex }] });
+      const why = r.oscillates
+        ? [{ d: 'Oscillates between', tex: `${r.oscillates[0].latex} \\text{ and } ${r.oscillates[1].latex}` }]
+        : [{ d: 'Left-hand limit', tex: r.left.latex }, { d: 'Right-hand limit', tex: r.right.latex }];
+      return texResult(`${pre} \\ \\text{does not exist}`, 'does not exist', { engine: 'sympy', steps: [...stepList(r.steps), ...why] });
     }
     return presentValue(r.value, { prefix: pre + ' = ', steps: stepList(r.steps), plotVar: false });
   }
@@ -408,6 +437,7 @@ async function evalLimit(e) {
   if (L.left !== undefined) steps.push({ d: 'Left-hand limit', e: fmtLim(L.left) }, { d: 'Right-hand limit', e: fmtLim(L.right) });
   if (L.note) steps.push({ d: 'Note', e: L.note });
   if (L.dne) return texResult(`${pre} \\ \\text{does not exist}`, 'does not exist', { steps, note: fallbackNote() });
+  if (isNaN(L.value) && !L.outside) throw new Error(`This limit could not be determined numerically; it needs the exact engine${needsExactHint()}.`);
   steps.push({ d: 'Numerical limit', e: fmtLim(L.value) });
   return texResult(`${pre} = ${texNum(L.value)}`, fmtLim(L.value), { steps, note: fallbackNote() });
 }
@@ -422,8 +452,9 @@ function sumOp(kind) {
     const a = tryAst(f, [v]), al = tryAst(lo), ah = tryAst(hi);
     const r = a && al && ah ? await exact(kind, { expr: a, var: v, a: al, b: ah }) : null;
     if (r && !r.error && !r.noForm) return presentValue(r.value, { prefix: pre, plotVar: true });
-    const st = Math.round(toReal(math.evaluate(lo, ctx()))), en = Math.round(toReal(math.evaluate(hi, ctx())));
-    if (!isFinite(st) || !isFinite(en)) throw new Error(`Bounds must be finite numbers${engine.status === 'loading' ? ' (symbolic bounds need the exact engine, still loading…)' : ''}.`);
+    const bound = (s) => { try { return Math.round(toReal(math.evaluate(s, ctx()))); } catch { return NaN; } };
+    const st = bound(lo), en = bound(hi);
+    if (!isFinite(st) || !isFinite(en)) throw new Error(`Symbolic or infinite bounds need the exact engine${needsExactHint()}.`);
     if (Math.abs(en - st) > 100000) throw new Error(`Range too large (${st} to ${en}).`);
     const fn = math.compile(f), loc = ctx();
     let tot = kind === 'sum' ? 0 : 1;

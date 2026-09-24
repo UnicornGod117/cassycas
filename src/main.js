@@ -450,7 +450,7 @@ Object.assign(window, {
 
 // Automation / test API.
 window.CAS = {
-  ready: false, engine, state, scope, math, numericallyEqual, dispatch,
+  ready: false, engine, state, scope, math, numericallyEqual, dispatch, MODES, clearDefs,
   cells: NB.cells, recompute: NB.recompute, idle: NB.idle, editCell: NB.editCell, deleteCell: NB.deleteCell,
   shareLink: NB.shareLink, setExact: async (b) => { if (state.exactMode !== b) await toggleExact(); },
   setAngle: async (a) => { if (state.angleMode !== a) await toggleAngle(); },
