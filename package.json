@@ -6,12 +6,26 @@
     "test": "node --test --test-concurrency=1 tests/*.test.mjs"
   },
   "devDependencies": {
-    "algebrite": "1.4.0",
+    "algebrite": "^1.4.0",
     "mathjax": "3.2.2",
-    "mathjs": "12.4.2",
-    "mathlive": "0.98.6",
+    "mathjs": "^12.4.2",
+    "mathlive": "^0.98.6",
     "monaco-editor": "0.45.0",
     "playwright": "^1.55.0",
-    "plotly.js-dist-min": "2.27.0"
+    "plotly.js-dist-min": "^2.27.0",
+    "pyodide": "^0.26.4",
+    "vite": "^5.4.21",
+    "vite-plugin-singlefile": "^2.3.3"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
+    "@lezer/highlight": "^1.2.4",
+    "codemirror": "^6.0.1",
+    "katex": "^0.16.11"
   }
 }

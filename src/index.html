@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="CassyCAS — a browser-native symbolic mathematics workstation. Exact answers from SymPy, in your browser."/>
+<meta name="theme-color" content="#0d1117"/>
+<title>CassyCAS — symbolic workstation</title>
+<link rel="manifest" href="./manifest.webmanifest"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%233fb950'/%3E%3Ctext x='32' y='46' font-family='Georgia,serif' font-style='italic' font-size='40' text-anchor='middle' fill='%230d1117'%3E%E2%88%AB%3C/text%3E%3C/svg%3E"/>
+</head>
+<body>
+<!-- ============ TOP BAR ============ -->
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">∫</div>
+    <span class="brand-name">CassyCAS</span>
+    <span class="brand-sub">Symbolic Workstation</span>
+  </div>
+
+  <div class="topbar-divider"></div>
+
+  <button class="cmd-pill" onclick="openPalette()">
+    <span>⌕</span>
+    <span>Search functions, modes…</span>
+    <kbd>⌘K</kbd>
+  </button>
+
+  <div class="topbar-spacer"></div>
+
+  <button class="engine-pill" id="engine-pill" onclick="engineInfo()" title="Exact engine status">
+    <span class="engine-dot"></span><span id="engine-text">SymPy · off</span>
+  </button>
+
+  <div class="tg-group" title="Output mode">
+    <button class="tg on" id="tg-exact" onclick="toggleExact()">Exact</button>
+    <button class="tg" id="tg-approx" onclick="toggleExact()">≈ Approx</button>
+  </div>
+
+  <div class="tg-group" title="Angle mode">
+    <button class="tg on" id="tg-rad" onclick="toggleAngle()" title="Radian mode: trigonometric inputs are treated as radians (default)">Rad</button>
+    <button class="tg" id="tg-deg" onclick="toggleAngle()" title="Degree mode: trigonometric inputs are treated as degrees">Deg</button>
+  </div>
+
+  <div class="topbar-divider"></div>
+
+  <button class="icon-btn" title="Copy a shareable link to this notebook" onclick="shareNotebook()">
+    <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="18" cy="18" r="2.2"/><path d="M8 11l8-4M8 13l8 4"/></svg>
+  </button>
+  <button class="icon-btn" title="Save session" onclick="saveSession()">
+    <svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 14h8"/></svg>
+  </button>
+  <button class="icon-btn" title="Load session" onclick="document.getElementById('floader').click()">
+    <svg viewBox="0 0 24 24"><path d="M3 7h7l2 3h9v9H3z"/></svg>
+  </button>
+  <button class="icon-btn" title="Export as text" onclick="exportTxt()">
+    <svg viewBox="0 0 24 24"><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>
+  </button>
+  <button class="icon-btn" title="Export as LaTeX" onclick="exportLatex()">
+    <svg viewBox="0 0 24 24"><text x="12" y="17" font-family="serif" font-size="16" font-weight="bold" text-anchor="middle" fill="currentColor">T</text></svg>
+  </button>
+  <button class="icon-btn" title="Toggle theme" onclick="toggleTheme()">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/></svg>
+  </button>
+  <button class="icon-btn" title="Tweaks" onclick="toggleTweaks()">
+    <svg viewBox="0 0 24 24"><circle cx="6" cy="8" r="2"/><circle cx="18" cy="16" r="2"/><path d="M8 8h12"/><path d="M4 16h12"/></svg>
+  </button>
+  <button class="icon-btn danger" title="Clear all" onclick="clearAll()">
+    <svg viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M10 7V4h4v3"/><path d="M6 7l1 13h10l1-13"/></svg>
+  </button>
+</header>
+
+<!-- ============ APP ============ -->
+<div class="app">
+
+  <!-- LEFT RAIL (workspace nav) -->
+  <nav class="rail">
+    <button class="rail-btn on" id="view-tab-nb" onclick="switchView('nb')" title="Notebook">
+      <span class="rail-glyph">¶</span>
+      <span class="rail-label">Note</span>
+    </button>
+    <button class="rail-btn" id="view-tab-graph" onclick="switchView('graph')" title="Graph">
+      <span class="rail-glyph">⌇</span>
+      <span class="rail-label">Plot</span>
+    </button>
+    <button class="rail-btn" id="view-tab-units" onclick="switchView('units')" title="Units">
+      <span class="rail-glyph">Ω</span>
+      <span class="rail-label">Units</span>
+    </button>
+    <div class="rail-spacer"></div>
+    <div class="rail-divider"></div>
+    <button class="rail-btn on" id="view-tab-panel" onclick="toggleSidebar()" title="Show / hide the side panel">
+      <span class="rail-glyph">☰</span>
+      <span class="rail-label">Panel</span>
+    </button>
+  </nav>
+
+  <!-- SIDEBAR (mode context) -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-head">
+      <div class="sb-head-text">
+        <div class="sb-eyebrow">Mode</div>
+        <div class="sb-title" id="mode-title">
+          <span class="sb-title-glyph">α</span><span>Algebra</span>
+        </div>
+        <div class="sb-sub" id="mode-sub">Symbolic manipulation, simplification, factoring.</div>
+      </div>
+      <button class="sb-collapse" onclick="toggleSidebar()" title="Collapse sidebar">‹</button>
+    </div>
+
+    <div class="sb-scroll">
+
+      <!-- Mode picker -->
+      <div class="sb-section">
+        <div class="sb-lbl">Discipline</div>
+        <div class="ops" id="mode-list"></div>
+      </div>
+
+      <!-- Operations for current mode -->
+      <div class="sb-section">
+        <div class="sb-lbl">Operations</div>
+        <div class="chips" id="ops-list"></div>
+      </div>
+
+      <!-- Quick insert -->
+      <div class="sb-section">
+        <div class="sb-lbl">Quick Insert</div>
+        <div class="chips" id="qi-list"></div>
+      </div>
+
+      <!-- Syntax reference -->
+      <div class="sb-section" style="padding-bottom:14px;">
+        <div class="sb-lbl">Syntax</div>
+        <div class="syntax-block" id="syntax-block"></div>
+      </div>
+    </div>
+
+    <!-- Definitions -->
+    <div class="defs">
+      <div class="defs-head">
+        <span style="font-family:var(--mono);font-size:9px;letter-spacing:0.18em;color:var(--t3);text-transform:uppercase;">Workspace</span>
+        <button class="defs-clear" onclick="clearDefs()">Clear</button>
+      </div>
+      <div class="defs-list" id="deflist">
+        <div class="def-empty">Nothing defined yet</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- ============ NOTEBOOK VIEW ============ -->
+    <div class="view on" id="view-nb">
+
+      <!-- definite integral helper, hidden by default -->
+      <div class="defint-panel" id="defint-panel">
+        <span class="defint-label">∫ Definite</span>
+        <input id="di-f" placeholder="f(x)" class="defint-input" style="width:140px;"/>
+        <span class="defint-sep">d</span>
+        <input id="di-v" placeholder="x" class="defint-input" style="width:46px;"/>
+        <span class="defint-sep">from</span>
+        <input id="di-a" placeholder="a" class="defint-input" style="width:60px;"/>
+        <span class="defint-sep">to</span>
+        <input id="di-b" placeholder="b" class="defint-input" style="width:60px;"/>
+        <button class="defint-btn" onclick="insertDefInt()">Insert</button>
+        <button class="defint-btn" onclick="runDefInt()" style="background:linear-gradient(140deg,var(--a0),var(--a2));color:#0b0d11;border:none;font-weight:600;">▶ Evaluate</button>
+        <button class="defint-btn" onclick="document.getElementById('defint-panel').classList.remove('on')" style="background:transparent;color:var(--t3);border-color:var(--b0);">✕</button>
+      </div>
+
+      <div class="notebook" id="notebook">
+        <!-- WELCOME -->
+        <div class="welcome" id="welcome">
+          <div class="welcome-mark">∑</div>
+          <div class="welcome-title">A precision instrument for <em>symbolic mathematics.</em></div>
+          <div class="welcome-sub">Welcome — type any expression below and press Enter. The workstation will normalize, simplify, differentiate, integrate, plot, or solve it for you. Pick a discipline from the left panel, or hit ⌘K to search every function.</div>
+          <div class="welcome-grid" id="welcome-grid"></div>
+          <div class="welcome-tip">
+            <span><kbd>Enter</kbd> run</span>
+            <span><kbd>Shift</kbd>+<kbd>Enter</kbd> newline</span>
+            <span><kbd>⌘</kbd>+<kbd>K</kbd> command palette</span>
+            <span><kbd>Tab</kbd> complete</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- INPUT -->
+      <div class="input-area">
+        <div class="assist-bar" id="assist-bar">
+          <span class="assist-label">✦ Ask</span>
+          <input class="assist-input" id="assist-input" placeholder="e.g.  area under x² between 0 and 3" onkeydown="if(event.key==='Enter')askAssistant()"/>
+          <button class="defint-btn" onclick="askAssistant()">Translate</button>
+          <span class="assist-status" id="assist-status"></span>
+        </div>
+        <div class="input-toolbar" id="input-toolbar">
+          <!-- mode operations injected here -->
+          <div id="ops-row" style="display:flex;gap:5px;flex-wrap:wrap;"></div>
+          <div class="in-op-spacer"></div>
+          <div class="tg-group">
+            <button class="tg on" id="tg-mo" onclick="setInputMode('monaco')">Code</button>
+            <button class="tg" id="tg-ml" onclick="setInputMode('ml')">Visual</button>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-wrap" id="input-wrap">
+            <div class="input-prompt">›</div>
+            <span class="valid-indicator" id="valid-indicator"></span>
+            <div id="editor"></div>
+            <div id="mlwrap"><math-field id="mf" virtual-keyboard-mode="off"></math-field></div>
+          </div>
+          <button class="run-btn" onclick="runCell()">
+            <span>Run</span><kbd>↵</kbd>
+          </button>
+          <button class="text-btn" id="assist-btn" onclick="toggleAssistant()" title="Ask in plain English (Claude, opt-in)" style="display:none;">
+            <svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>
+          </button>
+          <button class="text-btn" onclick="addText()" title="Add markdown / note cell">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+          </button>
+        </div>
+        <div class="live-preview" id="lprev"></div>
+        <div class="input-hint">
+          <span><kbd>↵</kbd> run</span>
+          <span><kbd>Alt</kbd>+<kbd>↑↓</kbd> history</span>
+          <span><kbd>Tab</kbd> complete</span>
+          <span><kbd>Shift</kbd>+<kbd>↵</kbd> newline</span>
+          <span>click any part of a result to explore it</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ GRAPH VIEW ============ -->
+    <div class="view" id="view-graph">
+      <div class="graph-view">
+        <div class="graph-head">
+          <h2><em>Plot</em> · 2D &amp; 3D</h2>
+          <div class="graph-head-sub">multi-trace overlays, surfaces, and parametric curves</div>
+        </div>
+        <div class="graph-controls">
+          <div>
+            <div class="glabel">Expression(s) — comma-separated · use <code style="color:var(--a0)">x</code> for 2D, <code style="color:var(--a0)">x</code> &amp; <code style="color:var(--a0)">y</code> for 3D</div>
+            <input class="ginp" id="ginp" placeholder="e.g.  sin(x), x^2 - 2x + 1"
+                   onkeydown="if(event.key==='Enter')plotGraph(false)"/>
+          </div>
+          <div class="graph-row">
+            <div>
+              <div class="glabel">X Range</div>
+              <div class="graph-range">
+                <input class="ginp" id="gxmin" type="number" value="-10"/>
+                <span>→</span>
+                <input class="ginp" id="gxmax" type="number" value="10"/>
+              </div>
+            </div>
+            <div class="graph-actions">
+              <button class="btn-plot" onclick="plotGraph(false)">Plot 2D</button>
+              <button class="btn-plot violet" onclick="plotGraph(true)">Plot 3D Surface</button>
+              <button class="btn-plot" onclick="exportPlot('graph')" style="background:var(--s2);color:var(--t1);border:1px solid var(--b0);">Export PNG</button>
+            </div>
+          </div>
+        </div>
+        <div class="gplot" id="gplot"></div>
+      </div>
+    </div>
+
+    <!-- ============ UNITS VIEW ============ -->
+    <div class="view" id="view-units">
+      <div class="units-view">
+        <div class="units-head">
+          <h2><em>Units</em> · dimensional analysis</h2>
+          <div class="units-head-sub">SI, imperial, mixed expressions, conversions</div>
+        </div>
+        <div class="units-examples">
+          <span class="unit-ex" onclick="setUnitInp('100 km/h to m/s')">100 km/h to m/s</span>
+          <span class="unit-ex" onclick="setUnitInp('60 degF to degC')">60 degF to degC</span>
+          <span class="unit-ex" onclick="setUnitInp('500 g + 2 kg')">500 g + 2 kg</span>
+          <span class="unit-ex" onclick="setUnitInp('1 atm to Pa')">1 atm to Pa</span>
+          <span class="unit-ex" onclick="setUnitInp('1 mi to km')">1 mi to km</span>
+          <span class="unit-ex" onclick="setUnitInp('1 acre to m^2')">1 acre to m²</span>
+        </div>
+        <div class="units-input-row">
+          <input class="ginp" id="uinp" placeholder="e.g.  100 km/h to m/s"
+                 onkeydown="if(event.key==='Enter')evalUnit()"/>
+          <button class="btn-plot" onclick="evalUnit()">Convert</button>
+        </div>
+        <div class="units-result" id="ures">
+          <span class="units-result-empty">Enter a unit expression to convert…</span>
+        </div>
+        <div class="consts-head">Physical Constants</div>
+        <div class="consts-grid" id="cgrid"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============ TOAST ============ -->
+<div class="toast" id="toast"></div>
+
+<!-- ============ TWEAKS PANEL ============ -->
+<div class="tweaks" id="tweaks">
+  <div class="tweaks-head">
+    <h3>Tweaks</h3>
+    <button class="icon-btn" onclick="toggleTweaks()" style="width:24px;height:24px;font-size:14px;">✕</button>
+  </div>
+  <div class="tweaks-body">
+    <div class="tweak-group">
+      <div class="tweak-label">Accent</div>
+      <div class="tweak-row" id="tweak-accent"></div>
+    </div>
+    <div class="tweak-group">
+      <div class="tweak-label">Density</div>
+      <div class="tweak-row" id="tweak-density"></div>
+    </div>
+    <div class="tweak-group">
+      <div class="tweak-label">Font</div>
+      <div class="tweak-row" id="tweak-font"></div>
+    </div>
+    <div class="tweak-group">
+      <div class="tweak-label">Behaviour</div>
+      <label class="tweak-check"><input type="checkbox" id="tw-autoplot" onchange="setAutoPlot(this.checked)"/> Plot results automatically</label>
+      <label class="tweak-check"><input type="checkbox" id="tw-engine" onchange="setEngineEnabled(this.checked)"/> Exact engine (SymPy, ~20 MB once)</label>
+    </div>
+    <div class="tweak-group">
+      <div class="tweak-label">Claude assistant (optional)</div>
+      <input class="defint-input" id="tw-key" type="password" placeholder="Anthropic API key (stays in this browser)" style="width:100%;" onchange="setAssistantKey(this.value)"/>
+      <div class="tweak-note">Enables plain-English input and “Explain”. Requests go directly from your browser to api.anthropic.com.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ COMMAND PALETTE ============ -->
+<div class="palette-overlay" id="palette" onclick="if(event.target===this)closePalette()">
+  <div class="palette">
+    <div class="palette-input-wrap">
+      <span style="color:var(--t3);font-family:var(--mono);font-size:14px;">⌕</span>
+      <input class="palette-input" id="palette-input" placeholder="Search functions, constants, modes…" oninput="filterPalette()" onkeydown="palKey(event)"/>
+      <span class="palette-key">esc</span>
+    </div>
+    <div class="palette-list" id="palette-list"></div>
+  </div>
+</div>
+
+<input type="file" id="floader" accept=".cas,.json" style="display:none" onchange="loadFile(event)"/>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
