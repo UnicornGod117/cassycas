@@ -1,11 +1,12 @@
 // Evaluator: routes each input to the exact SymPy engine when it is available and falls back
 // to the verified JavaScript engine (mathjs + Algebrite + numerics) otherwise.
 import {
-  math, freeSymbols, parseTopLevelArgs, xarg, splitRelation, normalise, inlineUserFns,
+  math, freeSymbols, parseTopLevelArgs, xarg, splitRelation, normalise, canonical, inlineUserFns,
   prettify, texOf, escTex, isIdent, stripParens,
 } from './expr.js';
 import { fmtN, fmtNum, texNum, toTex, fmtR, fmtComplexDec as fmtComplex, texComplexDec as texComplex, asRational, toReal } from './format.js';
-import { state, scope, userFns, varDefs, CONSTANT_NAMES, IDENT_RE, FORBIDDEN_NAMES } from './state.js';
+import { state, scope, userFns, varDefs, assumptions, CONSTANT_NAMES, IDENT_RE, FORBIDDEN_NAMES } from './state.js';
+import { ALIASES } from './syntax.js';
 import { ctx, workerEval } from './kernel/mathjs-client.js';
 import { numInt, numLim, rk4Solve, findRoots, solveSys } from './kernel/numeric.js';
 import { JS_NUMBER_THEORY, NotCertain } from './kernel/numtheory.js';
@@ -24,8 +25,8 @@ function exprResult(plain, { prefix = '', suffix = '', copy, steps, plot, engine
   return { type: 'sym', expr: plain, prefix, suffix, out: prefix + texOf(plain) + suffix,
            plain: copy ?? plain, steps: steps || null, plot: plot ?? null, engine: eng, note };
 }
-function texResult(tex, plain, { steps, plot, engine: eng = 'js', note } = {}) {
-  return { type: 'sym', out: tex, plain, steps: steps || null, plot: plot ?? null, engine: eng, note };
+function texResult(tex, plain, { steps, plot, engine: eng = 'js', note, check } = {}) {
+  return { type: 'sym', out: tex, plain, steps: steps || null, plot: plot ?? null, engine: eng, note, check: check || null };
 }
 function valResult(value, expr) {
   const plottable = typeof value === 'number' || (value && value.isComplex);
@@ -94,10 +95,15 @@ function needsExactHint() {
   if (engine.status === 'failed') return ' (SymPy), which could not be loaded';
   return ' (SymPy, still loading — this cell will update automatically)';
 }
-const stepList = (steps) => (steps || []).map(s => ({ d: s.d, tex: s.tex }));
+const stepList = (steps) => (steps || []).map(s => ({ d: s.d, tex: s.tex, depth: s.depth || 0 }));
+
+// Attach the exact engine's verification verdict ({status: 'verified'|'failed', how}) to a result.
+function checked(res, r) { if (r && r.check) res.check = r.check; return res; }
 
 // Present a SymPy value: exact form, plus ≈ decimal when it is an irrational number.
 function presentValue(v, { prefix = '', suffix = '', steps, eng = 'sympy', plotVar } = {}) {
+  // undefined / complex infinity, and forms mathjs cannot represent (Derivative, Piecewise, …)
+  if (v.special || v.texOnly) return texResult(prefix + v.latex + suffix, v.plain, { steps, engine: eng });
   const isRational = /^-?\d+(\/\d+)?$/.test(v.plain.replace(/\s/g, ''));
   if (v.approx && !isRational) {
     const [re, im] = v.approx;
@@ -123,7 +129,39 @@ function isDefinableName(name) {
   return IDENT_RE.test(name) && !FORBIDDEN_NAMES.has(name) && !CONSTANT_NAMES.includes(name)
     && typeof math[name] !== 'function';
 }
+// assume(x > 0), assume(x, positive), assume(n, integer), assume(x > 0, y < 0), assume(x) (real)
+const ASSUME_WORDS = ['real', 'positive', 'negative', 'nonnegative', 'nonpositive', 'nonzero', 'integer', 'rational', 'complex'];
+const ASSUME_REL = { '>': 'positive', '>=': 'nonnegative', '<': 'negative', '<=': 'nonpositive', '!=': 'nonzero' };
+export function parseAssume(expr) {
+  const m = expr.match(/^assume\s*\((.*)\)$/s);
+  if (!m) return null;
+  const args = parseTopLevelArgs(m[1]);
+  if (!args.length) throw new Error('Use assume(x > 0), assume(x, positive) or assume(n, integer).');
+  const flags = {};
+  const add = (name, flag) => {
+    if (!IDENT_RE.test(name) || CONSTANT_NAMES.includes(name)) throw new Error(`Cannot place an assumption on "${name}".`);
+    (flags[name] ||= []).includes(flag) || flags[name].push(flag);
+  };
+  let last = null;
+  for (const a of args) {
+    const r1 = a.match(/^([A-Za-z_]\w*)\s*(>=|<=|!=|>|<)\s*0$/), r2 = a.match(/^0\s*(>=|<=|!=|>|<)\s*([A-Za-z_]\w*)$/);
+    if (r1 || r2) {
+      const flip = { '>': '<', '<': '>', '>=': '<=', '<=': '>=', '!=': '!=' };
+      const [name, op] = r1 ? [r1[1], r1[2]] : [r2[2], flip[r2[1]]];
+      add(name, ASSUME_REL[op]); last = name; continue;
+    }
+    if (ASSUME_WORDS.includes(a) && last) { add(last, a); continue; }
+    if (IDENT_RE.test(a)) { last = a; flags[a] ||= []; continue; }
+    throw new Error(`assume() understands x > 0, x >= 0, x < 0, x != 0 and the words ${ASSUME_WORDS.join(', ')}.`);
+  }
+  for (const k of Object.keys(flags)) if (!flags[k].length) flags[k].push('real');
+  return flags;
+}
 export function classifyDef(expr) {
+  if (/^assume\s*\(/.test(expr)) {
+    try { const flags = parseAssume(expr); const names = Object.keys(flags); return { kind: 'assume', name: names[0], names, flags }; }
+    catch { return null; }
+  }
   const fn = expr.match(FN_DEF_RE);
   if (fn) {
     const params = fn[2].split(',').map(s => s.trim()).filter(Boolean);
@@ -136,7 +174,7 @@ export function classifyDef(expr) {
 }
 // Names a cell reads (for the dependency graph).
 export function cellUses(rawExpr) {
-  const expr = normalise(rawExpr);
+  const expr = canonical(rawExpr);
   const def = classifyDef(expr);
   const src = def ? def.rhs : expr;
   const out = new Set();
@@ -151,6 +189,13 @@ export function cellUses(rawExpr) {
 }
 
 export async function applyDefinition(def) {
+  if (def.kind === 'assume') {
+    for (const [name, flags] of Object.entries(def.flags)) assumptions[name] = flags;
+    const words = Object.entries(def.flags).map(([n, fs]) => `${n}: ${fs.join(', ')}`);
+    const REL = { positive: '> 0', negative: '< 0', nonnegative: '\\ge 0', nonpositive: '\\le 0', nonzero: '\\ne 0' };
+    const tex = Object.entries(def.flags).flatMap(([n, fs]) => fs.map(f => REL[f] ? `${n} ${REL[f]}` : `${n} \\in ${{ real: '\\mathbb{R}', integer: '\\mathbb{Z}', rational: '\\mathbb{Q}', complex: '\\mathbb{C}' }[f]}`));
+    return { type: 'assume', names: def.names, flags: def.flags, out: `\\text{assume}\\quad ${tex.join(',\\ ')}`, plain: `assume ${words.join('; ')}` };
+  }
   if (def.kind === 'fn') {
     const { name, params, rhs: body } = def;
     const compiled = math.compile(body);
@@ -187,12 +232,20 @@ export async function applyDefinition(def) {
 // ══════════════════════════════════════════════════════
 export async function dispatch(rawExpr, mode) {
   timedOut = false;
-  const expr = normalise(rawExpr);
+  const expr = canonical(rawExpr);
+  const res = await dispatchCanonical(expr, mode);
+  // Show how free-form input was read ("integral of x^2 from 0 to 1" → integrate(x^2, x, 0, 1)).
+  const flat = (t) => t.replace(/\s+/g, '');
+  if (res && flat(normalise(rawExpr.trim())) !== flat(expr)) res.understood = expr;
+  return res;
+}
+async function dispatchCanonical(expr, mode) {
   const def = classifyDef(expr);
   if (def) return applyDefinition(def);
+  if (/^assume\s*\(/.test(expr)) parseAssume(expr);     // reports what was wrong with it
   const e = inlineUserFns(expr);
   if (/^dsolve\s*\(/.test(e)) return evalDsolve(e);
-  if (/\bto\b/.test(e) && mode !== 'calculus') return evalUnits(e);
+  if (/\bto\b/.test(e) && mode !== 'calculus' && !/^(integrate|limit|sum|product|plot|solve)\s*\(/.test(e)) return evalUnits(e);
   const head = (e.match(/^([A-Za-z_]\w*)\s*\(/) || [])[1];
   if (head === 'plot' && isWholeCall(e, head)) return evalPlot(parseTopLevelArgs(xarg(e, head)));
   if (head && TOOLS[head] && isWholeCall(e, head)) return evalTool(head, parseTopLevelArgs(xarg(e, head)), e);
@@ -200,8 +253,70 @@ export async function dispatch(rawExpr, mode) {
   if (head && CALCULUS_OPS[head]) return CALCULUS_OPS[head](e);
   if (head === 'solve' || head === 'zeros' || head === 'roots') return evalSolve(e, head);
   if (head && MATRIX_OPS[head]) { const r = await MATRIX_OPS[head](e); if (r) return r; }
+  if (topLevelRelation(e)) return evalRelation(e);
   return evalExpression(e);
 }
+
+// ── Bare equations and inequalities: 2x^2 + 3x = 5, x^2 < 4, x^2 + y^2 = 25 ──
+function topLevelRelation(e) {
+  let depth = 0;
+  for (let i = 0; i < e.length; i++) {
+    const c = e[i];
+    if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (depth === 0 && /[=<>]/.test(c) && !(c === '=' && /[<>!=]/.test(e[i - 1] || ''))) return true;
+    else if (depth === 0 && c === '!' && e[i + 1] === '=') return true;
+  }
+  return false;
+}
+// Unknowns of an expression: free names the workspace does not define.
+function unknowns(text) {
+  try { return freeSymbols(substituteWorkspace(text.replace(/(?<![<>!=])=(?!=)/g, '=='), [])).filter(s => scope[s] === undefined && !varDefs[s]); }
+  catch { return []; }
+}
+const PREFERRED_VARS = ['x', 'y', 'z', 't', 'n', 'k'];
+function pickVar(names) {
+  return PREFERRED_VARS.find(v => names.includes(v)) || [...names].sort()[0];
+}
+async function evalRelation(e) {
+  const vars = unknowns(e);
+  const { lhs, rhs, rel } = splitRelation(e);
+  if (!vars.length) {     // 1 + 1 = 2, 3 < 5: a comparison
+    const op = rel === '=' ? '==' : rel;
+    return valResult(await workerEval(`(${lhs}) ${op} (${rhs})`), e);
+  }
+  // A curve in x and y (x^2 + y^2 = 25): solve for y and draw it.
+  if (rel === '=' && vars.length === 2 && vars.includes('x') && vars.includes('y')) {
+    const res = await evalSolve(`solve(${e}, y)`, 'solve');
+    res.plotSpec = { items: [{ kind: 'implicit', expr: `(${lhs}) - (${rhs})`, label: e }], range: null };
+    return res;
+  }
+  return evalSolve(`solve(${e}, ${pickVar(vars)})`, 'solve');
+}
+
+// Unknown function names get a "did you mean" instead of an echo of the input.
+function editDistance(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1] ? d[i - 2][j - 2] + 1 : Infinity);
+  return d[a.length][b.length];
+}
+function knownFunctionNames() {
+  return [...new Set([...Object.keys(TOOLS), ...Object.keys(ALGEBRA_OPS), ...Object.keys(CALCULUS_OPS), ...Object.keys(MATRIX_OPS),
+    'solve', 'plot', 'dsolve', 'assume', ...Object.keys(ALIASES), ...Object.keys(userFns),
+    ...Object.keys(math).filter(k => typeof math[k] === 'function' && /^[a-z][A-Za-z0-9]*$/.test(k) && k.length <= 14)])];
+}
+export function unknownFunctionError(name) {
+  const lower = name.toLowerCase();
+  const scored = knownFunctionNames().map(k => ({ k, d: k.toLowerCase() === lower ? 0 : editDistance(lower, k.toLowerCase()) }))
+    .filter(({ k, d }) => d <= (name.length <= 4 ? 1 : 2) || (name.length >= 4 && k.toLowerCase().startsWith(lower)))
+    .sort((a, b) => a.d - b.d || a.k.length - b.k.length).slice(0, 3).map(({ k }) => ALIASES[k] || k);
+  const hint = [...new Set(scored)];
+  return new Error(`Unknown function "${name}".${hint.length ? ` Did you mean ${hint.join(', ')}?` : ' Define it first, e.g. ' + name + '(x) = x^2.'}`);
+}
+const ABSTRACT_FN = /^[A-Za-z][0-9]?$/;
 
 // ── General expressions ───────────────────────────────
 async function evalExpression(expr) {
@@ -211,15 +326,22 @@ async function evalExpression(expr) {
     mjError = err;
   }
   const numeric = value !== null && (typeof value === 'number' || (value && (value.isComplex || value.isMatrix)));
+  // A call to a function nobody defined (eigenvalz(A)) is a mistake, not a symbolic expression;
+  // one-letter names (f(x), g(t)) are abstract functions.
+  const undefFn = mjError && (mjError.message.match(/Undefined function "?([A-Za-z_]\w*)/) || [])[1];
+  if (undefFn && !ABSTRACT_FN.test(undefFn)) throw unknownFunctionError(undefFn);
   // Exact engine: exact numbers in Exact mode, and symbolic expressions in any mode.
   if ((numeric && state.exactMode) || mjError) {
     const a = tryAst(expr);
     const r = a ? await exact('eval', { expr: a, deg: state.angleMode === 'deg' }) : null;
     if (r && !r.error) {
-      const res = presentValue(r.value);
-      if (mjError && freeSymbols(r.value.plain).includes('x')) res.plot = plotFor(r.value.plain);
+      const res = checked(presentValue(r.value, { steps: r.steps ? stepList(r.steps) : undefined }), r);
+      if (mjError && !r.value.texOnly && freeSymbols(r.value.plain).includes('x')) res.plot = plotFor(r.value.plain);
       return res;
     }
+    // Unknown to SymPy and mathjs alike (mathjs-only functions such as std() answer below).
+    const unknown = mjError && /Undefined (symbol|function)/i.test(mjError.message) && r && r.error && (r.error.match(/^Unknown function: (\w+)/) || [])[1];
+    if (unknown && !ABSTRACT_FN.test(unknown) && typeof math[unknown] !== 'function') throw unknownFunctionError(unknown);
   }
   if (!mjError) return valResult(value, expr);
   // Only an unknown name makes an expression symbolic; any other evaluation error is real.
@@ -242,7 +364,10 @@ function transformOp(kind, jsFallback) {
     if (!isIdent(v)) throw new Error('The variable must be a name.');
     const a = tryAst(f, [v]);
     const r = a ? await exact('transform', { kind, expr: a, var: v }) : null;
-    if (r && !r.error) return presentValue(r.value, { steps: [{ d: 'Input', e: f }, { d: `${kind} (SymPy)`, e: r.value.plain }] });
+    if (r && !r.error) {
+      const steps = r.steps && r.steps.length ? stepList(r.steps) : [{ d: 'Input', e: f }, { d: `${kind} (SymPy)`, e: r.value.plain }];
+      return checked(presentValue(r.value, { steps }), r);
+    }
     const res = jsFallback(f, v);
     res.note = res.note ?? fallbackNote();
     return res;
@@ -325,21 +450,22 @@ async function evalPolydiv(e) {
   if (args.length < 2) throw new Error('polydiv(p, q, x) needs a dividend, a divisor and a variable.');
   const [p, q] = args, v = args[2] || freeSymbols(p)[0] || 'x';
   const ap = tryAst(p, [v]), aq = tryAst(q, [v]);
-  let quo, rem, eng = 'sympy', note = null;
+  let quo, rem, eng = 'sympy', note = null, check = null;
   const r = ap && aq ? await exact('polydiv', { p: ap, q: aq, var: v }) : null;
-  if (r && !r.error) { quo = r.quotient.plain; rem = r.remainder.plain; }
+  if (r && !r.error) { quo = r.quotient.plain; rem = r.remainder.plain; check = r.check; }
   else {
     eng = 'js'; note = fallbackNote();
     const pa = toAlgebrite(p), qa = toAlgebrite(q);
     quo = alg(`quotient(${pa},${qa},${v})`);
     rem = alg(`expand((${pa})-(${qa})*(${toAlgebrite(quo)}))`);
     if (!numericallyEqual(`(${quo})*(${q})+(${rem})`, p)) throw new Error('Polynomial division failed verification.');
+    check = { status: 'verified', how: 'compared quotient × divisor + remainder with the dividend at sample points' };
   }
   quo = prettify(quo); rem = prettify(rem);
   const tex = rem === '0' ? `\\frac{${texOf(p)}}{${texOf(q)}} = ${texOf(quo)}`
     : `\\frac{${texOf(p)}}{${texOf(q)}} = ${texOf(quo)} + \\frac{${texOf(rem)}}{${texOf(q)}}`;
   return texResult(tex, `quotient: ${quo}, remainder: ${rem}`, {
-    engine: eng, note, steps: [{ d: 'Dividend', e: p }, { d: 'Divisor', e: q }, { d: 'Quotient', e: quo }, { d: 'Remainder', e: rem }] });
+    engine: eng, note, check, steps: [{ d: 'Dividend', e: p }, { d: 'Divisor', e: q }, { d: 'Quotient', e: quo }, { d: 'Remainder', e: rem }] });
 }
 
 const ALGEBRA_OPS = {
@@ -366,7 +492,7 @@ async function evalDerivative(e) {
   const oTex = order > 1 ? `\\frac{d^{${order}}}{d${v}^{${order}}}` : `\\frac{d}{d${v}}`;
   const a = tryAst(f, [v]);
   const r = a ? await exact('diff', { expr: a, var: v, order }) : null;
-  if (r && !r.error) return presentValue(r.value, { prefix: `${oTex}\\left[${texOf(f)}\\right] = `, steps: stepList(r.steps), plotVar: true });
+  if (r && !r.error) return checked(presentValue(r.value, { prefix: `${oTex}\\left[${texOf(f)}\\right] = `, steps: stepList(r.steps), plotVar: true }), r);
   const steps = [{ d: `f(${v}) = ${f}`, e: f }];
   let node = math.parse(f);
   for (let i = 0; i < order; i++) { node = math.derivative(node, v); steps.push({ d: `d/d${v} (order ${i + 1})`, e: node.toString() }); }
@@ -386,8 +512,15 @@ async function evalIntegrate(e) {
     const pre = `\\int_{${texOf(lo)}}^{${texOf(hi)}} ${texOf(f)} \\, d${v} = `;
     const al = tryAst(lo), ah = tryAst(hi);
     const r = a && al && ah && state.angleMode === 'rad' ? await exact('integrate', { expr: a, var: v, a: al, b: ah }) : null;
-    if (r && !r.error && r.value && !/Integral|nan/.test(r.value.plain)) {
-      const res = presentValue(r.value, { prefix: pre, steps: stepList(r.steps), plotVar: false });
+    if (r && !r.error && r.diverges) {
+      const lhs = pre.replace(/ = $/, '');
+      const pv = r.pv ? `\\quad\\text{(Cauchy principal value: } ${r.pv.latex}\\text{)}` : '';
+      return texResult(r.to ? `${lhs} = ${r.to.latex}\\quad\\text{(diverges)}${pv}` : `${lhs}\\ \\text{diverges}${pv}`,
+        `diverges${r.to ? ' to ' + r.to.plain : ''}${r.pv ? `; Cauchy principal value ${r.pv.plain}` : ''}`,
+        { engine: 'sympy', steps: [{ d: 'The integrand is not integrable on this interval', e: '' }] });
+    }
+    if (r && !r.error && r.value && !r.value.special && !/Integral/.test(r.value.plain)) {
+      const res = checked(presentValue(r.value, { prefix: pre, steps: stepList(r.steps), plotVar: false }), r);
       if (!r.exact) res.note = 'numeric';
       return res;
     }
@@ -410,8 +543,10 @@ async function evalIntegrate(e) {
   const pre = `\\int ${texOf(f)} \\, d${v} = `;
   const r = a ? await exact('integrate', { expr: a, var: v }) : null;
   if (r && !r.error) {
-    if (r.noForm) return texResult(`\\int ${texOf(f)} \\, d${v} \\quad \\text{(no closed form)}`, `∫ ${f} d${v} — no closed form`, { engine: 'sympy', steps: stepList(r.steps) });
-    const res = presentValue(r.value, { prefix: pre, suffix: ' + C', steps: stepList(r.steps) });
+    if (r.noForm) return texResult(`\\int ${texOf(f)} \\, d${v} \\quad \\text{(no closed form found)}`,
+      `∫ ${f} d${v} — no closed form found (SymPy and substitution heuristics failed; this does not prove none exists)`,
+      { engine: 'sympy', steps: [...stepList(r.steps), { d: 'Tip', e: `integrate(${f}, ${v}, a, b) gives a numerical value` }] });
+    const res = checked(presentValue(r.value, { prefix: pre, suffix: ' + C', steps: stepList(r.steps) }), r);
     res.plain = `${r.value.plain} + C`;
     return res;
   }
@@ -421,8 +556,10 @@ async function evalIntegrate(e) {
       `∫ ${f} d${v} — no elementary antiderivative found. Try integrate(f, ${v}, a, b).`,
       { note: fallbackNote(), steps: [{ d: 'Tip', e: `Use integrate(${f}, ${v}, a, b) for a numerical value` }] });
   }
-  return exprResult(F.plain, { prefix: pre, suffix: ' + C', copy: `${F.plain} + C`, plot: plotFor(F.plain), note: fallbackNote(),
+  const res = exprResult(F.plain, { prefix: pre, suffix: ' + C', copy: `${F.plain} + C`, plot: plotFor(F.plain), note: fallbackNote(),
     steps: [{ d: `Antiderivative (${F.method}, verified by differentiation)`, e: F.plain + ' + C' }] });
+  res.check = { status: 'verified', how: 'differentiated the result and compared it with the integrand at sample points' };
+  return res;
 }
 
 const fmtLim = (x) => isNaN(x) ? 'Undefined' : !isFinite(x) ? (x > 0 ? 'Infinity' : '-Infinity') : fmtNum(x);
@@ -443,7 +580,7 @@ async function evalLimit(e) {
         : [{ d: 'Left-hand limit', tex: r.left.latex }, { d: 'Right-hand limit', tex: r.right.latex }];
       return texResult(`${pre} \\ \\text{does not exist}`, 'does not exist', { engine: 'sympy', steps: [...stepList(r.steps), ...why] });
     }
-    return presentValue(r.value, { prefix: pre + ' = ', steps: stepList(r.steps), plotVar: false });
+    return checked(presentValue(r.value, { prefix: pre + ' = ', steps: stepList(r.steps), plotVar: false }), r);
   }
   const av = toReal(math.evaluate(pt, ctx()));
   if (isNaN(av)) throw new Error('The limit point must be a real number or ±Infinity.');
@@ -466,7 +603,11 @@ function sumOp(kind) {
     const pre = `${sym}_{${v}=${texOf(lo)}}^{${texOf(hi)}} ${texOf(f)} = `;
     const a = tryAst(f, [v]), al = tryAst(lo), ah = tryAst(hi);
     const r = a && al && ah ? await exact(kind, { expr: a, var: v, a: al, b: ah }) : null;
-    if (r && !r.error && !r.noForm) return presentValue(r.value, { prefix: pre, plotVar: true });
+    if (r && !r.error && r.diverges) {
+      return texResult(`${pre.replace(/ = $/, '')}${r.to ? ' = ' + r.to.latex : ''}\\quad\\text{(diverges)}`,
+        `diverges${r.to ? ' to ' + r.to.plain : ''}`, { engine: 'sympy' });
+    }
+    if (r && !r.error && !r.noForm) return checked(presentValue(r.value, { prefix: pre, plotVar: true }), r);
     const bound = (s) => { try { return Math.round(toReal(math.evaluate(s, ctx()))); } catch { return NaN; } };
     const st = bound(lo), en = bound(hi);
     if (!isFinite(st) || !isFinite(en)) throw new Error(`Symbolic or infinite bounds need the exact engine${needsExactHint()}.`);
@@ -563,7 +704,7 @@ async function evalDsolve(e) {
   const r = await exact('dsolve', { lhs: conv(lhs), rhs: conv(rhs), func: fname, var: xname, ics });
   if (!r || r.error) throw new Error(r ? r.error : 'The exact engine is unavailable.');
   const sol = r.solutions[0];
-  const res = texResult(r.solutions.map(s => s.latex).join(',\\quad '), `${fname}(${xname}) = ${sol.plain}`, { engine: 'sympy' });
+  const res = texResult(r.solutions.map(s => s.latex).join(',\\quad '), `${fname}(${xname}) = ${sol.plain}`, { engine: 'sympy', check: r.check });
   if (!/C\d/.test(sol.plain)) res.plot = plotFor(sol.plain);
   return res;
 }
@@ -575,20 +716,34 @@ const CALCULUS_OPS = {
 };
 
 // ── Solving ───────────────────────────────────────────
+const isList = (t) => /^\[.*\]$/s.test(t.trim());
+const isRelation = (t) => !isList(t) && topLevelRelation(t);
+// solve(eq, x)   solve(eq)   solve(x^2 < 4, x)   solve([eqs], [vars])   solve(eq1, eq2, [x, y])   solve(eq1, eq2, x, y)
 async function evalSolve(e, head) {
   const args = parseTopLevelArgs(xarg(e, head));
-  if (args.length < 2) throw new Error('Use solve(equation, x) or solve([eq1, eq2], [x, y]).');
-  if (/^\[.*\]$/.test(args[0]) && /^\[.*\]$/.test(args[1])) return evalSystem(args);
-  const v = args[args.length - 1], eq = args.slice(0, -1).join(', ');
+  if (!args.length) throw new Error('Use solve(equation, x) or solve([eq1, eq2], [x, y]).');
+  if (isList(args[0])) return evalSystem(parseTopLevelArgs(args[0].trim().slice(1, -1)), args[1]);
+  const eqs = args.filter(isRelation), rest = args.filter(a => !isRelation(a));
+  if (eqs.length >= 2) {
+    if (rest.length > 1 && !rest.every(r => IDENT_RE.test(r))) throw new Error('List the unknowns as solve(eq1, eq2, [x, y]).');
+    return evalSystem(eqs, rest.length === 1 ? rest[0] : rest.length ? `[${rest.join(', ')}]` : undefined);
+  }
+  let eq, v;
+  if (args.length === 1) {
+    eq = args[0];
+    const names = unknowns(eq);
+    if (!names.length) throw new Error('There is nothing to solve for: every name in this equation has a value.');
+    v = pickVar(names);
+  } else { v = args[args.length - 1]; eq = args.slice(0, -1).join(', '); }
   if (!IDENT_RE.test(v)) throw new Error('The last argument of solve() must be the unknown, e.g. solve(x^2 = 4, x).');
   const { lhs, rhs, rel } = splitRelation(eq);
   const al = tryAst(lhs, [v]), ar = tryAst(rhs, [v]);
   const r = al && ar ? await exact('solve', { lhs: al, rhs: ar, var: v, rel }) : null;
   if (r && !r.error) {
     const steps = stepList(r.steps);
-    if (r.set) return texResult(`${v} \\in ${r.set.latex}`, `${v} ∈ ${r.set.plain}`, { engine: 'sympy', steps });
+    if (r.statement) return texResult(r.statement.latex, r.statement.plain, { engine: 'sympy', steps, check: r.check });
     if (r.solutions) {
-      if (!r.solutions.length) return texResult('\\text{No solutions}', 'No solutions', { engine: 'sympy', steps });
+      if (!r.solutions.length) return texResult('\\text{No solutions}', 'No solutions', { engine: 'sympy', steps, check: r.check });
       const real = (s) => s.approx && Math.abs(s.approx[1]) < 1e-12;
       const key = (s) => s.approx ? [real(s) ? 0 : 1, s.approx[0], s.approx[1]] : [2, 0, 0];
       const sols = [...r.solutions].sort((p, q) => { const a = key(p), b = key(q); return a[0] - b[0] || a[1] - b[1] || a[2] - b[2]; });
@@ -602,10 +757,10 @@ async function evalSolve(e, head) {
       });
       const nonReal = sols.filter(s => s.approx && !real(s)).length;
       if (nonReal) steps.push({ d: 'Note', e: `${nonReal} complex root(s)` });
-      return texResult(shown.map((s, i) => `${v}_{${i + 1}} = ${s.tex}`).join(',\\quad '), shown.map(s => `${v} = ${s.plain}`).join(', '), { engine: 'sympy', steps });
+      return texResult(shown.map((s, i) => `${v}_{${i + 1}} = ${s.tex}`).join(',\\quad '), shown.map(s => `${v} = ${s.plain}`).join(', '), { engine: 'sympy', steps, check: r.check });
     }
   }
-  if (rel !== '=') throw new Error(`Inequalities need the exact engine${engine.status === 'loading' ? ' (still loading…)' : ''}.`);
+  if (rel !== '=') throw new Error(`Inequalities need the exact engine${needsExactHint()}.`);
   return jsSolve(lhs, rhs, v);
 }
 async function jsSolve(lhs, rhs, v) {
@@ -642,11 +797,17 @@ async function jsSolve(lhs, rhs, v) {
   return texResult(roots.map((r, i) => `${v}_{${i + 1}}=${texNum(r)}`).join(',\\quad ') + (truncated ? ',\\ \\ldots' : ''),
     roots.map(r => `${v} = ${fmtNum(r)}`).join(', '), { steps, note: fallbackNote() });
 }
-async function evalSystem(args) {
-  const eqs = parseTopLevelArgs(args[0].slice(1, -1)), vars = parseTopLevelArgs(args[1].slice(1, -1));
-  if (!vars.every(v => IDENT_RE.test(v))) throw new Error('Unknowns must be variable names.');
+async function evalSystem(eqs, varsText) {
+  let vars = varsText ? (isList(varsText) ? parseTopLevelArgs(varsText.trim().slice(1, -1)) : [varsText.trim()]) : null;
+  if (!vars) {
+    const all = [...new Set(eqs.flatMap(unknowns))];
+    vars = [...PREFERRED_VARS.filter(v => all.includes(v)), ...all.filter(v => !PREFERRED_VARS.includes(v)).sort()];
+    if (vars.length > eqs.length) vars = vars.slice(0, eqs.length);
+  }
+  if (!vars.length || !vars.every(v => IDENT_RE.test(v))) throw new Error('Unknowns must be variable names.');
   const asts = eqs.map(q => { const { lhs, rhs } = splitRelation(q); const l = tryAst(lhs, vars), r = tryAst(rhs, vars); return l && r ? { lhs: l, rhs: r } : null; });
   const r = asts.every(Boolean) ? await exact('solveSystem', { eqs: asts, vars }) : null;
+  if (r && !r.error && !r.systems.length) return texResult('\\text{No solutions}', 'No solutions', { engine: 'sympy', steps: [{ d: 'System of equations', e: eqs.join(', ') }] });
   if (r && !r.error && r.systems.length) {
     const rows = r.systems.map(sol => sol.map(s => {
       const rational = /^-?\d+(\/\d+)?$/.test(s.plain.replace(/\s/g, ''));
@@ -655,7 +816,7 @@ async function evalSystem(args) {
       return { tex: `${s.var} = ${t}`, plain: `${s.var}=${p}` };
     }));
     return texResult(rows.map(row => row.map(x => x.tex).join(',\\ ')).join('\\quad\\text{or}\\quad '),
-      rows.map(row => row.map(x => x.plain).join(', ')).join('  or  '), { engine: 'sympy', steps: [{ d: 'System of equations', e: eqs.join(', ') }, { d: 'Solved exactly', e: `${r.systems.length} solution(s)` }] });
+      rows.map(row => row.map(x => x.plain).join(', ')).join('  or  '), { engine: 'sympy', check: r.check, steps: [{ d: 'System of equations', e: eqs.join(', ') }, { d: 'Solved exactly', e: `${r.systems.length} solution(s)` }] });
   }
   const sol = solveSys(eqs, vars);
   const warn = sol[0]?.warn ? `\\ \\small{\\color{orange}{\\text{⚠ may not have converged, residual ≈ ${sol[0].residual?.toExponential(2)}}}}` : '';
@@ -671,12 +832,12 @@ function matrixOp(kind) {
     if (a && ['eigs', 'rref', 'nullspace', 'charpoly'].includes(kind)) {
       const r = await exact('matrix', { kind, expr: a });
       if (r && !r.error) {
-        if (r.value) return presentValue(r.value, { prefix: `\\operatorname{${kind}}\\left(${texOf(inner)}\\right) = `, plotVar: false });
+        if (r.value) return checked(presentValue(r.value, { prefix: `\\operatorname{${kind}}\\left(${texOf(inner)}\\right) = `, plotVar: false }), r);
         const vals = r.values;
         const steps = (r.vectors || []).map(ev => ({ d: `λ = ${ev.value.plain}`, tex: `v = ${ev.vectors.map(x => x.latex).join(',\\ ')}` }));
         const list = vals.map(x => state.exactMode ? x.latex : approxTex(x)).join(',\\ ');
         return texResult(kind === 'eigs' ? `\\lambda = ${list}` : `\\left\\{${vals.map(x => x.latex).join(',\\ ')}\\right\\}`,
-          `${kind === 'eigs' ? 'λ = ' : ''}[${vals.map(x => state.exactMode ? x.plain : approxText(x)).join(', ')}]`, { engine: 'sympy', steps });
+          `${kind === 'eigs' ? 'λ = ' : ''}[${vals.map(x => state.exactMode ? x.plain : approxText(x)).join(', ')}]`, { engine: 'sympy', steps, check: r.check });
       }
     }
     if (kind === 'eigs') {
@@ -770,6 +931,14 @@ const JS_TOOLS = {
     const r = fn(texts.map(t => substituted(t)));
     return texResult(r.latex, r.plain, { engine: 'js' });
   }])),
+  // subs(f, x, a) with a numeric value: evaluate f there.
+  subs: (texts) => {
+    const [f, v, at] = texts;
+    if (/\bdiff\s*\(/.test(f)) throw new NotCertain('derivatives need the exact engine');
+    const val = substituteWorkspace(f, [v]).compile().evaluate(ctx({ [v]: math.evaluate(at, ctx()) }));
+    if (typeof val !== 'number' && !(val && val.isComplex)) throw new NotCertain('not a number');
+    return texResult(`\\left. ${texOf(f)} \\right|_{${v} = ${texOf(at)}} = ${toTex(val)}`, fmtR(val), { engine: 'js' });
+  },
   // ∫∫ f over [x, a, b], [y, c(x), d(x)], …: nested adaptive quadrature (innermost range first).
   integrate_multi: (texts) => {
     const ranges = texts.slice(1).map(listItems);

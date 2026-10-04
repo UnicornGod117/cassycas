@@ -1,6 +1,6 @@
 // Main-thread client for the SymPy worker: lazy start, status events, timeouts with restart.
 import SympyWorker from './sympy.worker.js?worker&inline';
-import { state } from '../state.js';
+import { state, assumptions } from '../state.js';
 
 export const engine = { status: 'off', detail: '' };   // off | loading | ready | failed | restarting
 const listeners = new Set();
@@ -26,7 +26,8 @@ export function startEngine() {
   worker.onmessage = (e) => {
     const d = e.data;
     if (d.type === 'status') setStatus(engine.status === 'restarting' ? 'restarting' : 'loading', d.detail);
-    else if (d.type === 'ready') setStatus('ready');
+    else if (d.type === 'ready') { engine.boot = d.boot; engine.bootMs = d.ms; setStatus('ready'); }
+    else if (d.type === 'snapshot-saved') engine.snapshotBytes = d.bytes;
     else if (d.type === 'failed') { setStatus('failed', d.detail); stopEngine(true); }
     else if (d.id) {
       const p = pending.get(d.id);
@@ -47,7 +48,7 @@ export function stopEngine(keepStatus = false) {
 // fall back to the JavaScript engine) and restarts the worker if an operation hangs.
 export function sympy(op, payload = {}, timeout = SYMPY_TIMEOUT_MS) {
   if (!engineReady() || !worker) return Promise.reject(new EngineUnavailable('SymPy is not ready'));
-  const request = { op, deg: false, ...payload };
+  const request = { op, deg: false, ...(Object.keys(assumptions).length ? { assume: assumptions } : {}), ...payload };
   return new Promise((resolve, reject) => {
     const id = ++msgId;
     const timer = setTimeout(() => {

@@ -5,7 +5,7 @@ the reference answers. tests/corpus.test.mjs then runs every problem through bot
 the exact engine must agree with the reference; the fallback engine may decline but must
 never give a wrong answer.
 
-    pip install sympy==1.12 mpmath==1.3.0
+    pip install --no-deps sympy==1.14.0 mpmath==1.4.1      # the versions Pyodide ships
     python tests/corpus/generate.py
 """
 import importlib.util

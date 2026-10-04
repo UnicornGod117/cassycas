@@ -2,7 +2,7 @@
 import 'mathlive';
 import { MathfieldElement } from 'mathlive';
 import './styles.css';
-import { math, normalise } from './expr.js';
+import { math, normalise, canonical } from './expr.js';
 import { escH, fmtR } from './format.js';
 import { state, scope, userFns, varDefs, CONSTANT_NAMES } from './state.js';
 import { workerEval, loadStoredScope, sanitizeScope, reviveJSON } from './kernel/mathjs-client.js';
@@ -51,7 +51,8 @@ function toast(msg) {
 function getCurInput() {
   if (inpMode === 'code') return editor.getValue().trim();
   const mf = $('mf');
-  try { return (mf.getValue('ascii-math') || '').trim(); } catch { return (mf.value || '').trim(); }
+  // LaTeX is read by the input front end (src/syntax.js), which also understands \int, \frac{d}{dx}, …
+  try { return (mf.getValue('latex') || '').trim(); } catch { return (mf.value || '').trim(); }
 }
 function clrInput() {
   if (inpMode === 'code') editor.setValue(''); else $('mf').value = '';
@@ -87,7 +88,7 @@ function onEditorChange(v) {
     if (!v.trim()) { el.classList.remove('on'); dot.style.opacity = '0'; return; }
     dot.style.opacity = '1';
     try {
-      const node = math.parse(normalise(v.trim()).replace(/(?<![<>!=])=(?!=)/, '=='));
+      const node = math.parse(canonical(v.trim()).replace(/(?<![<>!=])=(?!=)/, '=='));
       dot.style.background = 'var(--a0)'; dot.title = 'Syntax OK';
       renderTex(el, node.toTex({ parenthesis: 'auto' }).replace(/==/, '='), false);
       el.classList.add('on');

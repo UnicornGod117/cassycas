@@ -12,6 +12,8 @@ import re
 from dataclasses import fields, is_dataclass
 
 import sympy as sp
+from sympy.core.function import AppliedUndef
+from sympy.printing.latex import LatexPrinter
 from sympy.printing.str import StrPrinter
 
 IDENT = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
@@ -30,8 +32,8 @@ class MathjsPrinter(StrPrinter):
     def _print_Exp1(self, e): return 'e'
     def _print_Infinity(self, e): return 'Infinity'
     def _print_NegativeInfinity(self, e): return '-Infinity'
-    def _print_ComplexInfinity(self, e): return 'Infinity'
-    def _print_NaN(self, e): return 'NaN'
+    def _print_ComplexInfinity(self, e): return 'ComplexInfinity'
+    def _print_NaN(self, e): return 'undefined'
     def _print_GoldenRatio(self, e): return 'phi'
     def _print_EulerGamma(self, e): return '0.5772156649015329'
     def _print_Catalan(self, e): return '0.915965594177219'
@@ -59,8 +61,25 @@ def plain(e):
     return _printer.doprint(e)
 
 
+class TexPrinter(LatexPrinter):
+    """SymPy's LaTeX, with f'(x) for derivatives of abstract one-variable functions."""
+
+    def _print_Derivative(self, expr):
+        f, vs = expr.expr, expr.variables
+        if isinstance(f, AppliedUndef) and len(f.args) == 1 and len(vs) <= 3 and set(vs) == {f.args[0]}:
+            return r'%s%s\left(%s\right)' % (self._print(sp.Symbol(f.func.__name__)), "'" * len(vs), self._print(f.args[0]))
+        return super()._print_Derivative(expr)
+
+
+_tex_printer = TexPrinter({'ln_notation': True})
+
+
 def tex(e):
-    return sp.latex(e, ln_notation=True)
+    return _tex_printer.doprint(e)
+
+
+# Results whose plain form mathjs cannot represent faithfully are displayed from LaTeX.
+TEX_ONLY = re.compile(r'\b(Derivative|Integral|Piecewise|RootOf|Sum|Product|Subs|AccumBounds|Lambda|ImageSet|Interval|Union|Order)\(')
 
 
 def approx(e):
@@ -81,9 +100,15 @@ def approx(e):
 
 
 def value(e):
+    if e is sp.nan:
+        return {'latex': r'\text{undefined}', 'plain': 'undefined', 'approx': None, 'special': True}
+    if e is sp.zoo:
+        return {'latex': r'\tilde{\infty}', 'plain': 'ComplexInfinity', 'approx': None, 'special': True}
     out = {'latex': tex(e), 'plain': plain(e), 'approx': approx(e)}
     if isinstance(e, sp.MatrixBase):
         out['matrix'] = True
+    if TEX_ONLY.search(out['plain']):
+        out['texOnly'] = True
     return out
 
 
@@ -117,9 +142,14 @@ FUNCS = {
 TRIG = {'sin', 'cos', 'tan', 'sec', 'csc', 'cot'}
 ATRIG = {'asin', 'acos', 'atan', 'asec', 'acsc', 'acot'}
 CONST = {
-    'pi': sp.pi, 'e': sp.E, 'i': sp.I, 'Infinity': sp.oo, 'phi': sp.GoldenRatio, 'tau': 2 * sp.pi,
+    'pi': sp.pi, 'e': sp.E, 'i': sp.I, 'Infinity': sp.oo, 'oo': sp.oo, 'phi': sp.GoldenRatio, 'tau': 2 * sp.pi,
     'true': sp.true, 'false': sp.false, 'NaN': sp.nan, 'deg': sp.pi / 180,
 }
+# Unknown one-letter names called like functions (f(x), g(t), y1(x)) are abstract functions,
+# so diff(f(x)*g(x), x) gives the product rule. Longer unknown names are reported as errors.
+ABSTRACT_FN = re.compile(r'^[A-Za-z][0-9]?$')
+# Assumptions a workspace may place on a symbol with assume(...).
+ASSUMPTIONS = {'real', 'positive', 'negative', 'nonnegative', 'nonpositive', 'nonzero', 'integer', 'rational', 'complex'}
 BINOPS = {
     '+': lambda a, b: a + b, '-': lambda a, b: a - b, '*': lambda a, b: a * b, '/': lambda a, b: a / b,
     '^': lambda a, b: a ** b, '%': sp.Mod,
@@ -129,18 +159,23 @@ BINOPS = {
 
 
 class Builder:
-    def __init__(self, deg=False, undefined_functions=False, deriv_ctx=None):
+    def __init__(self, deg=False, undefined_functions=False, deriv_ctx=None, assume=None):
         self.deg = deg
         self.undefined_functions = undefined_functions
         self.deriv_ctx = deriv_ctx      # (function name, variable symbol) for dsolve primes
         self.symbols = {}
         self.count = 0
+        self.assume = {}
+        for name, flags in (assume or {}).items():
+            if not IDENT.match(name) or not isinstance(flags, list) or not set(flags) <= ASSUMPTIONS:
+                raise ValueError('invalid assumption')
+            self.assume[name] = {f: True for f in flags}
 
     def sym(self, name):
         if not IDENT.match(name):
             raise ValueError('invalid symbol name')
         if name not in self.symbols:
-            self.symbols[name] = sp.Symbol(name)
+            self.symbols[name] = sp.Symbol(name, **self.assume.get(name, {}))
         return self.symbols[name]
 
     @staticmethod
@@ -197,9 +232,9 @@ class Builder:
                 if self.deg and n in ATRIG:
                     return FUNCS[n](*args) * 180 / sp.pi
                 return FUNCS[n](*args)
-            if self.undefined_functions or (self.deriv_ctx and n == self.deriv_ctx[0]):
+            if self.undefined_functions or (self.deriv_ctx and n == self.deriv_ctx[0]) or ABSTRACT_FN.match(n):
                 return sp.Function(n)(*args)
-            raise ValueError('Unsupported function: ' + n)
+            raise ValueError('Unknown function: ' + n)
         if t == 'mat':
             return sp.Matrix([[self.build(x) for x in row] for row in node['rows']])
         if t == 'vec':
@@ -335,13 +370,362 @@ def limit_steps(f, x, a, direction):
     return steps
 
 
+# ── Verification ───────────────────────────────────────────────────────────
+# Every result that can be checked independently of the method that produced it is checked,
+# and the outcome travels with the result: {'status': 'verified' | 'failed', 'how': text}.
+# A result with no check carries no verdict (rather than a claimed one).
+VPOINTS = [sp.Rational(n, 100) for n in (37, 113, 171, 229, 61, 283, 89)]
+
+
+def verdict(ok, how):
+    if ok is None:
+        return None
+    return {'status': 'verified' if ok else 'failed', 'how': how}
+
+
+def _cnum(e, prec=30):
+    """A finite complex value of a closed expression, else None."""
+    try:
+        v = complex(sp.N(e, prec))
+    except Exception:
+        return None
+    return v if math.isfinite(v.real) and math.isfinite(v.imag) else None
+
+
+def _close(a, b, tol=1e-9):
+    return abs(a - b) <= tol * (1 + abs(b))
+
+
+def _points(syms, k):
+    """Distinct sample values for each symbol at sample k (positive reals, away from 0 and 1)."""
+    return {s: VPOINTS[(k + 2 * j) % len(VPOINTS)] + sp.Rational(j, 7) for j, s in enumerate(syms)}
+
+
+def numerically_equal(a, b, syms=None, tol=1e-9):
+    """True / False when a and b were compared at enough points, None when they could not be."""
+    syms = sorted((sp.sympify(a).free_symbols | sp.sympify(b).free_symbols), key=str) if syms is None else syms
+    good = 0
+    for k in range(len(VPOINTS)):
+        subs = _points(syms, k)
+        va, vb = _cnum(sp.sympify(a).xreplace(subs)), _cnum(sp.sympify(b).xreplace(subs))
+        if va is None or vb is None:
+            continue
+        if not _close(va, vb, tol):
+            return False
+        good += 1
+    return True if good >= 3 else None
+
+
+def check_antiderivative(F, f, x):
+    try:
+        same = numerically_equal(sp.diff(F, x), f)
+    except Exception:
+        same = None
+    return verdict(same, 'differentiated the result and compared it with the integrand at sample points')
+
+
+def check_identity(before, after, what):
+    try:
+        same = numerically_equal(before, after)
+    except Exception:
+        same = None
+    return verdict(same, 'compared the %s with the input at sample points' % what)
+
+
+def check_definite(r, f, x, a, c):
+    """Compare an exact definite integral with numerical quadrature."""
+    exact = _cnum(r)
+    if exact is None:
+        return None
+    try:
+        q = _cnum(sp.Integral(f, (x, a, c)).evalf(20, maxn=200))
+    except Exception:
+        q = None
+    if q is None:
+        return None
+    if _close(q, exact, 1e-7):
+        return verdict(True, 'agrees with numerical quadrature')
+    if _close(q, exact, 1e-3):
+        return None
+    return verdict(False, 'numerical quadrature gives %.10g' % q.real if abs(q.imag) < 1e-12 else 'numerical quadrature disagrees')
+
+
+def _approach(x, a, direction):
+    """Points tending to a (from the given side) for a numerical limit check."""
+    # Floats, so that e.g. (1 + 1/n)^n is evaluated numerically rather than as an exact power.
+    if a is sp.oo:
+        return [sp.Float(10 ** k, 60) for k in (4, 6, 8, 10, 12)]
+    if a is sp.S.NegativeInfinity:
+        return [sp.Float(-10 ** k, 60) for k in (4, 6, 8, 10, 12)]
+    sgn = -1 if direction == '-' else 1
+    return [a + sgn * sp.Float(10, 60) ** -k for k in (6, 9, 12, 15, 18)]
+
+
+def check_limit(f, x, a, L, direction='+'):
+    """Evaluate f along a sequence approaching a and compare with L."""
+    try:
+        vals = [_cnum(f.xreplace({x: p}), 60) for p in _approach(x, a, direction)]
+    except Exception:
+        return None
+    vals = [v for v in vals if v is not None]
+    if len(vals) < 3:
+        return None
+    last = vals[-3:]
+    if L.is_infinite:
+        grows = all(abs(v) > 1e3 for v in last) and abs(last[-1]) >= abs(last[0])
+        sign_ok = L is sp.zoo or all((v.real > 0) == (L is sp.oo) for v in last)
+        return verdict(True, 'the function grows without bound along a sequence approaching the point') if grows and sign_ok else None
+    target = _cnum(L)
+    if target is None:
+        return None
+    if _close(last[-1], target, 1e-4):
+        return verdict(True, 'the function approaches this value numerically')
+    settled = _close(last[-1], last[-2], 1e-8) and _close(last[-2], last[-3], 1e-8)
+    if settled:
+        return verdict(False, 'numerically the function approaches %.10g instead' % last[-1].real)
+    return None
+
+
+def check_sum(r, f, k, lo, hi):
+    try:
+        if hi is sp.oo or lo is sp.S.NegativeInfinity:
+            exact, q = _cnum(r), _cnum(sp.Sum(f, (k, lo, hi)).evalf(20))
+            if exact is None or q is None:
+                return None
+            if _close(q, exact, 1e-8):
+                return verdict(True, 'agrees with a numerically accelerated partial sum')
+            return verdict(False, 'numerically the series sums to %.10g' % q.real) if not _close(q, exact, 1e-3) else None
+        free = sorted(hi.free_symbols | lo.free_symbols, key=str)
+        if len(free) == 1 and hi.free_symbols:
+            n = free[0]
+            for m in range(1, 6):
+                lo_m, hi_m = lo.subs(n, m), hi.subs(n, m)
+                if not (lo_m.is_Integer and hi_m.is_Integer) or hi_m - lo_m > 200:
+                    return None
+                direct = sum((f.subs(k, j) for j in range(int(lo_m), int(hi_m) + 1)), sp.Integer(0))
+                if numerically_equal(direct, r.subs(n, m)) is False:
+                    return verdict(False, 'the formula disagrees with direct summation at %s = %d' % (n, m))
+            return verdict(True, 'agrees with direct summation for %s = 1, …, 5' % n)
+    except Exception:
+        return None
+    return None
+
+
+def check_root(expr, x, s):
+    """Is s a root of expr? Substitutes and evaluates to high precision."""
+    if s.has(sp.CRootOf):
+        return None                 # a root by definition; evaluating it to 60 digits is slow
+    try:
+        sv = sp.N(s, 60)            # numeric first: substituting RootOf objects symbolically is slow
+        val = expr.xreplace({x: sv}) if sv.is_number else expr.xreplace({x: s})
+        v = _cnum(val, 50)
+        if v is not None:
+            return abs(v) < 1e-20 * max(1.0, abs(_cnum(s) or 1))
+        val = expr.xreplace({x: s})
+        if not val.free_symbols and sp.count_ops(val) < 60 and sp.simplify(val) == 0:
+            return True
+        return None
+    except Exception:
+        return None
+
+
+def check_solutions(expr, x, sols):
+    oks = [check_root(expr, x, s) for s in sols]
+    if any(o is False for o in oks):
+        return verdict(False, 'a solution does not satisfy the equation')
+    if sols and all(o is True for o in oks):
+        return verdict(True, 'each solution was substituted back into the equation')
+    return None
+
+
+def check_solution_set(rel, x, s):
+    """Test the relation at points inside and outside a solution set over ℝ."""
+    try:
+        bounds = sorted({p for p in _set_boundaries(s) if p.is_real and p.is_finite}, key=lambda p: float(p))
+        if len(bounds) > 12:
+            return None
+        tests = []
+        if not bounds:
+            tests = [sp.Rational(-7, 3), sp.Rational(1, 3), sp.Rational(11, 3)]
+        else:
+            tests.append(bounds[0] - 1)
+            for p, q in zip(bounds, bounds[1:]):
+                tests.append((p + q) / 2)
+            tests.append(bounds[-1] + 1)
+            tests += bounds
+        checked = 0
+        for t in tests:
+            inside = s.contains(t)
+            if inside not in (sp.true, sp.false):
+                continue
+            truth = rel.subs(x, t)
+            if truth not in (sp.true, sp.false):
+                truth = sp.simplify(truth)
+            if truth not in (sp.true, sp.false):
+                continue
+            if bool(truth) != bool(inside):
+                return verdict(False, 'the relation fails at %s = %s' % (x, plain(t)))
+            checked += 1
+        return verdict(True, 'tested the relation inside and outside every interval') if checked >= 2 else None
+    except Exception:
+        return None
+
+
+def _set_boundaries(s):
+    if isinstance(s, sp.Interval):
+        return [s.start, s.end]
+    if isinstance(s, sp.FiniteSet):
+        return list(s)
+    if isinstance(s, (sp.Union, sp.Complement, sp.Intersection)):
+        return [p for a in s.args for p in _set_boundaries(a)]
+    return []
+
+
+# ── Solution sets in the words a student would use ─────────────────────────
+def _family(img, x, used):
+    """ImageSet(Lambda(n, expr), Integers) → (latex, plain, parameter name)."""
+    lam = img.lamda
+    if len(lam.variables) != 1 or img.base_sets != (sp.S.Integers,):
+        return None
+    name = next(c for c in ('n', 'k', 'm', 'j') if sp.Symbol(c) not in used)
+    p = sp.Symbol(name, integer=True)
+    e = lam.expr.xreplace({lam.variables[0]: p})
+    return ('%s = %s' % (tex(x), tex(e)), '%s = %s' % (x.name, plain(e)), name)
+
+
+def _interval_words(iv, x):
+    xt, xp = tex(x), x.name
+    a, b = iv.start, iv.end
+    lt = lambda open_: ('<', '<') if open_ else (r'\le', '<=')
+    if a is sp.S.NegativeInfinity and b is sp.oo:
+        return (r'%s \in \mathbb{R}' % xt, 'all real %s' % xp)
+    if a is sp.S.NegativeInfinity:
+        t, p = lt(iv.right_open)
+        return ('%s %s %s' % (xt, t, tex(b)), '%s %s %s' % (xp, p, plain(b)))
+    if b is sp.oo:
+        t, p = (('>', '>') if iv.left_open else (r'\ge', '>='))
+        return ('%s %s %s' % (xt, t, tex(a)), '%s %s %s' % (xp, p, plain(a)))
+    (t1, p1), (t2, p2) = lt(iv.left_open), lt(iv.right_open)
+    return ('%s %s %s %s %s' % (tex(a), t1, xt, t2, tex(b)), '%s %s %s %s %s' % (plain(a), p1, xp, p2, plain(b)))
+
+
+def describe_set(s, x, domain='ℝ'):
+    """{latex, plain} stating "x ∈ s" the way it would be written by hand."""
+    used = s.free_symbols | {x}
+    if s is sp.S.EmptySet:
+        return {'latex': r'\text{no solutions in } %s' % (r'\mathbb{R}' if domain == 'ℝ' else r'\mathbb{C}'), 'plain': 'no solutions in %s' % domain}
+    if isinstance(s, sp.Interval):
+        lt_, pt_ = _interval_words(s, x)
+        return {'latex': lt_, 'plain': pt_}
+    if isinstance(s, sp.FiniteSet):
+        return {'latex': r',\quad '.join('%s = %s' % (tex(x), tex(v)) for v in s), 'plain': ', '.join('%s = %s' % (x.name, plain(v)) for v in s)}
+    if isinstance(s, sp.ImageSet):
+        fam = _family(s, x, used)
+        if fam:
+            return {'latex': r'%s,\quad %s \in \mathbb{Z}' % (fam[0], fam[2]), 'plain': '%s, %s ∈ ℤ' % (fam[1], fam[2])}
+    if isinstance(s, sp.Union):
+        parts = list(s.args)
+        if all(isinstance(p, sp.ImageSet) for p in parts):
+            fams = [_family(p, x, used) for p in parts]
+            if all(fams) and len({f[2] for f in fams}) == 1:
+                return {'latex': r'%s,\quad %s \in \mathbb{Z}' % (r',\quad '.join(f[0] for f in fams), fams[0][2]),
+                        'plain': '%s, %s ∈ ℤ' % (' or '.join(f[1] for f in fams), fams[0][2])}
+        if all(isinstance(p, (sp.Interval, sp.FiniteSet)) for p in parts):
+            words = [describe_set(p, x, domain) for p in parts]
+            return {'latex': r'\ \text{or}\ '.join(w['latex'] for w in words), 'plain': ' or '.join(w['plain'] for w in words)}
+    if isinstance(s, sp.Complement) and isinstance(s.args[1], sp.FiniteSet):
+        base, holes = s.args
+        if base is sp.S.Reals or base is sp.S.Complexes:
+            return {'latex': r',\ '.join(r'%s \ne %s' % (tex(x), tex(h)) for h in holes), 'plain': ', '.join('%s != %s' % (x.name, plain(h)) for h in holes)}
+    return {'latex': r'%s \in %s' % (tex(x), tex(s)), 'plain': '%s in %s' % (x.name, plain(s))}
+
+
+# ── Antiderivatives: SymPy first, then substitutions SymPy does not try ────
+def _substitution_candidates(f, x):
+    out = []
+    for g in sp.preorder_traversal(f):
+        if g == x or not g.has(x) or g in out:
+            continue
+        radical = g.is_Pow and g.exp.is_Rational and not g.exp.is_Integer
+        if radical or isinstance(g, (sp.exp, sp.log)) or (isinstance(g, sp.Function) and g.args and g.args[0] != x):
+            out.append(g)
+    return sorted(out, key=sp.count_ops, reverse=True)[:6]
+
+
+def _by_substitution(f, x, g):
+    """∫ f dx with u = g(x), x = h(u): integrate f(h(u)) h'(u) du, then substitute back."""
+    u = sp.Dummy('u', positive=True)
+    try:
+        sols = sp.solve(sp.Eq(u, g), x)
+    except Exception:
+        return None
+    for h in sols[:2]:
+        new = sp.simplify(f.subs(x, h) * sp.diff(h, u))
+        if new.has(x) or sp.count_ops(new) > 80:
+            continue
+        G = sp.integrate(new, u)
+        if not G.has(sp.Integral):
+            return G.subs(u, g)
+    return None
+
+
+def antiderivative(f, x):
+    """(F, how) — how is None for SymPy's own integrator; F is None when nothing worked."""
+    r = sp.integrate(f, x)
+    if not r.has(sp.Integral) and not r.has(sp.Piecewise):
+        return r, None
+    try:
+        m = sp.integrate(f, x, manual=True)
+        if not m.has(sp.Integral) and not (m.has(sp.Piecewise) and not r.has(sp.Integral)):
+            if numerically_equal(sp.diff(m, x), f) is not False:
+                return m, None if not r.has(sp.Integral) else 'rule-based integration'
+    except Exception:
+        pass
+    if not r.has(sp.Integral):
+        return r, None
+    for g in _substitution_candidates(f, x):
+        F = _by_substitution(f, x, g)
+        if F is not None and numerically_equal(sp.diff(F, x), f) is True:
+            return F, 'substitution u = %s' % plain(g)
+    return None, None
+
+
+# Worked solutions for equations and inequalities; steps.py supplies the real ones.
+def worked_equation(lhs, rhs, x):
+    return None
+
+
+def worked_inequality(rel, x, s):
+    return None
+
+
 # ── Operations ─────────────────────────────────────────────────────────────
 def _var(b, name):
     return b.sym(name)
 
 
 def op_eval(req, b):
-    return {'value': value(b.build(req['expr']))}
+    e = b.build(req['expr'])
+    # Small symbolic expressions are shown simplified (sin(x)^2 + cos(x)^2 → 1), with a check.
+    if isinstance(e, sp.Expr) and e.free_symbols and sp.count_ops(e) <= 40 and not e.has(sp.Derivative, sp.Integral):
+        s = sp.simplify(e)
+        if sp.count_ops(s) < sp.count_ops(e):
+            return {'value': value(s), 'steps': [{'d': 'Simplified', 'tex': '%s = %s' % (tex(e), tex(s))}],
+                    'check': check_identity(e, s, 'simplified form')}
+    if isinstance(e, sp.Expr) and e.has(sp.Derivative, sp.Integral):
+        e = e.doit()
+    return {'value': value(e)}
+
+
+def nicest(r):
+    """The most compact of a few equivalent forms (sqrt(25 - x^2) rather than sqrt(-(x - 5)*(x + 5)))."""
+    cands = [r]
+    for f in (sp.expand, sp.factor, sp.simplify):
+        try:
+            cands.append(f(r))
+        except Exception:
+            pass
+    return min(cands, key=lambda c: (sp.count_ops(c), len(str(c))))
 
 
 def op_transform(req, b):
@@ -370,14 +754,24 @@ def op_transform(req, b):
         r = sp.expand_trig(e)
     else:
         raise ValueError('unknown transform')
-    return {'value': value(r)}
+    words = {'simplify': 'simplified form', 'expand': 'expansion', 'factor': 'factorization', 'apart': 'partial fractions',
+             'together': 'combined fraction', 'cancel': 'cancelled form', 'collect': 'collected form',
+             'rationalize': 'rationalized form', 'trigsimp': 'simplified form', 'expand_trig': 'expansion'}
+    out = {'value': value(r), 'check': check_identity(e, r, words[kind])}
+    if kind == 'factor':
+        out['steps'] = worked_factor(e, r)
+    return out
+
+
+def worked_factor(e, r):
+    return []
 
 
 def op_polydiv(req, b):
     p, q = b.build(req['p']), b.build(req['q'])
     v = _var(b, req['var'])
     quo, rem = sp.div(p, q, v)
-    return {'quotient': value(quo), 'remainder': value(rem)}
+    return {'quotient': value(quo), 'remainder': value(rem), 'check': check_identity(p, quo * q + rem, 'quotient × divisor + remainder')}
 
 
 def op_diff(req, b):
@@ -389,7 +783,37 @@ def op_diff(req, b):
     if sp.count_ops(r2) <= sp.count_ops(r):
         r = r2
     steps = diff_steps_list(e, v) if n == 1 else []
-    return {'value': value(r), 'steps': steps}
+    return {'value': value(r), 'steps': steps, 'check': check_derivative(e, v, n, r)}
+
+
+def check_derivative(e, v, n, r):
+    """Compare with a high-precision numerical derivative (mpmath) at sample points."""
+    if n > 3 or any(isinstance(a, sp.core.function.AppliedUndef) for a in sp.preorder_traversal(e)):
+        return None
+    import mpmath
+    others = _points(sorted(e.free_symbols - {v}, key=str), 3)
+    try:
+        fn = sp.lambdify(v, e.xreplace(others), 'mpmath')
+    except Exception:
+        return None
+    good = 0
+    for p in VPOINTS[:4]:
+        try:
+            with mpmath.workdps(40):
+                num = complex(mpmath.diff(fn, mpmath.mpf(p.p) / p.q, n))
+            ex = _cnum(r.xreplace(others).xreplace({v: p}))
+        except Exception:
+            continue
+        if ex is None or not (math.isfinite(num.real) and math.isfinite(num.imag)):
+            continue
+        if not _close(num, ex, 1e-7):
+            return verdict(False, 'a numerical derivative disagrees at %s = %s' % (v, plain(p)))
+        good += 1
+    return verdict(True, 'agrees with a numerical derivative at sample points') if good >= 3 else None
+
+
+def _divergent(r):
+    return r is sp.nan or r.has(sp.zoo, sp.nan) or isinstance(r, sp.AccumBounds) or r.is_infinite
 
 
 def op_integrate(req, b):
@@ -398,18 +822,32 @@ def op_integrate(req, b):
     if req.get('a') is not None:
         a, c = b.build(req['a']), b.build(req['b'])
         r = sp.integrate(f, (v, a, c))
+        if not r.has(sp.Integral) and _divergent(r):
+            out = {'diverges': True, 'to': value(r) if r.is_infinite and r is not sp.zoo else None}
+            try:
+                pv = sp.Integral(f, (v, a, c)).principal_value()
+                if pv.is_finite and not pv.has(sp.Integral):
+                    out['pv'] = value(pv)
+            except Exception:
+                pass
+            return out
         exact = not r.has(sp.Integral)
         if not exact:
             r = sp.Integral(f, (v, a, c)).evalf(15)
-        return {'value': value(r), 'exact': exact, 'steps': integral_steps_list(f, v) if exact else []}
+            if not r.is_number or _cnum(r) is None:
+                return {'diverges': True, 'to': None, 'numericFailed': True}
+        return {'value': value(r), 'exact': exact, 'steps': integral_steps_list(f, v) if exact else [],
+                'check': check_definite(r, f, v, a, c) if exact else None}
     steps = integral_steps_list(f, v)
-    r = sp.integrate(f, v)
-    if r.has(sp.Integral):
+    r, how = antiderivative(f, v)
+    if r is None:
         return {'noForm': True, 'steps': steps}
     simp = sp.simplify(r)
     if sp.count_ops(simp) < sp.count_ops(r):
         r = simp
-    return {'value': value(r), 'steps': steps}
+    if how:
+        steps = [{'d': 'SymPy’s integrator found no antiderivative; tried ' + how, 'tex': ''}]
+    return {'value': value(r), 'steps': steps, 'check': check_antiderivative(r, f, v)}
 
 
 def op_limit(req, b):
@@ -419,22 +857,21 @@ def op_limit(req, b):
     d = req.get('dir') or ''
     # An AccumBounds result means the function oscillates: the limit does not exist.
     osc = lambda r: {'dne': True, 'oscillates': [value(r.min), value(r.max)], 'steps': []}
-    if d in ('+', '-'):
-        r = sp.limit(f, v, a, d)
+    if d in ('+', '-') or a.is_infinite:
+        side = d or ('-' if a is sp.oo else '+')
+        r = sp.limit(f, v, a, side)
         if isinstance(r, sp.AccumBounds):
             return osc(r)
-        return {'value': value(r), 'steps': limit_steps(f, v, a, d)}
-    if a.is_infinite:
-        r = sp.limit(f, v, a)
-        if isinstance(r, sp.AccumBounds):
-            return osc(r)
-        return {'value': value(r), 'steps': limit_steps(f, v, a, '-' if a == sp.oo else '+')}
+        return {'value': value(r), 'steps': limit_steps(f, v, a, side), 'check': check_limit(f, v, a, r, side)}
     left, right = sp.limit(f, v, a, '-'), sp.limit(f, v, a, '+')
     if isinstance(left, sp.AccumBounds) or isinstance(right, sp.AccumBounds):
         return osc(left if isinstance(left, sp.AccumBounds) else right)
-    steps = limit_steps(f, v, a, '+')
+    steps = limit_steps(f, v, a, '')
     if left == right:
-        return {'value': value(right), 'steps': steps}
+        checks = [check_limit(f, v, a, right, '+'), check_limit(f, v, a, left, '-')]
+        failed = [c for c in checks if c and c['status'] == 'failed']
+        check = failed[0] if failed else (checks[0] if all(checks) else None)
+        return {'value': value(right), 'steps': steps, 'check': check}
     return {'dne': True, 'left': value(left), 'right': value(right), 'steps': steps}
 
 
@@ -480,7 +917,10 @@ def op_sum(req, b, product=False):
     r = sp.product(f, (v, lo, hi)) if product else sp.summation(f, (v, lo, hi))
     if isinstance(r, (sp.Sum, sp.Product)) or r.has(sp.Sum, sp.Product):
         return {'noForm': True}
-    return {'value': value(_tidy(r))}
+    if _divergent(r):
+        return {'diverges': True, 'to': value(r) if r.is_infinite and r is not sp.zoo else None}
+    r = _tidy(r)
+    return {'value': value(r), 'check': None if product else check_sum(r, f, v, lo, hi)}
 
 
 def _tidy(r):
@@ -508,10 +948,11 @@ def op_solve(req, b):
     if rel != '=':
         ineq = BINOPS[rel](lhs, rhs)
         s = sp.solveset(ineq, v, domain=sp.S.Reals)
-        steps.append({'d': 'Solve the inequality over ℝ', 'tex': tex(s)})
-        return {'set': value(s), 'steps': steps}
+        steps = (worked_inequality(ineq, v, s) or []) + [{'d': 'Solution over ℝ', 'tex': describe_set(s, v)['latex']}]
+        return {'statement': describe_set(s, v), 'steps': steps, 'check': check_solution_set(ineq, v, s)}
     f = sp.together(lhs - rhs)
     num, den = sp.fraction(f)
+    worked = worked_equation(lhs, rhs, v)
     steps.append({'d': 'Rewrite as f = 0', 'tex': '%s = 0' % tex(lhs - rhs)})
     poly = None
     try:
@@ -529,27 +970,79 @@ def op_solve(req, b):
             roots = sp.solve(num, v)
         uniq = []
         for r in roots:
-            if not any(sp.simplify(r - u) == 0 for u in uniq):
+            if not any(_same_number(r, u) for u in uniq):
                 uniq.append(r)
         if den.has(v):
-            uniq = [r for r in uniq if sp.simplify(den.subs(v, r)) != 0]
+            excluded = [r for r in uniq if sp.simplify(den.subs(v, r)) == 0]
+            if excluded:
+                steps.append({'d': 'Discard roots of the denominator',
+                              'tex': r',\ '.join('%s = %s' % (tex(v), tex(r)) for r in excluded)})
+            uniq = [r for r in uniq if r not in excluded]
+        uniq = [nicest(r) if r.free_symbols and not r.has(sp.CRootOf) else r for r in uniq]
         if not uniq and poly.degree() >= 5:
             uniq = [sp.CRootOf(poly, k) for k in range(poly.degree())]
-        return {'solutions': _solution_values(uniq), 'steps': steps}
+        if worked:
+            steps = worked
+        steps = steps + [{'d': 'Solutions', 'tex': r',\quad '.join('%s = %s' % (tex(v), tex(r)) for r in uniq) or r'\text{none}'}]
+        return {'solutions': _solution_values(uniq), 'steps': steps, 'check': check_solutions(lhs - rhs, v, uniq)}
+    if worked:
+        steps = worked
     s = sp.solveset(sp.Eq(lhs, rhs), v, domain=sp.S.Reals)
     if isinstance(s, sp.FiniteSet):
-        return {'solutions': _solution_values(list(s)), 'steps': steps + [{'d': 'Solved over ℝ', 'tex': tex(s)}]}
+        sols = list(s)
+        return {'solutions': _solution_values(sols), 'steps': steps + [{'d': 'Solution over ℝ', 'tex': describe_set(s, v)['latex']}],
+                'check': check_solutions(lhs - rhs, v, sols)}
     if isinstance(s, sp.ConditionSet) or s is None:
         return {'unsolved': True, 'steps': steps}
-    steps.append({'d': 'General solution over ℝ', 'tex': tex(s)})
-    return {'set': value(s), 'steps': steps}
+    steps.append({'d': 'General solution over ℝ', 'tex': describe_set(s, v)['latex']})
+    return {'statement': describe_set(s, v), 'steps': steps, 'check': check_family(lhs - rhs, v, s)}
+
+
+def _same_number(a, b):
+    """Exact equality, deciding numerically first (simplify on RootOf objects is slow)."""
+    if isinstance(a, sp.CRootOf) or isinstance(b, sp.CRootOf):
+        return a == b
+    va, vb = _cnum(a), _cnum(b)
+    if va is not None and vb is not None and not _close(va, vb, 1e-12):
+        return False
+    return sp.simplify(a - b) == 0
+
+
+def check_family(expr, x, s):
+    """Substitute members of a parametric solution family (n = -1, 0, 1)."""
+    fams = [s] if isinstance(s, sp.ImageSet) else list(s.args) if isinstance(s, sp.Union) else []
+    if not fams or not all(isinstance(fm, sp.ImageSet) and len(fm.lamda.variables) == 1 for fm in fams):
+        return None
+    members = [fm.lamda.expr.xreplace({fm.lamda.variables[0]: sp.Integer(n)}) for fm in fams for n in (-1, 0, 1)]
+    res = check_solutions(expr, x, members)
+    return verdict(True, 'substituted the solutions for n = −1, 0, 1') if res and res['status'] == 'verified' else res
+
+
+def _residual_ok(eq, sol):
+    """Does the substitution sol satisfy eq? True / False / None (undecided)."""
+    try:
+        z = (eq.lhs - eq.rhs).xreplace(sol)
+        if sp.simplify(z) == 0:
+            return True
+        if z.free_symbols:
+            return None
+        v = _cnum(z, 50)
+        return None if v is None else abs(v) < 1e-20
+    except Exception:
+        return None
 
 
 def op_solve_system(req, b):
     eqs = [sp.Eq(b.build(e['lhs']), b.build(e['rhs'])) for e in req['eqs']]
     vs = [_var(b, n) for n in req['vars']]
     sols = sp.solve(eqs, vs, dict=True)
-    return {'systems': [[{'var': str(k), **value(sol[k])} for k in vs if k in sol] for sol in sols]}
+    oks = [_residual_ok(eq, sol) for sol in sols for eq in eqs]
+    check = None
+    if sols and all(o is True for o in oks):
+        check = verdict(True, 'each solution was substituted into every equation')
+    elif any(o is False for o in oks):
+        check = verdict(False, 'a solution does not satisfy every equation')
+    return {'systems': [[{'var': str(k), **value(sol[k])} for k in vs if k in sol] for sol in sols], 'check': check}
 
 
 def op_dsolve(req, b):
@@ -565,10 +1058,17 @@ def op_dsolve(req, b):
         k = int(ic.get('order', 0))
         key = y.subs(x, at) if k == 0 else sp.Derivative(y, x, k).subs(x, at)
         ics[key] = val
-    sol = sp.dsolve(sp.Eq(lhs, rhs), y, ics=ics or None)
+    eq = sp.Eq(lhs, rhs)
+    sol = sp.dsolve(eq, y, ics=ics or None)
     sols = sol if isinstance(sol, list) else [sol]
-    return {'solutions': [{'latex': tex(s), 'plain': plain(s.rhs) if isinstance(s, sp.Eq) else plain(s),
-                           'approx': None} for s in sols]}
+    check = None
+    try:
+        check = verdict(all(sp.checkodesol(eq, s, func=y)[0] for s in sols),
+                        'substituted the solution into the differential equation')
+    except Exception:
+        pass
+    return {'solutions': [{'latex': tex(s), 'plain': plain(s.rhs) if isinstance(s, sp.Equality) else plain(s),
+                           'approx': None} for s in sols], 'check': check}
 
 
 def op_matrix(req, b):
@@ -587,7 +1087,12 @@ def op_matrix(req, b):
                 vecs.append({'value': value(val), 'vectors': [value(sp.simplify(v)) for v in basis]})
         except Exception:
             pass
-        return {'values': _solution_values(vals), 'vectors': vecs}
+        lam = sp.Dummy('lambda')
+        cp = (m - lam * sp.eye(m.rows)).det()
+        oks = [check_root(cp, lam, val) for val in ev]
+        check = verdict(True, 'det(A − λI) = 0 for every eigenvalue') if oks and all(o is True for o in oks) else \
+            verdict(False, 'an eigenvalue does not satisfy det(A − λI) = 0') if any(o is False for o in oks) else None
+        return {'values': _solution_values(vals), 'vectors': vecs, 'check': check}
     if kind == 'rref':
         return {'value': value(m.rref()[0])}
     if kind == 'nullspace':
@@ -619,7 +1124,7 @@ def handle(request_json):
         op = OPS.get(req.get('op'))
         if op is None:
             raise ValueError('unknown operation')
-        b = Builder(deg=bool(req.get('deg')), undefined_functions=bool(req.get('undefinedFunctions')))
+        b = Builder(deg=bool(req.get('deg')), undefined_functions=bool(req.get('undefinedFunctions')), assume=req.get('assume'))
         return json.dumps({'ok': True, **op(req, b)}, allow_nan=False)
     except Exception as err:  # reported to the UI, never re-raised into JS
         msg = str(err) or type(err).__name__

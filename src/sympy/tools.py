@@ -473,6 +473,12 @@ def t_rsolve(b, eq_node, fn_node, *ic_nodes):
 
 
 # ── algebra ─────────────────────────────────────────────────────────────────
+def t_subs(e, x, v):
+    _syms(x)
+    r = e.doit().subs(x, v).doit()
+    return {'value': value(_tidy(r)), 'prefix': r'\left. %s \right|_{%s = %s} = ' % (tex(e.doit()), tex(x), tex(v))}
+
+
 def t_resultant(p, q, x):
     return sp.resultant(p, q, _syms(x)[0])
 
@@ -636,7 +642,7 @@ TOOLS = {
     'invlaplace': t_invlaplace, 'fourier': t_fourier, 'invfourier': t_invfourier, 'fourierseries': t_fourierseries,
     'residue': t_residue, 'arclength': t_arclength, 'integrate_multi': t_integrate_multi, 'nsolve': t_nsolve, 'N': t_N,
     # algebra
-    'resultant': t_resultant, 'discriminant': t_discriminant, 'degree': t_degree, 'coeffs': t_coeffs,
+    'subs': t_subs, 'resultant': t_resultant, 'discriminant': t_discriminant, 'degree': t_degree, 'coeffs': t_coeffs,
     'groebner': t_groebner, 'completesquare': t_completesquare, 'rewrite': t_rewrite, 'logcombine': t_logcombine,
     'expandlog': t_expandlog, 'powsimp': t_powsimp, 'polar': t_polar, 'rect': t_rect, 'csolve': t_csolve,
     # linear algebra

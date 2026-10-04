@@ -23,3 +23,21 @@ test('service worker: offline reload keeps the exact engine', { skip: !hasWheels
     assert.deepEqual(app.errors, []);
   } finally { await app.close(); }
 });
+
+test('the engine restarts from its memory snapshot on the next visit', { skip: !hasWheels() && 'SymPy wheels missing: run `npm run test:setup`' }, async () => {
+  const app = await openApp();
+  try {
+    await app.waitForEngine();
+    assert.equal(await app.page.evaluate(() => window.CAS.engine.boot), 'fresh');
+    await app.page.waitForFunction(() => window.CAS.engine.snapshotBytes > 1e6, null, { timeout: 60000 });
+    await app.reload();
+    await app.waitForEngine();
+    const { boot, bootMs } = await app.page.evaluate(() => window.CAS.engine);
+    assert.equal(boot, 'snapshot');
+    assert.ok(bootMs < 5000, `restoring took ${bootMs} ms`);
+    const r = await run(app.page, 'integrate(x*sin(x), x)', 'calculus');
+    assert.equal(r.engine, 'sympy');
+    assert.equal(r.plain, '-x*cos(x) + sin(x) + C');
+    assert.deepEqual(app.errors, []);
+  } finally { await app.close(); }
+});

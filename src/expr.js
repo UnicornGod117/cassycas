@@ -2,6 +2,7 @@
 import { create, all } from 'mathjs';
 import { installDistributions } from './kernel/distributions.js';
 import { CONSTANT_NAMES, IDENT_RE, userFns } from './state.js';
+import { translateInput } from './syntax.js';
 
 export const math = create(all, { number: 'number' });
 installDistributions(math);
@@ -112,6 +113,9 @@ export function normalise(raw) {
     .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-')
     .replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/≠/g, '!=');
 }
+
+// What the evaluator works on: any accepted notation (src/syntax.js), normalised.
+export const canonical = (raw) => normalise(translateInput(raw));
 
 // Substitute user-defined function bodies into an expression, so symbolic operations can
 // see through f(x). Recursive definitions are left alone.

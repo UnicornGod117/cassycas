@@ -22,3 +22,6 @@ export const userFns = {};
 // Symbolic definitions: variable name → source of its right-hand side, so exact
 // computations can use `a = sqrt(2)` as √2 rather than 1.41421356…
 export const varDefs = {};
+// Assumptions placed on symbols by assume(...) cells: name → ['positive', 'integer', …].
+// Sent with every exact-engine request; rebuilt from the cells on each recomputation.
+export const assumptions = {};

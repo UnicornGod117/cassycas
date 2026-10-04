@@ -5,7 +5,8 @@
 //   f  sequence form a(n)    R  range [x, a, b]
 // A kind may end in ? (optional), * (repeats, zero or more) or =name (a variable with a default).
 // Variables named by v/V/f/R arguments are kept symbolic even if the workspace defines them.
-// fallback: 'mathjs' lets the numeric engine answer when SymPy is unavailable.
+// fallback: 'mathjs' lets the numeric engine answer when SymPy is unavailable; jsFallback: a
+// JavaScript implementation (engine.js JS_TOOLS) answers the numeric cases.
 export const TOOLS = {
   // ── number theory ──
   isprime: { args: 'e', mode: 'numtheory', sig: 'isprime(n)', desc: 'Primality test', ex: 'isprime(2^31 - 1)' },
@@ -52,6 +53,7 @@ export const TOOLS = {
   N: { args: 'e,e?', mode: 'numeric', sig: 'N(expr[, digits])', desc: 'Evaluate to any number of digits', ex: 'N(pi, 100)' },
 
   // ── algebra ──
+  subs: { args: 'e,v,e', mode: 'algebra', sig: 'subs(expr, x, value)', desc: 'Substitute a value (or expression) for a variable', ex: 'subs(x^2 + 3x, x, 2)', jsFallback: true },
   resultant: { args: 'e,e,v', mode: 'algebra', sig: 'resultant(p, q, x)', desc: 'Resultant of two polynomials', ex: 'resultant(x^2 - 2, x^3 - x - 1, x)' },
   discriminant: { args: 'e,v', mode: 'algebra', sig: 'discriminant(p, x)', desc: 'Polynomial discriminant', ex: 'discriminant(a*x^2 + b*x + c, x)' },
   degree: { args: 'e,v', mode: 'algebra', sig: 'degree(p, x)', desc: 'Degree in x', ex: 'degree((x^2 + 1)^3, x)' },

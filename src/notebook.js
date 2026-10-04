@@ -1,8 +1,8 @@
 // Notebook: cells, dependency-graph recomputation, rendering, sliders, click-to-explore,
 // persistence, sharing and export.
-import { math, normalise, escTex, prettify } from './expr.js';
+import { math, canonical, escTex, prettify } from './expr.js';
 import { escH, fmtR, toTex } from './format.js';
-import { state, scope, userFns, varDefs, CONSTANT_NAMES } from './state.js';
+import { state, scope, userFns, varDefs, assumptions, CONSTANT_NAMES } from './state.js';
 import { dispatch, classifyDef, cellUses, applyDefinition, transformSub } from './engine.js';
 import { restoreBaseScope, sanitizeScope, reviveJSON, snapshotScope } from './kernel/mathjs-client.js';
 import { renderTex, explorableTex } from './render.js';
@@ -65,7 +65,8 @@ export function createTextCell(content) {
 const mathCells = () => cells.filter(c => c.kind === 'math');
 
 // Names a cell defines / reads.
-function cellDef(cell) { return classifyDef(normalise(cell.expr)); }
+function cellDef(cell) { return classifyDef(canonical(cell.expr)); }
+const defNames = (def) => def ? (def.names || [def.name]) : [];
 
 async function evaluateCell(cell) {
   const el = document.getElementById(cell.id);
@@ -85,6 +86,7 @@ async function applyCached(cell) {
   const r = cell.res;
   if (!r) return;
   if (r.type === 'funcdef') { await applyDefinition({ kind: 'fn', name: r.name, params: r.params, rhs: r.body }); return; }
+  if (r.type === 'assume') { Object.assign(assumptions, r.flags); return; }
   if (r.type === 'vardef') {
     delete userFns[r.name];
     if (r.expr !== null && r.expr !== undefined) varDefs[r.name] = r.expr; else delete varDefs[r.name];
@@ -104,7 +106,7 @@ export function recompute({ ids = [], names = [], all = false } = {}) {
       const dirty = all || dirtyIds.has(cell.id) || [...uses].some(n => dirtyNames.has(n));
       if (dirty) {
         await evaluateCell(cell);
-        if (def) dirtyNames.add(def.name);
+        defNames(def).forEach(n => dirtyNames.add(n));
       } else {
         await applyCached(cell);
       }
@@ -132,7 +134,7 @@ export function editCell(cell, newExpr) {
   const el = document.getElementById(cell.id);
   el.querySelector('.cexpr').textContent = newExpr;
   persistNotebook();
-  return recompute({ ids: [cell.id], names: oldDef ? [oldDef.name] : [] });
+  return recompute({ ids: [cell.id], names: defNames(oldDef) });
 }
 export function deleteCell(cell) {
   const idx = cells.indexOf(cell);
@@ -142,7 +144,7 @@ export function deleteCell(cell) {
   persistNotebook();
   if (cell.kind !== 'math') return idle();
   const def = cellDef(cell);
-  return def ? recompute({ names: [def.name] }) : idle();
+  return def ? recompute({ names: defNames(def) }) : idle();
 }
 // Cells that used the fallback engine while SymPy was loading are upgraded once it is ready.
 export function upgradePendingCells() {
@@ -178,7 +180,10 @@ async function renderCell(cell) {
   }
   const res = cell.res;
   let latex, plain, prompt = '⇒';
-  if (res.type === 'funcdef') {
+  if (res.type === 'assume') {
+    prompt = '≔';
+    latex = res.out; plain = res.plain;
+  } else if (res.type === 'funcdef') {
     prompt = '≔';
     latex = `${res.name}(${res.params.join(',')}) = ${safeTex(res.body)}`;
     plain = `${res.name}(${res.params.join(',')}) = ${res.body}`;
@@ -211,13 +216,24 @@ async function renderCell(cell) {
   if (res.note === 'pending') out.insertAdjacentHTML('beforeend', `<span class="cnote" title="Computed by the fallback engine while SymPy loads; will update automatically">⟳ upgrading</span>`);
   if (res.note === 'timeout') out.insertAdjacentHTML('beforeend', `<span class="cnote" title="SymPy took longer than ${SYMPY_TIMEOUT_MS / 1000} s on this input, so the fallback engine answered">⏱ exact engine timed out</span>`);
   if (res.note === 'numeric') out.insertAdjacentHTML('beforeend', `<span class="cnote" title="No closed form; value computed numerically">≈ numeric</span>`);
+  if (res.check) {
+    const ok = res.check.status === 'verified';
+    out.insertAdjacentHTML('beforeend', `<span class="cverify ${ok ? 'ok' : 'bad'}" title="${escH((ok ? 'Verified independently: ' : 'An independent check disagreed: ') + res.check.how)}">${ok ? '✓ verified' : '⚠ check failed'}</span>`);
+  }
+  if (res.understood) {
+    const u = document.createElement('div');
+    u.className = 'cunderstood';
+    u.innerHTML = '<span class="cunderstood-label">read as</span> <code></code>';
+    u.querySelector('code').textContent = res.understood;
+    out.querySelector('.cout-body').prepend(u);
+  }
   el.dataset.latex = latex; el.dataset.plain = plain;
   const [label, title] = ENGINE_BADGE[res.engine] || ['', ''];
   badge.textContent = label; badge.title = title; badge.style.display = label && res.type !== 'funcdef' ? '' : 'none';
   badge.classList.toggle('exact', res.engine === 'sympy');
 
   if (res.steps && res.steps.length) {
-    steps.innerHTML = res.steps.map((s, i) => `<div class="step"><div class="step-n">${i + 1}</div><div class="step-body"><div class="step-d"></div><div class="step-e"></div></div></div>`).join('');
+    steps.innerHTML = res.steps.map((s, i) => `<div class="step" style="margin-left:${Math.min(s.depth || 0, 6) * 18}px"><div class="step-n">${i + 1}</div><div class="step-body"><div class="step-d"></div><div class="step-e"></div></div></div>`).join('');
     steps.querySelectorAll('.step').forEach((node, i) => {
       const s = res.steps[i];
       node.querySelector('.step-d').textContent = s.d;

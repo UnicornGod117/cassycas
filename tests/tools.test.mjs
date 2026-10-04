@@ -31,7 +31,7 @@ const EXPECTED = {
   'nsolve(cos(x) = x, x, 1, 50)': 'x = 0.73908513321516064165531208767387340401341175890076',
   'csolve(x^5 = 1, x)': null,   // checked separately
   'N(pi, 100)': '3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117068',
-  'resultant(x^2 - 2, x^3 - x - 1, x)': '-1', 'discriminant(a*x^2 + b*x + c, x)': '-4*a*c + b^2',
+  'subs(x^2 + 3x, x, 2)': '10', 'resultant(x^2 - 2, x^3 - x - 1, x)': '-1', 'discriminant(a*x^2 + b*x + c, x)': '-4*a*c + b^2',
   'degree((x^2 + 1)^3, x)': '6', 'coeffs((x + 2)^4, x)': '[1, 8, 24, 32, 16]',
   'groebner([x^2 + y^2 - 1, x - y], [x, y])': '[x - y, 2*y^2 - 1]', 'completesquare(2x^2 + 8x + 3, x)': '-5 + 2*(x + 2)^2',
   'rewrite(cos(x), exp)': 'exp(i*x)/2 + exp(-i*x)/2', 'logcombine(log(x) + 2*log(y))': 'log(x*y^2)',
@@ -69,6 +69,8 @@ for (const name of ENGINES) {
         } else if (JS_NUMBER_THEORY[n]) {
           assert.ok(!r.error, `${t.ex}: ${r.error}`);
           assert.equal(flat(r.plain), flat(EXPECTED[t.ex]), `${t.ex} (JavaScript number theory)`);
+        } else if (t.jsFallback) {
+          assert.equal(flat(r.plain || r.error), flat(EXPECTED[t.ex]), `${t.ex} (JavaScript fallback)`);
         } else if (t.fallback === 'mathjs') {
           assert.ok(!r.error, `${n} should fall back to the numeric engine: ${r.error}`);
         } else {

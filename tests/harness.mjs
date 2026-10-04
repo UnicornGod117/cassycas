@@ -1,33 +1,23 @@
-// Serves the built single-file app (dist/) over local HTTP in headless Chromium.
-// Pyodide requests to jsDelivr are answered from the `pyodide` npm package, and SymPy/mpmath
-// wheels from tests/.wheels (see `npm run test:setup`) with the lockfile hashes patched to
-// match — so the whole suite, exact engine included, runs offline.
+// Serves the built app (dist/) over local HTTP in headless Chromium.
+// Pyodide requests to jsDelivr are answered from the `pyodide` npm package, and the SymPy,
+// mpmath and gmpy2 wheels from tests/.wheels (see `npm run test:setup`, which checks them
+// against the lockfile hashes) — so the whole suite, exact engine included, runs offline.
 import { chromium } from 'playwright';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { PYODIDE_VERSION } from '../src/sympy/version.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
 const PYODIDE = path.join(ROOT, 'node_modules', 'pyodide');
 const WHEELS = path.join(ROOT, 'tests', '.wheels');
+const PYODIDE_CDN = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 const TYPES = { '.html': 'text/html', '.js': 'application/javascript', '.mjs': 'application/javascript',
   '.json': 'application/json', '.wasm': 'application/wasm', '.zip': 'application/zip', '.whl': 'application/zip',
   '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml' };
 
-function patchedLock() {
-  const lock = JSON.parse(fs.readFileSync(path.join(PYODIDE, 'pyodide-lock.json'), 'utf8'));
-  for (const f of fs.existsSync(WHEELS) ? fs.readdirSync(WHEELS) : []) {
-    const name = f.split('-')[0].toLowerCase();
-    const entry = lock.packages[name];
-    if (!entry) continue;
-    entry.file_name = f;
-    entry.sha256 = crypto.createHash('sha256').update(fs.readFileSync(path.join(WHEELS, f))).digest('hex');
-  }
-  return JSON.stringify(lock);
-}
 export const hasWheels = () => fs.existsSync(WHEELS) && fs.readdirSync(WHEELS).some(f => f.startsWith('sympy'));
 
 function serve() {
@@ -49,11 +39,9 @@ export async function openApp({ engine = true, hash = '', serviceWorkers = 'bloc
   const context = await browser.newContext({ serviceWorkers });
   await context.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, async route => {
     const url = route.request().url();
-    const m = url.match(/cdn\.jsdelivr\.net\/pyodide\/v0\.26\.4\/full\/([^?]+)/);
+    const name = url.startsWith(PYODIDE_CDN) && url.slice(PYODIDE_CDN.length).split('?')[0];
     const headers = { 'access-control-allow-origin': '*' };
-    if (m && engine) {
-      const name = m[1];
-      if (name === 'pyodide-lock.json') return route.fulfill({ body: patchedLock(), headers: { ...headers, 'content-type': 'application/json' } });
+    if (name && engine) {
       for (const p of [path.join(PYODIDE, name), path.join(WHEELS, name)]) {
         if (fs.existsSync(p)) return route.fulfill({ path: p, headers: { ...headers, 'content-type': TYPES[path.extname(p)] || 'application/octet-stream' } });
       }

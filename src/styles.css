@@ -659,6 +659,15 @@ math-field{
 @keyframes pulse{50%{opacity:.35;}}
 .cbadge.exact{color:var(--a0);border-color:var(--a0);background:var(--a-tint-2);}
 .cnote{position:absolute;right:12px;top:8px;font-family:var(--mono);font-size:9px;color:var(--warm);letter-spacing:.06em;}
+/* Independent verification of a result (see bridge.py "Verification") */
+.cverify{position:absolute;right:12px;bottom:6px;font-family:var(--mono);font-size:9px;letter-spacing:.06em;cursor:help;
+  padding:1px 6px;border-radius:8px;border:1px solid currentColor;}
+.cverify.ok{color:var(--a0);background:var(--a-tint-2);}
+.cverify.bad{color:var(--rose);background:var(--rose-tint);font-weight:600;}
+/* How free-form input was read */
+.cunderstood{font-family:var(--mono);font-size:10.5px;color:var(--t3);margin:0 0 6px;}
+.cunderstood code{color:var(--t2);background:var(--s2);border-radius:var(--r-xs);padding:1px 5px;}
+.cunderstood-label{letter-spacing:.06em;text-transform:uppercase;font-size:9px;}
 
 /* ── In-place editing / deleting ─────────────── */
 .cexpr-edit{width:100%;background:var(--s2);border:1px solid var(--a0);border-radius:var(--r-xs);color:var(--t0);
