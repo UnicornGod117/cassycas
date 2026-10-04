@@ -6,6 +6,7 @@ import { state, scope, userFns, varDefs, assumptions, objects, CONSTANT_NAMES } 
 import { dispatch, classifyDef, cellUses, applyDefinition, transformSub } from './engine.js';
 import { restoreBaseScope, sanitizeScope, reviveJSON, snapshotScope } from './kernel/mathjs-client.js';
 import { renderTex, explorableTex } from './render.js';
+import { morphPlayer } from './morph.js';
 import { plotInline, plotSeries, exportPlot, plotSpecInline } from './plot.js';
 import { engine, SYMPY_TIMEOUT_MS } from './sympy/client.js';
 import { MODES } from './modes.js';
@@ -162,6 +163,12 @@ export function clearNotebook() {
 // ══════════════════════════════════════════════════════
 //  RENDERING
 // ══════════════════════════════════════════════════════
+// Frames for the step animation: every step with a formula, then the result.
+function morphFrames(res, latex) {
+  const frames = (res.steps || []).filter(s => s.tex && s.tex.length < 400).map(s => ({ tex: s.tex, d: s.d }));
+  if (frames.length && latex) frames.push({ tex: latex, d: 'Result' });
+  return frames;
+}
 const ENGINE_BADGE = { sympy: ['exact', 'Computed by SymPy (exact)'], js: ['numeric', 'Computed by the JavaScript engine'] };
 async function renderCell(cell) {
   const el = document.getElementById(cell.id);
@@ -249,6 +256,7 @@ async function renderCell(cell) {
   const plot = plotCandidate(cell);
   const a = [];
   if (res.steps && res.steps.length) a.push(`<button class="cact" data-action="steps">∴ Steps</button>`);
+  if (morphFrames(res, latex).length >= 3) a.push(`<button class="cact violet" data-action="animate" title="Play the steps as an animation">▶ Animate</button>`);
   if (plot) a.push(`<button class="cact violet" data-action="plot">⌇ Plot</button>`);
   if (res.odeData || plot) a.push(`<button class="cact" data-action="export-plot">PNG</button>`);
   a.push(`<div class="cact-spacer"></div>`);
@@ -393,6 +401,15 @@ export function bindNotebookEvents({ explain }) {
       case 'edit': startInlineEdit(cell); break;
       case 'delete': deleteCell(cell); break;
       case 'steps': el.querySelector('.steps').classList.toggle('open'); break;
+      case 'animate': {
+        let host = el.querySelector('.morph-host');
+        if (host) { host.remove(); break; }
+        host = document.createElement('div');
+        host.className = 'morph-host';
+        el.querySelector('.steps').before(host);
+        morphPlayer(host, morphFrames(cell.res, el.dataset.latex)).show(0);
+        break;
+      }
       case 'plot': {
         const p = plotCandidate(cell);
         if (plotEl.classList.contains('open')) { plotEl.classList.remove('open'); plotEl.innerHTML = ''; }

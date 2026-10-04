@@ -16,7 +16,13 @@
 //   { kind: 'vector', P(x, y), Q(x, y) }       vector field (P, Q)
 //   { kind: 'domain', w(re, im) → [re, im] }   domain colouring of a complex function
 //   { kind: 'series', xs, ys }                 a polyline (e.g. a numerical ODE solution)
-// Every item may have a label and a color.
+//   { kind: 'scatter', xs, ys }                data points
+//   { kind: 'bars', edges, heights }           histogram bars over [edges[i], edges[i+1]]
+//   { kind: 'box', y, min, q1, median, q3, max, outliers }   a horizontal box plot at height y
+// Every item may have a label and a color. An implicit curve may also carry Fi(X, Y), an interval
+// extension of F (interval.js): every pixel the curve could pass through is then shaded, so no
+// part of the curve is missed — not even isolated points or touching zeros that have no sign
+// change for marching squares to see.
 
 export const PALETTE = ['#2f81f7', '#e5534b', '#3fb950', '#c69026', '#a371f7', '#db61a2', '#39c5cf', '#f0883e'];
 
@@ -38,6 +44,7 @@ export class Grapher {
     this.host = host;
     this.items = [];
     this.equal = equal;
+    this.equal0 = equal;
     this.home = { xRange, yRange };
     this.view = { xmin: xRange[0], xmax: xRange[1], ymin: -7, ymax: 7 };
     this.fitPending = !yRange;
@@ -63,6 +70,9 @@ export class Grapher {
 
   setItems(items) {
     this.items = items.map((it, i) => ({ color: PALETTE[i % PALETTE.length], ...it }));
+    // fit the view to what is drawn (the first draw, from the constructor, had nothing to fit)
+    this.equal = this.equal0;
+    if (!this.home.yRange) this.fitPending = true;
     this.legend.innerHTML = '';
     if (this.items.filter(i => i.label).length > 1) {
       for (const it of this.items) {
@@ -204,7 +214,7 @@ export class Grapher {
     const ctx = this.ctx, css = getComputedStyle(this.host);
     const col = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
     this.colors = { bg: col('--g-bg', '#fff'), grid: col('--g-grid', '#e5e5e5'), grid2: col('--g-grid2', '#f3f3f3'), axis: col('--g-axis', '#888'), text: col('--g-text', '#666') };
-    if (this.fitPending) { this.fitY(); this.fitPending = false; }
+    if (this.fitPending && this.items.length) { this.fitY(); this.fitPending = false; }
     ctx.fillStyle = this.colors.bg;
     ctx.fillRect(0, 0, this.W, this.H);
     this.pois = [];
@@ -222,6 +232,22 @@ export class Grapher {
   // Fit the y range to the function values on the x range (robust to poles).
   fitY() {
     const fns = this.items.filter(i => i.kind === 'fn' || i.kind === 'ineq-fn');
+    const DATA = ['series', 'scatter', 'bars', 'box'];
+    const data = this.items.filter(i => DATA.includes(i.kind));
+    if (data.length && !data.some(i => i.kind === 'series')) {
+      // statistical plots: frame the data (and any fitted line over the same x range)
+      const xs = [], ys = [0];
+      for (const it of data) {
+        if (it.kind === 'scatter') { xs.push(...it.xs); ys.push(...it.ys); }
+        if (it.kind === 'bars') { xs.push(...it.edges); ys.push(...it.heights); }
+        if (it.kind === 'box') { xs.push(it.min, it.max, ...(it.outliers || [])); ys.push(it.y - 1, it.y + 1); }
+      }
+      const fx = xs.filter(Number.isFinite), lo = Math.min(...fx), hi = Math.max(...fx), pad = (hi - lo || 1) * 0.08;
+      Object.assign(this.view, { xmin: lo - pad, xmax: hi + pad });
+      for (const it of fns) for (let i = 0; i <= 50; i++) ys.push(it.f(lo - pad + (hi - lo + 2 * pad) * i / 50));
+      this.setY(Math.min(...ys.filter(Number.isFinite)), Math.max(...ys.filter(Number.isFinite)));
+      return;
+    }
     const geo = this.items.some(i => !['fn', 'ineq-fn', 'series'].includes(i.kind));
     if (geo || !fns.length) {
       const series = this.items.filter(i => i.kind === 'series');
@@ -387,7 +413,45 @@ export class Grapher {
         it.screen = this.strokeRuns(runs, it.color, { dash: it.rel.length === 1 ? [7, 5] : null });
         break;
       }
-      case 'implicit': it.screen = this.marching(it.F, it.color); break;
+      case 'implicit':
+        if (it.Fi && !this.dragging) it.cells = this.enclose(it.Fi, it.color);
+        it.screen = this.marching(it.F, it.color);
+        break;
+      case 'scatter': {
+        ctx.fillStyle = it.color;
+        it.screen = [];
+        it.xs.forEach((x, i) => {
+          const X = this.sx(x), Y = this.sy(it.ys[i]);
+          if (!Number.isFinite(X) || !Number.isFinite(Y)) return;
+          ctx.beginPath(); ctx.arc(X, Y, 3.2, 0, 2 * Math.PI); ctx.fill();
+          if (i % 4 === 0) it.screen.push(X, Y);
+        });
+        break;
+      }
+      case 'bars': {
+        ctx.fillStyle = it.color; ctx.strokeStyle = this.colors.bg; ctx.lineWidth = 1;
+        it.heights.forEach((h, i) => {
+          const X0 = this.sx(it.edges[i]), X1 = this.sx(it.edges[i + 1]), Y = this.sy(h), Y0 = this.sy(0);
+          ctx.globalAlpha = 0.75; ctx.fillRect(X0, Math.min(Y, Y0), X1 - X0, Math.abs(Y0 - Y));
+          ctx.globalAlpha = 1; ctx.strokeRect(X0, Math.min(Y, Y0), X1 - X0, Math.abs(Y0 - Y));
+          this.pois.push({ x: (it.edges[i] + it.edges[i + 1]) / 2, y: h, color: it.color, kindName: `[${fmt(it.edges[i])}, ${fmt(it.edges[i + 1])}): ${fmt(h)}` });
+        });
+        break;
+      }
+      case 'box': {
+        const Y = this.sy(it.y), hh = Math.max(10, Math.min(40, Math.abs(this.sy(it.y + 0.35) - Y)));
+        ctx.strokeStyle = it.color; ctx.fillStyle = it.color; ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.25; ctx.fillRect(this.sx(it.q1), Y - hh, this.sx(it.q3) - this.sx(it.q1), 2 * hh); ctx.globalAlpha = 1;
+        ctx.strokeRect(this.sx(it.q1), Y - hh, this.sx(it.q3) - this.sx(it.q1), 2 * hh);
+        ctx.beginPath();
+        ctx.moveTo(this.sx(it.median), Y - hh); ctx.lineTo(this.sx(it.median), Y + hh);
+        ctx.moveTo(this.sx(it.min), Y); ctx.lineTo(this.sx(it.q1), Y); ctx.moveTo(this.sx(it.q3), Y); ctx.lineTo(this.sx(it.max), Y);
+        ctx.moveTo(this.sx(it.min), Y - hh / 2); ctx.lineTo(this.sx(it.min), Y + hh / 2); ctx.moveTo(this.sx(it.max), Y - hh / 2); ctx.lineTo(this.sx(it.max), Y + hh / 2);
+        ctx.stroke();
+        for (const o of it.outliers || []) { ctx.beginPath(); ctx.arc(this.sx(o), Y, 3, 0, 2 * Math.PI); ctx.stroke(); }
+        for (const [k, v] of [['min', it.min], ['Q1', it.q1], ['median', it.median], ['Q3', it.q3], ['max', it.max]]) this.pois.push({ x: v, y: it.y, color: it.color, kindName: k });
+        break;
+      }
       case 'ineq': {
         this.shadeRegion((x, y) => { const v = it.F(x, y); return it.rel[0] === '<' ? v < 0 : v > 0; }, it.color);
         it.screen = this.marching(it.F, it.color, it.rel.length === 1 ? [7, 5] : null);
@@ -435,6 +499,33 @@ export class Grapher {
     for (let i = 1; i <= n; i++) { const tb = t0 + (t1 - t0) * i / n, pb = pt(tb); add(ta, pa, tb, pb, 0); ta = tb; pa = pb; }
     if (run.length >= 4) runs.push(run);
     return runs;
+  }
+
+  // Certified enclosure of F(x, y) = 0: subdivide the view into squares, discard every square on
+  // which the interval extension Fi proves F ≠ 0, and shade the pixel-sized squares that remain.
+  // The curve is guaranteed to lie inside the shaded pixels.
+  enclose(Fi, color) {
+    const ctx = this.ctx, cells = [];
+    let budget = 150000;
+    const rec = (px, py, s) => {
+      if (budget-- <= 0) { cells.push([px, py, s]); return; }      // out of budget: keep the square (conservative)
+      const r = Fi([this.wx(px), this.wx(px + s)], [this.wy(py + s), this.wy(py)]);
+      if (r === null || r[0] > 0 || r[1] < 0) return;               // undefined, or provably no zero here
+      if (s <= 1) { cells.push([px, py, s]); return; }
+      const h = s / 2;
+      rec(px, py, h); rec(px + h, py, h); rec(px, py + h, h); rec(px + h, py + h, h);
+    };
+    for (let py = 0; py < this.H; py += 32) for (let px = 0; px < this.W; px += 32) rec(px, py, 32);
+    ctx.fillStyle = color; ctx.globalAlpha = 0.5;
+    for (const [px, py, s] of cells) ctx.fillRect(px, py, s, s);
+    ctx.globalAlpha = 1;
+    // a handful of pixels is an isolated solution (x² + y² = 0): mark it so it can be seen
+    if (cells.length && cells.length <= 12) {
+      for (const [px, py, s] of cells) { ctx.beginPath(); ctx.arc(px + s / 2, py + s / 2, 4, 0, 2 * Math.PI); ctx.fill(); }
+      const [px, py, s] = cells[0];
+      this.pois.push({ x: this.wx(px + s / 2), y: this.wy(py + s / 2), color, kindName: 'isolated solution', strong: true });
+    }
+    return cells.length;
   }
 
   // Marching squares for F(x, y) = 0. Crossings where |F| is not small are poles (e.g. of
@@ -525,7 +616,13 @@ export class Grapher {
 
   // Domain colouring: hue = arg w, brightness from |w| with contour bands of log|w|.
   drawDomain(it) {
-    const step = this.dragging ? 6 : 2, ctx = this.ctx;
+    const ctx = this.ctx, dpr = window.devicePixelRatio || 1;
+    if (it.gpu) {          // WebGL: every pixel on the graphics card
+      const gl = it.gpu(this.view, Math.round(this.W * dpr), Math.round(this.H * dpr));
+      if (gl) { ctx.save(); ctx.globalAlpha = 0.95; ctx.drawImage(gl, 0, 0, this.W, this.H); ctx.restore(); it.rendered = 'gpu'; return; }
+    }
+    it.rendered = 'cpu';
+    const step = this.dragging ? 6 : 2;
     const w = Math.ceil(this.W / step), h = Math.ceil(this.H / step);
     const img = ctx.createImageData(w, h);
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {

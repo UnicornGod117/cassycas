@@ -9,6 +9,9 @@ import { substituteWorkspace } from './engine.js';
 import { parsePlotItems } from './plotspec.js';
 import { Grapher } from './graph/grapher.js';
 import { realFunction } from './graph/jit.js';
+import { compileInterval } from './graph/interval.js';
+import { drawViz } from './viz.js';
+import { compileGLSL, glDomainRenderer } from './graph/glsl.js';
 
 const PLOT_VARS = ['x', 'y', 't', 'theta', 'z'];
 
@@ -40,7 +43,17 @@ function compileItem(it, params, values) {
   switch (it.kind) {
     case 'fn': { const f = fn(it.expr, [it.v || 'x']); return { ...base, kind: 'fn', f }; }
     case 'ineq-fn': return { ...base, kind: 'ineq-fn', f: fn(it.expr, ['x']), rel: it.rel };
-    case 'implicit': return { ...base, kind: 'implicit', F: fn(it.expr, ['x', 'y']) };
+    case 'implicit': {
+      // certified enclosure (interval arithmetic) when every function in F has an interval extension
+      const node = prepare(it.expr, ['x', 'y', ...params]);
+      const Fi0 = compileInterval(node, ['x', 'y', ...params]);
+      const Fi = Fi0 && ((X, Y) => Fi0(X, Y, ...params.map(p => [values[p], values[p]])));
+      return { ...base, kind: 'implicit', F: fn(it.expr, ['x', 'y']), Fi };
+    }
+    case 'scatter': return { ...base, kind: 'scatter', xs: it.xs, ys: it.ys };
+    case 'series': return { ...base, kind: 'series', xs: it.xs, ys: it.ys };
+    case 'bars': return { ...base, kind: 'bars', edges: it.edges, heights: it.heights };
+    case 'box': return { ...base, ...it };
     case 'ineq': return { ...base, kind: 'ineq', F: fn(it.expr, ['x', 'y']), rel: it.rel };
     case 'param': return { ...base, kind: 'param', fx: fn(it.x, [it.v]), fy: fn(it.y, [it.v]), t0: it.t0 ?? 0, t1: it.t1 ?? 2 * Math.PI };
     case 'polar': return { ...base, kind: 'polar', r: fn(it.r, [it.v]), t0: it.t0 ?? 0, t1: it.t1 ?? 2 * Math.PI };
@@ -51,9 +64,12 @@ function compileItem(it, params, values) {
       return { ...base, kind: 'point', get x() { return px(); }, get y() { return py(); } };
     }
     case 'domain': {
-      const c = prepare(it.expr, ['z']).compile();
+      const node = prepare(it.expr, ['z']);
+      const glsl = params.length ? null : compileGLSL(node);
+      let gpu;            // created on first draw; false when WebGL is unavailable
+      const c = node.compile();
       const loc = ctx();
-      return { ...base, kind: 'domain', w: (re, im) => {
+      return { ...base, kind: 'domain', gpu: glsl && ((v, W, H) => { if (gpu === undefined) gpu = glDomainRenderer(glsl) || false; return gpu ? gpu(v, W, H) : null; }), w: (re, im) => {
         loc.z = math.complex(re, im);
         try { const v = c.evaluate(loc); return typeof v === 'number' ? [v, 0] : [v.re, v.im]; } catch { return [NaN, NaN]; }
       } };
@@ -114,7 +130,7 @@ export function drawSpec(container, spec, { xrange, height = 320 } = {}) {
 }
 
 export function plotSpecInline(container, spec) {
-  try { drawSpec(container, spec); }
+  try { if (!drawViz(container, spec, prepare)) drawSpec(container, spec); }
   catch (e) { container.innerHTML = `<div class="plot-err">${escH(e.message)}</div>`; }
 }
 

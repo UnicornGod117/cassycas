@@ -17,6 +17,7 @@ import { sympy, engineReady, engine, EngineUnavailable, EngineTimeout } from './
 import { toAst, expandPrimes, UnsupportedForSympy } from './sympy/ast.js';
 import { TOOLS, toolSpec } from './tools.js';
 import { parsePlotItems, plotSpecTex } from './plotspec.js';
+import { evalStatPlot, evalGraph, evalTree, evalPlot3d, evalSdePaths } from './viz.js';
 
 // ── Result constructors ───────────────────────────────
 // A result may carry `expr` (a mathjs-parseable plain expression) which the renderer makes
@@ -293,6 +294,7 @@ async function dispatchCanonical(expr, mode) {
   const head = (e.match(/^([A-Za-z_]\w*)\s*\(/) || [])[1];
   if (head === 'plot' && isWholeCall(e, head)) return evalPlot(parseTopLevelArgs(xarg(e, head)));
   if (['slopefield', 'vectorfield', 'domaincolor'].includes(head) && isWholeCall(e, head)) return evalPlot([e]);
+  if (head && VIZ_HEADS.includes(head) && isWholeCall(e, head)) return evalViz(head, parseTopLevelArgs(xarg(e, head)));
   if (head && TOOLS[head] && isWholeCall(e, head)) return evalTool(head, parseTopLevelArgs(xarg(e, head)), e);
   if (head && ALGEBRA_OPS[head]) return ALGEBRA_OPS[head](e);
   if (head && CALCULUS_OPS[head]) return CALCULUS_OPS[head](e);
@@ -848,7 +850,8 @@ async function jsSolve(lhs, rhs, v) {
   let exactRoots = null;
   try {
     const raw = alg(`roots(${toAlgebrite(fKnown)},${v})`);
-    exactRoots = (/^\[.*\]$/.test(raw) ? parseTopLevelArgs(raw.slice(1, -1)) : [raw]).map(prettify);
+    // a repeated root is listed once ((x² + y² − 4)² = 0 has each root twice)
+    exactRoots = [...new Set((/^\[.*\]$/.test(raw) ? parseTopLevelArgs(raw.slice(1, -1)) : [raw]).map(prettify))];
   } catch {}
   if (exactRoots && exactRoots.length) {
     const vals = exactRoots.map(r => { let num = null; if (!params.length) { try { num = math.evaluate(r); } catch {} } return { expr: r, num }; })
@@ -1065,6 +1068,17 @@ const JS_TOOLS = {
     return res;
   },
 };
+
+// histogram, boxplot, scatter, graph, shortestpath, tree, plot3d, riemann (see viz.js)
+const VIZ_HEADS = ['histogram', 'boxplot', 'scatter', 'graph', 'shortestpath', 'tree', 'plot3d', 'riemann', 'sdepaths'];
+function evalViz(head, args) {
+  const evaluate = (t) => math.evaluate(inlineUserFns(normalise(t)), ctx());
+  if (['histogram', 'boxplot', 'scatter'].includes(head)) return evalStatPlot(head, args, evaluate);
+  if (head === 'graph' || head === 'shortestpath') return evalGraph(head, args, evaluate);
+  if (head === 'tree') return evalTree(args);
+  if (head === 'sdepaths') return evalSdePaths(args, evaluate);
+  return evalPlot3d(head, args, evaluate);
+}
 
 // plot(sin(x), x^2 + y^2 = 4, [cos(t), sin(t)], r = 1 + cos(theta), [x, -5, 5])
 function evalPlot(args) {
