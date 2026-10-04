@@ -41,28 +41,8 @@ function growingFactory(factory, size) {
   };
 }
 
-async function restore(loadPyodide, cache, key) {
-  const hit = cache && await cache.match(key);
-  if (!hit) return null;
-  status('Restoring the saved engine…');
-  try {
-    const raw = new Uint8Array(await gzip(await hit.arrayBuffer(), 'out'));
-    const factory = (await import(/* @vite-ignore */ PYODIDE_INDEX + 'pyodide.asm.mjs')).default;
-    const py = await loadPyodide({ indexURL: PYODIDE_INDEX, _loadSnapshot: raw, createPyodideModule: growingFactory(factory, raw.length) });
-    const h = py.globals.get('handle');
-    JSON.parse(h(JSON.stringify({ op: 'eval', expr: { t: 'num', v: '1' } })));
-    return h;
-  } catch (e) {
-    await cache.delete(key).catch(() => {});
-    return null;
-  }
-}
-
-async function freshBoot(loadPyodide, canSnapshot) {
-  status('Downloading Python runtime…');
-  const py = await loadPyodide({ indexURL: PYODIDE_INDEX, _makeSnapshot: canSnapshot });
-  status('Loading SymPy…');
-  // Wheels are unpacked directly (not with loadPackage, which leaves state a snapshot cannot hold).
+// Fetch the engine's wheels (hash-checked) and unpack them into site-packages.
+async function installWheels(py) {
   const lock = py.lockfile.packages;
   for (const name of ENGINE_PACKAGES) {
     const pkg = lock[name];
@@ -75,12 +55,57 @@ async function freshBoot(loadPyodide, canSnapshot) {
   py.runPython(`
 import importlib, os, sys, zipfile
 _site = next(p for p in sys.path if p.endswith('site-packages'))
+os.makedirs(_site, exist_ok=True)
 for _f in os.listdir('/tmp'):
     if _f.endswith('.whl'):
         zipfile.ZipFile('/tmp/' + _f).extractall(_site)
         os.remove('/tmp/' + _f)
 importlib.invalidate_caches()
 `);
+}
+
+// Requests that reach modules SymPy imports lazily (inequalities, transforms, the numerical
+// checks): a restored engine must answer all of them, or it is discarded.
+const SELF_TEST = [
+  { op: 'solve', lhs: { t: 'op', op: '^', args: [{ t: 'sym', n: 'x' }, { t: 'num', v: '2' }] }, rhs: { t: 'num', v: '4' }, var: 'x', rel: '>' },
+  { op: 'diff', expr: { t: 'op', op: '*', args: [{ t: 'sym', n: 'x' }, { t: 'fn', n: 'sin', args: [{ t: 'sym', n: 'x' }] }] }, var: 'x' },
+  { op: 'tool', name: 'laplace', args: [{ t: 'sym', n: 't' }, { t: 'sym', n: 't' }, { t: 'sym', n: 's' }] },
+];
+function selfTest(h) {
+  for (const req of SELF_TEST) {
+    const r = JSON.parse(h(JSON.stringify(req)));
+    if (!r.ok) throw new Error(`self-test ${req.op}: ${r.error}`);
+    if (req.op === 'diff' && !(r.check && r.check.status === 'verified')) throw new Error('self-test: verification unavailable');
+  }
+}
+
+async function restore(loadPyodide, cache, key) {
+  const hit = cache && await cache.match(key);
+  if (!hit) return null;
+  status('Restoring the saved engine…');
+  try {
+    const raw = new Uint8Array(await gzip(await hit.arrayBuffer(), 'out'));
+    const factory = (await import(/* @vite-ignore */ PYODIDE_INDEX + 'pyodide.asm.mjs')).default;
+    const py = await loadPyodide({ indexURL: PYODIDE_INDEX, _loadSnapshot: raw, createPyodideModule: growingFactory(factory, raw.length) });
+    // The snapshot holds the interpreter's memory, not its file system (which lives in
+    // JavaScript): unpack the wheels again so modules SymPy imports lazily can still load.
+    await installWheels(py);
+    const h = py.globals.get('handle');
+    selfTest(h);
+    return h;
+  } catch (e) {
+    console.warn('Discarding the saved engine:', e && e.message);
+    await cache.delete(key).catch(() => {});
+    return null;
+  }
+}
+
+async function freshBoot(loadPyodide, canSnapshot) {
+  status('Downloading Python runtime…');
+  const py = await loadPyodide({ indexURL: PYODIDE_INDEX, _makeSnapshot: canSnapshot });
+  status('Loading SymPy…');
+  // Wheels are unpacked directly (not with loadPackage, which leaves state a snapshot cannot hold).
+  await installWheels(py);
   py.runPython(bridgeSource);
   py.runPython(toolsSource);          // same namespace: registers the 'tool' operation
   py.runPython(stepsSource);          // worked solutions (replaces the bridge's simpler step generators)
@@ -89,6 +114,10 @@ importlib.invalidate_caches()
             {'op': 'limit', 'expr': {'t': 'op', 'op': '/', 'args': [{'t': 'fn', 'n': 'sin', 'args': [{'t': 'sym', 'n': 'x'}]}, {'t': 'sym', 'n': 'x'}]}, 'var': 'x', 'point': {'t': 'num', 'v': '0'}},
             {'op': 'solve', 'lhs': {'t': 'op', 'op': '^', 'args': [{'t': 'sym', 'n': 'x'}, {'t': 'num', 'v': '2'}]}, 'rhs': {'t': 'num', 'v': '4'}, 'var': 'x'}):
     handle(json.dumps(_op))`);
+  // The self-test requests also import their modules now, so the snapshot already holds them.
+  const handleFn = py.globals.get('handle');
+  try { selfTest(handleFn); } catch (e) { console.warn('Engine self-test:', e.message); }
+  handleFn.destroy();     // no live proxies while the snapshot is taken
   const snapshot = canSnapshot ? py.makeMemorySnapshot() : null;
   return { h: py.globals.get('handle'), snapshot };
 }

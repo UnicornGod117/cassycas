@@ -90,7 +90,7 @@ for (const name of ENGINES) {
       await is('solve(x - 1000 = 0, x)', 'solve', 'x = 1000');
       assert.match(flat(ok(await res('solve(x^2 - 5x + a = 0, x)', 'solve'))), /25-4\*a/);
       const e6 = ok(await res('solve(exp(x) = 1e6, x)', 'solve'));
-      assert.match(e6, exact ? /^x = (6\*log\(10\)|log\(1000000\)) ≈ 13\.81551056$/ : /^x = 13\.81551056$/);
+      assert.match(e6, exact ? /^x = (6\*log\(10\)|log\(1000000\)) ≈ 13\.81551056$/ : /^x = 13\.81551056 {2}\(real roots found numerically\)$/);
       const sinRoots = ok(await res('solve(sin(x)=0, x)', 'solve'));
       if (exact) assert.match(sinRoots, /pi/);
       else { assert.match(sinRoots, /x = 0\b/); assert.match(sinRoots, /x = 3\.14159265/); }

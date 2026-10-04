@@ -1,13 +1,20 @@
 // CassyCAS service worker: makes the hosted app work offline.
 // The app shell is network-first (so updates arrive); versioned Pyodide/SymPy files from
 // jsDelivr are immutable and served cache-first after the first download.
-const SHELL = 'cassycas-shell-v1';
+const SHELL = 'cassycas-shell-v2';
 const RUNTIME = 'cassycas-pyodide-v314.0.7';
 const SNAPSHOT = 'cassycas-engine-snapshot';     // written by the SymPy worker
 const SHELL_FILES = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));
+  e.waitUntil((async () => {
+    const cache = await caches.open(SHELL);
+    await cache.addAll(SHELL_FILES);
+    // Every built chunk (precache.json is written by the build), so features loaded on demand
+    // (3D plots, visual input) also work offline after one visit.
+    try { await cache.addAll((await (await fetch('./precache.json')).json()).map(f => './' + f)); } catch {}
+    await self.skipWaiting();
+  })());
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => ![SHELL, RUNTIME, SNAPSHOT].includes(k)).map(k => caches.delete(k))))

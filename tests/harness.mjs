@@ -16,7 +16,7 @@ const WHEELS = path.join(ROOT, 'tests', '.wheels');
 const PYODIDE_CDN = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 const TYPES = { '.html': 'text/html', '.js': 'application/javascript', '.mjs': 'application/javascript',
   '.json': 'application/json', '.wasm': 'application/wasm', '.zip': 'application/zip', '.whl': 'application/zip',
-  '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml' };
+  '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.css': 'text/css', '.woff2': 'font/woff2' };
 
 export const hasWheels = () => fs.existsSync(WHEELS) && fs.readdirSync(WHEELS).some(f => f.startsWith('sympy'));
 

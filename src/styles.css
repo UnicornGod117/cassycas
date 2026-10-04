@@ -720,3 +720,28 @@ math-field{
   /* Keyboard hints and the mode badge cost more room than they are worth on a phone. */
   .input-hint,.cmeta .cbadge:not(.cbadge-engine){display:none;} .cout-body{padding-left:10px;}
 }
+
+/* ── Grapher (src/graph/grapher.js) ──────────── */
+.grapher{position:relative;width:100%;touch-action:none;user-select:none;-webkit-user-select:none;
+  --g-bg:var(--s0);--g-grid:var(--b1);--g-grid2:var(--b0);--g-axis:var(--t2);--g-text:var(--t2);}
+.grapher canvas{display:block;cursor:grab;}
+.grapher canvas:active{cursor:grabbing;}
+.grapher-tip{position:absolute;display:none;pointer-events:none;background:var(--s3);color:var(--t0);font:11px var(--mono);
+  padding:3px 7px;border-radius:6px;border:1px solid var(--b1);white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.25);z-index:2;}
+.grapher-tools{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:4px;}
+.grapher-tools button{width:26px;height:26px;border-radius:6px;border:1px solid var(--b1);background:var(--s1);color:var(--t1);
+  cursor:pointer;font-size:14px;line-height:1;padding:0;}
+.grapher-tools button:hover{color:var(--t0);border-color:var(--t2);}
+.grapher-legend{position:absolute;left:8px;top:8px;font:11px var(--mono);color:var(--t1);display:flex;flex-direction:column;gap:2px;
+  pointer-events:none;}
+.grapher-legend:empty{display:none;}
+.grapher-legend div{display:flex;align-items:center;gap:6px;background:var(--s1);padding:1px 6px;border-radius:4px;opacity:.92;}
+.grapher-swatch{width:10px;height:3px;border-radius:2px;display:inline-block;}
+.pslider-play{background:transparent;border:1px solid var(--b1);color:var(--t1);border-radius:4px;width:24px;height:20px;
+  cursor:pointer;font-size:9px;padding:0;}
+.pslider-play:hover{color:var(--a0);border-color:var(--a0);}
+
+/* ── Embedded notebooks (?embed) ─────────────── */
+body.embed .topbar, body.embed .rail, body.embed .sidebar, body.embed .welcome, body.embed .cacts { display:none !important; }
+body.embed:not(.embed-interactive) .input-area { display:none !important; }
+body.embed .notebook { padding:12px 14px 16px !important; }

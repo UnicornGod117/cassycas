@@ -38,6 +38,16 @@ test('the engine restarts from its memory snapshot on the next visit', { skip: !
     const r = await run(app.page, 'integrate(x*sin(x), x)', 'calculus');
     assert.equal(r.engine, 'sympy');
     assert.equal(r.plain, '-x*cos(x) + sin(x) + C');
+    // modules SymPy imports lazily, and the numerical checks, still work after a restore
+    const checks = await app.page.evaluate(async () => {
+      const out = [];
+      for (const [e, m] of [['solve(x^2 > 4, x)', 'solve'], ['derivative(x^2*sin(x), x)', 'calculus'], ['laplace(t^2, t, s)', 'calculus'], ['groebner([x^2 + y^2 - 1, x - y], [x, y])', 'algebra']]) {
+        const r = await window.CAS.dispatch(e, m);
+        out.push([r.plain, r.engine, r.check?.status || null]);
+      }
+      return out;
+    });
+    assert.deepEqual(checks, [['x < -2 or x > 2', 'sympy', 'verified'], ['x*(x*cos(x) + 2*sin(x))', 'sympy', 'verified'], ['2/s^3', 'sympy', null], ['[x - y, 2*y^2 - 1]', 'sympy', null]]);
     assert.deepEqual(app.errors, []);
   } finally { await app.close(); }
 });

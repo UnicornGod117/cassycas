@@ -47,6 +47,9 @@
   <button class="icon-btn" title="Copy a shareable link to this notebook" onclick="shareNotebook()">
     <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="18" cy="18" r="2.2"/><path d="M8 11l8-4M8 13l8 4"/></svg>
   </button>
+  <button class="icon-btn" title="Copy HTML to embed this notebook in a web page" onclick="embedNotebook()">
+    <svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M13.5 5l-3 14"/></svg>
+  </button>
   <button class="icon-btn" title="Save session" onclick="saveSession()">
     <svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 14h8"/></svg>
   </button>
@@ -190,6 +193,8 @@
           <span class="assist-label">✦ Ask</span>
           <input class="assist-input" id="assist-input" placeholder="e.g.  area under x² between 0 and 3" onkeydown="if(event.key==='Enter')askAssistant()"/>
           <button class="defint-btn" onclick="askAssistant()">Translate</button>
+          <label class="defint-btn assist-photo" title="Read maths from a photo or screenshot">📷 Photo
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" id="assist-photo" onchange="askFromPhoto(event)" hidden/></label>
           <span class="assist-status" id="assist-status"></span>
         </div>
         <div class="input-toolbar" id="input-toolbar">

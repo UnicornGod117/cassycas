@@ -248,6 +248,7 @@ async function dispatchCanonical(expr, mode) {
   if (/\bto\b/.test(e) && mode !== 'calculus' && !/^(integrate|limit|sum|product|plot|solve)\s*\(/.test(e)) return evalUnits(e);
   const head = (e.match(/^([A-Za-z_]\w*)\s*\(/) || [])[1];
   if (head === 'plot' && isWholeCall(e, head)) return evalPlot(parseTopLevelArgs(xarg(e, head)));
+  if (['slopefield', 'vectorfield', 'domaincolor'].includes(head) && isWholeCall(e, head)) return evalPlot([e]);
   if (head && TOOLS[head] && isWholeCall(e, head)) return evalTool(head, parseTopLevelArgs(xarg(e, head)), e);
   if (head && ALGEBRA_OPS[head]) return ALGEBRA_OPS[head](e);
   if (head && CALCULUS_OPS[head]) return CALCULUS_OPS[head](e);
@@ -329,7 +330,6 @@ async function evalExpression(expr) {
   // A call to a function nobody defined (eigenvalz(A)) is a mistake, not a symbolic expression;
   // one-letter names (f(x), g(t)) are abstract functions.
   const undefFn = mjError && (mjError.message.match(/Undefined function "?([A-Za-z_]\w*)/) || [])[1];
-  if (undefFn && !ABSTRACT_FN.test(undefFn)) throw unknownFunctionError(undefFn);
   // Exact engine: exact numbers in Exact mode, and symbolic expressions in any mode.
   if ((numeric && state.exactMode) || mjError) {
     const a = tryAst(expr);
@@ -346,6 +346,10 @@ async function evalExpression(expr) {
   if (!mjError) return valResult(value, expr);
   // Only an unknown name makes an expression symbolic; any other evaluation error is real.
   if (!/Undefined (symbol|function)/i.test(mjError.message)) throw mjError;
+  if (undefFn && !ABSTRACT_FN.test(undefFn)) {
+    if (engineReady() && state.engineEnabled) throw unknownFunctionError(undefFn);
+    throw new Error(`${undefFn}() is not known to the JavaScript engine; it may need the exact engine${needsExactHint()}.`);
+  }
   // Symbolic fallback: mathjs simplification
   const node = math.parse(expr);
   let s = node; try { s = math.simplify(node); } catch {}
@@ -794,8 +798,9 @@ async function jsSolve(lhs, rhs, v) {
   const { roots, truncated } = findRoots(fKnown, v);
   steps.push({ d: 'Numerical root search', e: roots.length ? `${roots.length} root(s)${truncated ? ' (20 nearest the origin)' : ''}` : 'none found in [-10000, 10000]' });
   if (!roots.length) return texResult('\\text{No real roots found}', 'No real roots found', { steps, note: fallbackNote() });
-  return texResult(roots.map((r, i) => `${v}_{${i + 1}}=${texNum(r)}`).join(',\\quad ') + (truncated ? ',\\ \\ldots' : ''),
-    roots.map(r => `${v} = ${fmtNum(r)}`).join(', '), { steps, note: fallbackNote() });
+  // A numerical search finds real roots in a window; it cannot promise there are no others.
+  return texResult(roots.map((r, i) => `${v}_{${i + 1}}=${texNum(r)}`).join(',\\quad ') + (truncated ? ',\\ \\ldots' : '') + '\\quad\\text{(real roots found numerically)}',
+    roots.map(r => `${v} = ${fmtNum(r)}`).join(', ') + '  (real roots found numerically)', { steps, note: fallbackNote() });
 }
 async function evalSystem(eqs, varsText) {
   let vars = varsText ? (isList(varsText) ? parseTopLevelArgs(varsText.trim().slice(1, -1)) : [varsText.trim()]) : null;
@@ -820,7 +825,10 @@ async function evalSystem(eqs, varsText) {
   }
   const sol = solveSys(eqs, vars);
   const warn = sol[0]?.warn ? `\\ \\small{\\color{orange}{\\text{⚠ may not have converged, residual ≈ ${sol[0].residual?.toExponential(2)}}}}` : '';
-  return texResult(sol.map(s => `${s.v} = ${texNum(s.x)}`).join(',\\quad ') + warn, sol.map(s => `${s.v}=${fmtNum(s.x)}`).join(', '),
+  // Newton's method finds one solution; only a linear system is known to have no others.
+  const linear = eqs.every(q => { try { const { lhs, rhs } = splitRelation(q); const f = math.parse(`(${lhs}) - (${rhs})`); return vars.every(a => vars.every(b => math.simplify(math.derivative(math.derivative(f, a), b)).toString() === '0')); } catch { return false; } });
+  const maybeMore = linear ? '' : '  (found numerically; there may be other solutions)';
+  return texResult(sol.map(s => `${s.v} = ${texNum(s.x)}`).join(',\\quad ') + warn + (maybeMore ? '\\quad\\text{(found numerically; there may be other solutions)}' : ''), sol.map(s => `${s.v}=${fmtNum(s.x)}`).join(', ') + maybeMore,
     { note: fallbackNote(), steps: [{ d: 'System of equations', e: eqs.join(', ') }, { d: "Newton's method (multi-start)", e: sol.map(s => `${s.v}=${fmtN(s.x)}`).join(', ') }] });
 }
 

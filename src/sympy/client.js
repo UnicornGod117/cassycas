@@ -1,5 +1,5 @@
 // Main-thread client for the SymPy worker: lazy start, status events, timeouts with restart.
-import SympyWorker from './sympy.worker.js?worker&inline';
+import SympyWorker from './sympy.worker.js?worker';
 import { state, assumptions } from '../state.js';
 
 export const engine = { status: 'off', detail: '' };   // off | loading | ready | failed | restarting

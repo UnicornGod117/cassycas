@@ -146,26 +146,59 @@ for (const name of ENGINES) {
       await setApprox(page, false);
     });
 
+    // The grapher keeps its items (with compiled functions) on the canvas; draw() runs synchronously.
+    const grapher = (id, fn) => page.evaluate(([id, src]) => {
+      const g = document.getElementById(id || 'gplot').querySelector('canvas').__grapher;
+      g.draw();
+      return (0, eval)(src)(g);
+    }, [id, fn.toString()]);
+
     test('plot(...) draws functions, implicit, polar and parametric curves', async () => {
       const r = await res('plot(sin(x), x^2 + y^2 = 16, r = 2 + 2cos(theta), [3cos(3t), 3sin(2t)])', 'calculus');
       assert.ok(!r.error, r.error);
-      const types = await page.evaluate(id => document.getElementById(id).querySelector('.js-plotly-plot')?.data.map(t => t.type), r.id);
-      assert.deepEqual(types, ['scatter', 'contour', 'scatter', 'scatter']);
-      const circle = await page.evaluate(id => {
-        const d = document.getElementById(id).querySelector('.js-plotly-plot').data[3];
-        return d.x.every((x, i) => x === null || Math.abs(x) <= 3 + 1e-9) && d.y.some(y => y !== null && y < -2.9);
-      }, r.id);
-      assert.ok(circle, 'parametric curve sampled over [0, 2π]');
+      assert.deepEqual(await grapher(r.id, g => g.items.map(i => i.kind)), ['fn', 'implicit', 'polar', 'param']);
+      assert.ok(await grapher(r.id, g => {
+        const it = g.items[3];
+        let inside = true, low = false;
+        for (let k = 0; k <= 1000; k++) { const t = 2 * Math.PI * k / 1000, x = it.fx(t), y = it.fy(t); if (Math.abs(x) > 3 + 1e-9) inside = false; if (y < -2.9) low = true; }
+        return inside && low && it.t0 === 0 && Math.abs(it.t1 - 2 * Math.PI) < 1e-12;
+      }), 'parametric curve sampled over [0, 2π]');
+      assert.ok(await grapher(r.id, g => g.items[1].screen.length > 100), 'the circle is traced');
+      const roots = await grapher(r.id, g => g.pois.filter(p => p.kindName === 'root').map(p => p.x).sort((a, b) => a - b));
+      for (const want of [-Math.PI, 0, Math.PI]) assert.ok(roots.some(x => Math.abs(x - want) < 1e-9), `root of sin at ${want}: ${roots}`);
       const ranged = await res('plot(x^2, [x, 0, 2])', 'calculus');
-      const xs = await page.evaluate(id => document.getElementById(id).querySelector('.js-plotly-plot').data[0].x, ranged.id);
-      assert.equal(xs[0], 0); assert.equal(xs.at(-1), 2);
-      assert.match((await res('plot(x < 2)', 'calculus')).error, /Inequalities/);
+      assert.deepEqual(await grapher(ranged.id, g => [g.home.xRange[0], g.home.xRange[1]]), [0, 2]);
+      const tan = await res('plot(tan(x))', 'calculus');
+      assert.ok(await grapher(tan.id, g => g.items[0].runs.length >= 6), 'tan(x) is broken at its poles, not joined across them');
+      const ineq = await res('plot(y < x^2 - 2, x^2 + y^2 <= 9, x < 2)', 'calculus');
+      assert.ok(!ineq.error, ineq.error);
+      assert.deepEqual(await grapher(ineq.id, g => g.items.map(i => `${i.kind} ${i.rel}`)), ['ineq-fn <', 'ineq <=', 'ineq <']);
+      const both = await res('plot(x^2, 2x + 3)', 'calculus');
+      const meet = await grapher(both.id, g => g.pois.filter(p => p.kindName === 'intersection').map(p => [p.x, p.y]));
+      assert.ok(meet.some(([x, y]) => Math.abs(x - 3) < 1e-9 && Math.abs(y - 9) < 1e-6) && meet.some(([x]) => Math.abs(x + 1) < 1e-9), JSON.stringify(meet));
+      const fields = await res('plot(slopefield(x - y), vectorfield([-y, x]), point(1, 2))', 'calculus');
+      assert.deepEqual(await grapher(fields.id, g => g.items.map(i => i.kind)), ['slope', 'vector', 'point']);
+      const dc = await res('domaincolor(z^2 - 1)', 'calculus');
+      assert.deepEqual(await grapher(dc.id, g => g.items[0].w(2, 0)), [3, 0]);
+      const par = await res('plot(a*sin(x))', 'calculus');
+      assert.equal(await page.evaluate(id => document.getElementById(id).querySelectorAll('input[data-param]').length, par.id), 1, 'a slider for the parameter');
     });
 
     test('Graph view accepts implicit and polar curves', async () => {
       await page.evaluate(() => { document.getElementById('ginp').value = 'x^2/9 + y^2/4 = 1, r = 1 + cos(theta), cos(x)'; plotGraph(false); });
-      const types = await page.evaluate(() => document.querySelector('#gplotinner').data.map(t => t.type));
-      assert.deepEqual(types, ['contour', 'scatter', 'scatter']);
+      assert.deepEqual(await grapher(null, g => g.items.map(i => i.kind)), ['implicit', 'polar', 'fn']);
+    });
+
+    test('expressions compile to native code for plotting, with a safe fallback', async () => {
+      const r = await page.evaluate(() => {
+        const { compileReal } = window.CAS.jit;
+        const f = compileReal('x^2 + sin(x) * y', ['x', 'y']);
+        const cube = compileReal('x^(1/3)', ['x']);
+        return { f: f && f(2, 3), cube: cube && cube(-8), unsafe: compileReal('alert(1)', ['x']), unknown: compileReal('foo + x', ['x']) };
+      });
+      assert.ok(Math.abs(r.f - (4 + Math.sin(2) * 3)) < 1e-12);
+      assert.ok(Math.abs(r.cube + 2) < 1e-12, 'real cube root of a negative number');
+      assert.equal(r.unsafe, null); assert.equal(r.unknown, null);
     });
 
     test('every rendered result is well-formed LaTeX', async () => {

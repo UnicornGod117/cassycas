@@ -1,5 +1,5 @@
 // Main-thread side of the mathjs kernel: evaluation context, worker RPC, workspace persistence.
-import EvalWorker from './eval.worker.js?worker&inline';
+import EvalWorker from './eval.worker.js?worker';
 import { math } from '../expr.js';
 import { makeDegFns } from './degree.js';
 import { state, scope, userFns, varDefs, assumptions, CONSTANT_NAMES, IDENT_RE, FORBIDDEN_NAMES } from '../state.js';

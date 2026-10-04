@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:setup": "node tests/setup.mjs && playwright install chromium",
-    "test": "node --test --test-concurrency=1 tests/*.test.mjs"
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "build:single": "vite build --mode single",
+    "bench": "node tests/bench/run.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

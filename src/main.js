@@ -1,6 +1,4 @@
 // CassyCAS entry point: wires the UI to the engines and notebook.
-import 'mathlive';
-import { MathfieldElement } from 'mathlive';
 import './styles.css';
 import { math, normalise, canonical } from './expr.js';
 import { escH, fmtR } from './format.js';
@@ -11,14 +9,19 @@ import { dispatch } from './engine.js';
 import { createEditor } from './editor.js';
 import { renderTex } from './render.js';
 import { plotGraph, exportPlot } from './plot.js';
+import { compileReal } from './graph/jit.js';
 import { MODES, ACD, CONSTS, INSERT_MAP } from './modes.js';
 import { engine, startEngine, stopEngine, onEngineStatus } from './sympy/client.js';
 import * as NB from './notebook.js';
 import * as Assistant from './assistant.js';
 
-// MathLive: use the KaTeX fonts already bundled with the app (no extra font downloads).
-MathfieldElement.fontsDirectory = null;
-MathfieldElement.soundsDirectory = null;
+// MathLive (visual input) loads the first time the visual editor is opened. It uses the KaTeX
+// fonts already bundled with the app (no extra font downloads).
+let mathlive = null;
+const ensureMathLive = () => (mathlive ||= import('mathlive').then(({ MathfieldElement }) => {
+  MathfieldElement.fontsDirectory = null;
+  MathfieldElement.soundsDirectory = null;
+}));
 
 const $ = (id) => document.getElementById(id);
 let editor = null;
@@ -71,7 +74,7 @@ function setInputMode(m) {
   $('tg-ml').classList.toggle('on', inpMode === 'ml');
   $('editor').style.display = inpMode === 'code' ? '' : 'none';
   $('mlwrap').classList.toggle('on', inpMode === 'ml');
-  if (inpMode === 'ml') $('mf').focus(); else editor.focus();
+  if (inpMode === 'ml') ensureMathLive().then(() => $('mf').focus()); else editor.focus();
 }
 function insText(t) {
   if (inpMode === 'code') editor.insert(t);
@@ -308,20 +311,59 @@ function setAssistantKey(v) {
   NB.recompute({ all: true });
 }
 function toggleAssistant() { const b = $('assist-bar'); b.classList.toggle('on'); if (b.classList.contains('on')) $('assist-input').focus(); }
+const workspaceSummary = () => Object.keys(scope).filter(k => !CONSTANT_NAMES.includes(k)).slice(0, 30)
+  .map(k => typeof scope[k] === 'function' ? `${k}(${userFns[k]?.params.join(',')}) = ${userFns[k]?.body}` : `${k} = ${fmtR(scope[k]).slice(0, 40)}`);
+// Run a suggestion through the CAS without adding a cell: Claude proposes, the CAS checks.
+async function dryRun(expr, mode) {
+  if (/^\s*[A-Za-z_]\w*(\([^)]*\))?\s*=(?!=)/.test(expr) || /^assume\s*\(/.test(expr)) return { ok: true };   // definitions change the workspace
+  try {
+    const r = await dispatch(expr, mode);
+    return { ok: true, plain: r && r.plain, check: r && r.check };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+// Show a CAS-checked suggestion in the editor (one corrective retry when the CAS rejects it).
+async function offerSuggestion(out, retry) {
+  const status = $('assist-status');
+  if (!out.expression) { status.textContent = out.explanation || 'Not a maths request.'; return; }
+  let res = await dryRun(out.expression, out.mode);
+  if (!res.ok && retry) {
+    status.textContent = 'The CAS rejected the first attempt; asking Claude to correct it…';
+    const second = await retry({ expression: out.expression, error: res.error });
+    if (second.expression) { out = second; res = await dryRun(out.expression, out.mode); }
+  }
+  setMode(out.mode);
+  setInputMode('code');
+  setInput(out.expression);
+  if (!res.ok) { status.textContent = `${out.explanation} — the CAS reports: ${res.error}. Edit before running.`; return; }
+  const preview = res.plain ? ` CAS preview: ${res.plain.length > 80 ? res.plain.slice(0, 79) + '…' : res.plain}${res.check?.status === 'verified' ? ' (✓ verified)' : ''}.` : '';
+  status.textContent = `${out.explanation}.${preview} Press Enter to run.`;
+}
 async function askAssistant() {
   const q = $('assist-input').value.trim();
   if (!q) return;
   const status = $('assist-status');
   status.textContent = 'Thinking…';
   try {
-    const ws = Object.keys(scope).filter(k => !CONSTANT_NAMES.includes(k)).slice(0, 30)
-      .map(k => typeof scope[k] === 'function' ? `${k}(${userFns[k]?.params.join(',')}) = ${userFns[k]?.body}` : `${k} = ${fmtR(scope[k]).slice(0, 40)}`);
-    const out = await Assistant.translate(q, ws);
-    if (!out.expression) { status.textContent = out.explanation || 'Not a maths request.'; return; }
-    setMode(out.mode);
-    setInputMode('code');
-    setInput(out.expression);
-    status.textContent = `${out.explanation} — press Enter to run.`;
+    const ws = workspaceSummary();
+    await offerSuggestion(await Assistant.translate(q, ws), (feedback) => Assistant.translate(q, ws, feedback));
+  } catch (e) { status.textContent = e.message; }
+}
+async function askFromPhoto(ev) {
+  const file = ev.target.files[0];
+  ev.target.value = '';
+  if (!file) return;
+  const status = $('assist-status');
+  if (file.size > 5e6) { status.textContent = 'That image is over 5 MB — crop or shrink it first.'; return; }
+  status.textContent = 'Reading the photo…';
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(',')[1]);
+      r.onerror = () => reject(new Error('Could not read the image.'));
+      r.readAsDataURL(file);
+    });
+    const hint = $('assist-input').value.trim();
+    await offerSuggestion(await Assistant.translateImage(base64, file.type, hint), null);
   } catch (e) { status.textContent = e.message; }
 }
 async function explainCell(cell, el) {
@@ -329,7 +371,7 @@ async function explainCell(cell, el) {
   let box = el.querySelector('.explain-box');
   if (!box) { box = document.createElement('div'); box.className = 'explain-box'; steps.before(box); }
   box.textContent = 'Asking Claude…';
-  try { box.textContent = await Assistant.explain(cell.expr, el.dataset.plain, cell.res?.steps || []); }
+  try { box.textContent = await Assistant.explain(cell.expr, el.dataset.plain, cell.res?.steps || [], cell.res?.check || null); }
   catch (e) { box.textContent = e.message; }
 }
 
@@ -357,6 +399,19 @@ async function shareNotebook() {
     history.replaceState(null, '', url);
     toast('Share link copied');
   } catch (e) { toast('Could not create link: ' + e.message); }
+}
+// Embed: an <iframe> showing this notebook without the app chrome (?embed); the notebook
+// travels in the URL fragment exactly like a share link, so nothing is uploaded anywhere.
+async function embedNotebook() {
+  try {
+    const link = await NB.shareLink();
+    const [base, hash] = [link.split('#')[0], link.slice(link.indexOf('#'))];
+    const src = base + (base.includes('?') ? '&' : '?') + 'embed' + hash;
+    const html = `<iframe src="${src}" width="100%" height="520" style="border:1px solid #ddd;border-radius:8px" title="CassyCAS notebook" loading="lazy"></iframe>`;
+    await navigator.clipboard?.writeText(html).catch(() => {});
+    toast('Embed code copied');
+    return html;
+  } catch (e) { toast('Could not create embed code: ' + e.message); return null; }
 }
 function addText() { NB.createTextCell(); NB.persistNotebook(); }
 
@@ -410,6 +465,11 @@ async function openFromHash() {
 // ══════════════════════════════════════════════════════
 async function init() {
   loadPrefs();
+  // ?embed: notebook only (for iframes); ?embed=interactive keeps the input line.
+  const embed = new URLSearchParams(location.search).get('embed');
+  if (embed !== null) document.body.classList.add('embed', ...(embed === 'interactive' ? ['embed-interactive'] : []));
+  // The exact engine boots in its own worker (≈0.4 s from its snapshot): start it first.
+  if (state.engineEnabled) startEngine();
   editor = createEditor($('editor'), { onRun: runCell, onChange: onEditorChange });
   renderModeList(); renderModeUI(); buildConsts(); buildTweaks(); buildWelcomeGrid(); syncAssistant();
   bindEvents();
@@ -430,10 +490,7 @@ async function init() {
   }
   syncToggles();
   renderDefs();
-  if (state.engineEnabled) {
-    const start = () => startEngine();
-    if ('requestIdleCallback' in window) requestIdleCallback(start, { timeout: 1500 }); else setTimeout(start, 300);
-  } else renderEngineStatus(engine);
+  if (!state.engineEnabled) renderEngineStatus(engine);
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && location.hostname !== '127.0.0.1')
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   editor.focus();
@@ -445,13 +502,13 @@ Object.assign(window, {
   runCell, setInputMode, insertDefInt, runDefInt, switchView, toggleSidebar, clearDefs, clearAll,
   toggleExact, toggleAngle, toggleTheme, toggleTweaks, openPalette, closePalette, filterPalette, palKey,
   evalUnit, setUnitInp, plotGraph, exportPlot: (id) => exportPlot(document.getElementById('gplot'), 'cas-plot-' + id),
-  saveSession, loadFile, exportLatex: NB.exportLatex, exportTxt: NB.exportTxt, shareNotebook, addText,
-  engineInfo, setAutoPlot, setEngineEnabled, setAssistantKey, toggleAssistant, askAssistant,
+  saveSession, loadFile, exportLatex: NB.exportLatex, exportTxt: NB.exportTxt, shareNotebook, embedNotebook, addText,
+  engineInfo, setAutoPlot, setEngineEnabled, setAssistantKey, toggleAssistant, askAssistant, askFromPhoto,
 });
 
 // Automation / test API.
 window.CAS = {
-  ready: false, engine, state, scope, math, numericallyEqual, dispatch, MODES, clearDefs,
+  ready: false, engine, state, scope, math, numericallyEqual, dispatch, MODES, clearDefs, jit: { compileReal },
   cells: NB.cells, recompute: NB.recompute, idle: NB.idle, editCell: NB.editCell, deleteCell: NB.deleteCell,
   shareLink: NB.shareLink, setExact: async (b) => { if (state.exactMode !== b) await toggleExact(); },
   setAngle: async (a) => { if (state.angleMode !== a) await toggleAngle(); },

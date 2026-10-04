@@ -54,8 +54,10 @@ export function toAst(input) {
   return walk(node);
 }
 
-// y'' + y = 0  →  __deriv(y, 2) + y = 0   (for dsolve; the bridge resolves the variable)
+// y'' - 3y' + y = 0  →  __deriv(y, 2) - 3 __deriv(y, 1) + y = 0   (for dsolve; the bridge resolves
+// the variable). Not \b: a coefficient may be written right before the name (3y').
 export function expandPrimes(expr, fname) {
-  return expr.replace(new RegExp(`\\b${fname}('+)(\\(\\s*[A-Za-z_]\\w*\\s*\\))?`, 'g'), (m, primes) => `__deriv(${fname}, ${primes.length})`)
-             .replace(new RegExp(`\\b${fname}\\s*\\(\\s*[A-Za-z_]\\w*\\s*\\)`, 'g'), fname);
+  const start = '(?<![A-Za-z_])';
+  return expr.replace(new RegExp(`${start}${fname}('+)(\\(\\s*[A-Za-z_]\\w*\\s*\\))?`, 'g'), (m, primes) => ` __deriv(${fname}, ${primes.length})`)
+             .replace(new RegExp(`${start}${fname}\\s*\\(\\s*[A-Za-z_]\\w*\\s*\\)`, 'g'), fname);
 }

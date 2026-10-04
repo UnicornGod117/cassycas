@@ -1,176 +1,176 @@
-// Plotly plotting: inline cell plots (with sliders for free parameters) and the Graph view.
-import Plotly from 'plotly.js-dist-min';
+// Plotting: inline cell plots and the Graph view, drawn by the canvas grapher (graph/grapher.js)
+// with expressions compiled to native functions (graph/jit.js). Free parameters get sliders with
+// a play button. Plotly is loaded only for 3D surfaces.
 import { math, freeSymbols, normalise, inlineUserFns, parseTopLevelArgs } from './expr.js';
-import { toReal, escH } from './format.js';
-import { state, scope } from './state.js';
+import { escH } from './format.js';
+import { scope } from './state.js';
 import { ctx } from './kernel/mathjs-client.js';
 import { substituteWorkspace } from './engine.js';
 import { parsePlotItems } from './plotspec.js';
+import { Grapher } from './graph/grapher.js';
+import { realFunction } from './graph/jit.js';
 
-const COLORS = ['#7eef9c', '#a99cf2', '#7fc5e0', '#e8b87a', '#e88a99', '#f0a06f'];
+const PLOT_VARS = ['x', 'y', 't', 'theta', 'z'];
 
-export function layout(title, extra = {}) {
-  const dk = state.darkTheme;
-  return {
-    title: { text: title, font: { color: dk ? '#a3adc0' : '#3e4350', size: 12, family: 'JetBrains Mono' } },
-    paper_bgcolor: dk ? '#0f1218' : '#fbfaf6', plot_bgcolor: dk ? '#13171f' : '#f1efe8',
-    font: { color: dk ? '#6f7a8e' : '#6b7384', family: 'JetBrains Mono' },
-    xaxis: { gridcolor: dk ? '#1f2530' : '#e3dfd0', zerolinecolor: dk ? '#2a3240' : '#d3cdb8' },
-    yaxis: { gridcolor: dk ? '#1f2530' : '#e3dfd0', zerolinecolor: dk ? '#2a3240' : '#d3cdb8' },
-    margin: { l: 48, r: 20, t: 36, b: 36 }, hovermode: 'x unified',
-    legend: { font: { color: dk ? '#a3adc0' : '#3e4350' } }, ...extra,
-  };
-}
+// mathjs node for an expression, with user functions and workspace values substituted.
+const prepare = (s, keep) => substituteWorkspace(inlineUserFns(normalise(s)), keep);
 
-// Sample f(v) on [lo, hi]; returns arrays with gaps (null) at discontinuities.
-function sample(fn, v, lo, hi, params, n = 600) {
-  const xs = [], ys = [];
-  const loc = ctx(params);
-  let prev = null;
-  for (let i = 0; i <= n; i++) {
-    const x = lo + (hi - lo) * i / n; loc[v] = x;
-    let y = null;
-    try { y = toReal(fn.evaluate(loc)); } catch {}
-    if (!isFinite(y)) y = null;
-    // break the line across poles (huge jumps)
-    if (y !== null && prev !== null && Math.abs(y - prev) > 1e3 * (1 + Math.abs(prev))) { xs.push(x); ys.push(null); }
-    xs.push(x); ys.push(y); prev = y;
+// Free parameters of a plot spec: names that are neither plotting variables nor defined.
+function specParams(spec) {
+  const names = new Set();
+  const add = (s, keep) => { try { freeSymbols(prepare(s, keep)).forEach(n => { if (!keep.includes(n) && scope[n] === undefined) names.add(n); }); } catch {} };
+  for (const it of spec.items) {
+    if (it.kind === 'fn' || it.kind === 'ineq-fn') add(it.expr, [it.v || 'x', 'y']);
+    else if (it.kind === 'implicit' || it.kind === 'ineq' || it.kind === 'slope') add(it.expr, ['x', 'y']);
+    else if (it.kind === 'param') { add(it.x, [it.v]); add(it.y, [it.v]); }
+    else if (it.kind === 'polar') add(it.r, [it.v]);
+    else if (it.kind === 'vector') { add(it.P, ['x', 'y']); add(it.Q, ['x', 'y']); }
+    else if (it.kind === 'point') { add(it.x, []); add(it.y, []); }
   }
-  return { xs, ys };
+  return [...names].filter(n => !PLOT_VARS.includes(n)).sort();
 }
 
-// Inline plot for a cell. Free parameters (other than v) get sliders.
-export function plotInline(container, exprPlain, v = 'x', title) {
-  let node;
-  try { node = substituteWorkspace(inlineUserFns(normalise(exprPlain)), [v]); }
-  catch (e) { container.innerHTML = `<div class="plot-err">${escH(e.message)}</div>`; return; }
-  const params = freeSymbols(node).filter(s => s !== v && scope[s] === undefined);
-  const fn = node.compile();
-  const values = Object.fromEntries(params.map(p => [p, 1]));
-  container.innerHTML = `<div class="cell-plot-inner"></div>${params.length ? '<div class="plot-sliders"></div>' : ''}`;
-  const div = container.querySelector('.cell-plot-inner');
-  const draw = () => {
-    const { xs, ys } = sample(fn, v, -10, 10, values);
-    const trace = { x: xs, y: ys, type: 'scatter', mode: 'lines', line: { color: COLORS[0], width: 2 }, name: title || exprPlain, connectgaps: false };
-    const lay = layout(title || exprPlain, { xaxis: { ...layout('').xaxis, title: v }, yaxis: { ...layout('').yaxis, autorange: true } });
-    Plotly.react(div, [trace], lay, { responsive: true, displayModeBar: false });
+// Compile one spec item into grapher functions reading the shared parameter values.
+function compileItem(it, params, values) {
+  const fn = (src, vars) => {
+    const f = realFunction(prepare(src, [...vars, ...params]), [...vars, ...params], ctx());
+    return (...xs) => f(...xs, ...params.map(p => values[p]));
   };
-  if (params.length) {
-    const sl = container.querySelector('.plot-sliders');
-    sl.innerHTML = params.map(p => `
-      <label class="pslider"><span class="pslider-name">${escH(p)}</span>
-        <input type="range" min="-10" max="10" step="0.05" value="1" data-param="${escH(p)}"/>
-        <span class="pslider-val">1</span></label>`).join('');
-    let frame = 0;
-    sl.addEventListener('input', e => {
-      const inp = e.target.closest('input[data-param]'); if (!inp) return;
-      values[inp.dataset.param] = parseFloat(inp.value);
-      inp.nextElementSibling.textContent = inp.value;
-      cancelAnimationFrame(frame); frame = requestAnimationFrame(draw);
-    });
-  }
-  draw();
-}
-
-export function plotSeries(container, xs, ys, title, xv, yv) {
-  container.innerHTML = '<div class="cell-plot-inner"></div>';
-  Plotly.newPlot(container.firstChild, [{ x: xs, y: ys, type: 'scatter', mode: 'lines', line: { color: '#a99cf2', width: 2 }, name: `${yv}(${xv})` }],
-    layout(title), { responsive: true, displayModeBar: false });
-}
-
-export function exportPlot(el, name) {
-  const div = el && (el.classList.contains('js-plotly-plot') ? el : el.querySelector('.js-plotly-plot'));
-  if (div) Plotly.downloadImage(div, { format: 'png', width: 1200, height: 800, filename: name });
-}
-
-// Draw a plot spec (see plotspec.js): functions, implicit, parametric and polar curves.
-export function drawSpec(target, spec, { xrange } = {}) {
-  const compile = (s, keep) => substituteWorkspace(inlineUserFns(normalise(s)), keep).compile();
-  const r = spec.range;
-  const [xa, xb] = xrange || (r && ['x', 'y'].includes(r.v) ? [r.a, r.b] : [-10, 10]);
-  const traces = [];
-  let geometric = false;
-  spec.items.forEach((it, idx) => {
-    const color = COLORS[idx % COLORS.length];
-    const line = { color, width: 2.2 };
-    if (it.kind === 'fn') {
-      const [a, b] = r && r.v === it.v ? [r.a, r.b] : [xa, xb];
-      const { xs, ys } = sample(compile(it.expr, [it.v]), it.v, a, b, {}, 800);
-      traces.push({ x: xs, y: ys, type: 'scatter', mode: 'lines', line, name: it.label, connectgaps: false });
-    } else if (it.kind === 'implicit') {
-      geometric = true;
-      const fn = compile(it.expr, ['x', 'y']), n = 180;
-      const xs = [], ys = [], zs = [];
-      for (let i = 0; i <= n; i++) { xs.push(xa + (xb - xa) * i / n); ys.push(xa + (xb - xa) * i / n); }
-      const loc = ctx({});
-      for (let j = 0; j <= n; j++) {
-        const row = [];
-        loc.y = ys[j];
-        for (let i = 0; i <= n; i++) { loc.x = xs[i]; let z = null; try { z = toReal(fn.evaluate(loc)); } catch {} row.push(isFinite(z) ? z : null); }
-        zs.push(row);
-      }
-      traces.push({ x: xs, y: ys, z: zs, type: 'contour', name: it.label, showscale: false, hoverinfo: 'skip', showlegend: true,
-        contours: { start: 0, end: 0, size: 1, coloring: 'lines' }, colorscale: [[0, color], [1, color]], line: { width: 2.2 } });
-    } else {
-      geometric = true;
-      const [a, b] = r && r.v === it.v ? [r.a, r.b] : [0, 2 * Math.PI];
-      const n = 1200, xs = [], ys = [];
-      const loc = ctx({});
-      const fx = it.kind === 'param' ? compile(it.x, [it.v, 'x', 'y']) : null, fy = it.kind === 'param' ? compile(it.y, [it.v, 'x', 'y']) : null;
-      const fr = it.kind === 'polar' ? compile(it.r, [it.v]) : null;
-      for (let i = 0; i <= n; i++) {
-        const t = a + (b - a) * i / n; loc[it.v] = t;
-        let X = null, Y = null;
-        try {
-          if (fr) { const rr = toReal(fr.evaluate(loc)); X = rr * Math.cos(t); Y = rr * Math.sin(t); }
-          else { X = toReal(fx.evaluate(loc)); Y = toReal(fy.evaluate(loc)); }
-        } catch {}
-        xs.push(isFinite(X) ? X : null); ys.push(isFinite(Y) ? Y : null);
-      }
-      traces.push({ x: xs, y: ys, type: 'scatter', mode: 'lines', line, name: it.label, connectgaps: false });
+  const base = { label: it.label };
+  switch (it.kind) {
+    case 'fn': { const f = fn(it.expr, [it.v || 'x']); return { ...base, kind: 'fn', f }; }
+    case 'ineq-fn': return { ...base, kind: 'ineq-fn', f: fn(it.expr, ['x']), rel: it.rel };
+    case 'implicit': return { ...base, kind: 'implicit', F: fn(it.expr, ['x', 'y']) };
+    case 'ineq': return { ...base, kind: 'ineq', F: fn(it.expr, ['x', 'y']), rel: it.rel };
+    case 'param': return { ...base, kind: 'param', fx: fn(it.x, [it.v]), fy: fn(it.y, [it.v]), t0: it.t0 ?? 0, t1: it.t1 ?? 2 * Math.PI };
+    case 'polar': return { ...base, kind: 'polar', r: fn(it.r, [it.v]), t0: it.t0 ?? 0, t1: it.t1 ?? 2 * Math.PI };
+    case 'slope': return { ...base, kind: 'slope', f: fn(it.expr, ['x', 'y']) };
+    case 'vector': return { ...base, kind: 'vector', P: fn(it.P, ['x', 'y']), Q: fn(it.Q, ['x', 'y']) };
+    case 'point': {
+      const px = fn(it.x, []), py = fn(it.y, []);
+      return { ...base, kind: 'point', get x() { return px(); }, get y() { return py(); } };
     }
-  });
-  const base = layout(spec.items.length === 1 ? spec.items[0].label : '');
-  const lay = { ...base, showlegend: spec.items.length > 1, hovermode: geometric ? 'closest' : 'x unified' };
-  if (geometric) lay.yaxis = { ...base.yaxis, scaleanchor: 'x', scaleratio: 1 };
-  Plotly.newPlot(target, traces, lay, { responsive: true, displayModeBar: false });
+    case 'domain': {
+      const c = prepare(it.expr, ['z']).compile();
+      const loc = ctx();
+      return { ...base, kind: 'domain', w: (re, im) => {
+        loc.z = math.complex(re, im);
+        try { const v = c.evaluate(loc); return typeof v === 'number' ? [v, 0] : [v.re, v.im]; } catch { return [NaN, NaN]; }
+      } };
+    }
+    default: throw new Error(`Cannot plot ${it.kind}`);
+  }
 }
+
+// Slider rows for parameters (with ▶ to animate); calls onChange() after every change.
+function sliders(host, params, values, onChange) {
+  if (!params.length) return;
+  const box = document.createElement('div');
+  box.className = 'plot-sliders';
+  box.innerHTML = params.map(p => `
+    <label class="pslider"><button class="pslider-play" data-play="${escH(p)}" title="Animate ${escH(p)}">▶</button><span class="pslider-name">${escH(p)}</span>
+      <input type="range" min="-10" max="10" step="0.01" value="${values[p]}" data-param="${escH(p)}"/>
+      <span class="pslider-val">${values[p]}</span></label>`).join('');
+  host.appendChild(box);
+  const timers = {};
+  const set = (inp, v) => { inp.value = v; values[inp.dataset.param] = Number(v); inp.parentElement.querySelector('.pslider-val').textContent = Number(v).toFixed(2).replace(/\.?0+$/, '') || '0'; onChange(); };
+  box.addEventListener('input', e => { const inp = e.target.closest('input[data-param]'); if (inp) set(inp, inp.value); });
+  box.addEventListener('click', e => {
+    const b = e.target.closest('[data-play]'); if (!b) return;
+    e.preventDefault();
+    const p = b.dataset.play, inp = box.querySelector(`input[data-param="${CSS.escape(p)}"]`);
+    if (timers[p]) { clearInterval(timers[p]); delete timers[p]; b.textContent = '▶'; return; }
+    let dir = 1;
+    b.textContent = '❚❚';
+    timers[p] = setInterval(() => {
+      if (!host.isConnected) { clearInterval(timers[p]); return; }
+      let v = Number(inp.value) + dir * 0.05;
+      if (v > 10 || v < -10) { dir = -dir; v = Math.max(-10, Math.min(10, v)); }
+      set(inp, v.toFixed(2));
+    }, 40);
+  });
+}
+
+// Draw a plot spec (see plotspec.js) into a container.
+export function drawSpec(container, spec, { xrange, height = 320 } = {}) {
+  const params = specParams(spec);
+  const values = Object.fromEntries(params.map(p => [p, 1]));
+  container.innerHTML = '';
+  const host = document.createElement('div');
+  container.appendChild(host);
+  const r = spec.range;
+  const onlyComplex = spec.items.every(it => it.kind === 'domain');
+  const xr = xrange || (r && ['x', 'y', 'z'].includes(r.v) ? [r.a, r.b] : onlyComplex ? [-3, 3] : [-10, 10]);
+  const g = new Grapher(host, { xRange: xr, height });
+  const items = spec.items.map(it => {
+    if (r && r.v === it.v && (it.kind === 'param' || it.kind === 'polar')) return { ...it, t0: r.a, t1: r.b };
+    return it;
+  });
+  const compiled = items.map(it => compileItem(it, params, values));
+  g.setItems(compiled);
+  g.spec = spec;
+  sliders(container, params, values, () => g.render());
+  return g;
+}
+
 export function plotSpecInline(container, spec) {
-  container.innerHTML = '<div class="cell-plot-inner"></div>';
-  try { drawSpec(container.firstChild, spec); }
+  try { drawSpec(container, spec); }
   catch (e) { container.innerHTML = `<div class="plot-err">${escH(e.message)}</div>`; }
 }
 
-// Graph view (2D multi-trace or 3D surface).
-export function plotGraph(is3D) {
+// Inline plot of an expression in one variable.
+export function plotInline(container, exprPlain, v = 'x', title) {
+  plotSpecInline(container, { items: [{ kind: 'fn', expr: exprPlain, v, label: title || exprPlain }], range: null });
+}
+
+// A precomputed polyline (numerical ODE solution).
+export function plotSeries(container, xs, ys, title) {
+  container.innerHTML = '';
+  const host = document.createElement('div');
+  container.appendChild(host);
+  const g = new Grapher(host, { xRange: [Math.min(...xs), Math.max(...xs)], height: 300 });
+  g.setItems([{ kind: 'series', xs, ys, label: title }]);
+}
+
+export async function exportPlot(el, name) {
+  const canvas = el && el.querySelector('canvas');
+  if (canvas && canvas.__grapher) {
+    const blob = await canvas.__grapher.toBlob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name + '.png'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    return;
+  }
+  const div = el && (el.classList.contains('js-plotly-plot') ? el : el.querySelector('.js-plotly-plot'));
+  if (div) { const Plotly = (await import('plotly.js-dist-min')).default; Plotly.downloadImage(div, { format: 'png', width: 1200, height: 800, filename: name }); }
+}
+
+// Graph view: 2D on the grapher, 3D surfaces with Plotly (loaded on demand).
+export async function plotGraph(is3D) {
   const raw = document.getElementById('ginp').value.trim();
   if (!raw) return;
   const xmin = parseFloat(document.getElementById('gxmin').value), xmax = parseFloat(document.getElementById('gxmax').value);
   const panel = document.getElementById('gplot');
   const fail = (m) => { panel.innerHTML = `<div class="cout err" style="padding:14px 18px;">${escH(m)}</div>`; };
   if (!isFinite(xmin) || !isFinite(xmax) || xmin >= xmax) return fail('The x range must satisfy min < max.');
-  let fns = [];
-  if (is3D) {
-    try { fns = parseTopLevelArgs(raw).map(e => substituteWorkspace(inlineUserFns(normalise(e)), ['x', 'y']).compile()); }
-    catch (e) { return fail(e.message); }
-  }
-  panel.innerHTML = '<div id="gplotinner" style="width:100%;height:100%;min-height:380px;"></div>';
-  if (is3D) {
-    const n = 60, xs = [], ys = [], zs = [];
-    for (let i = 0; i <= n; i++) { xs.push(xmin + i * (xmax - xmin) / n); ys.push(xmin + i * (xmax - xmin) / n); }
-    for (let j = 0; j <= n; j++) {
-      const row = [];
-      for (let i = 0; i <= n; i++) {
-        let z = null; try { z = toReal(fns[0].evaluate(ctx({ x: xs[i], y: ys[j] }))); } catch {}
-        row.push(isFinite(z) ? z : null);
-      }
-      zs.push(row);
-    }
-    const dk = state.darkTheme;
-    Plotly.newPlot('gplotinner', [{ x: xs, y: ys, z: zs, type: 'surface', colorscale: [[0, '#1f8a4d'], [0.5, '#7eef9c'], [1, '#a99cf2']], showscale: false }],
-      { ...layout(raw), scene: { bgcolor: dk ? '#13171f' : '#f1efe8' }, margin: { l: 0, r: 0, t: 36, b: 0 } }, { responsive: true });
-  } else {
-    try { drawSpec(document.getElementById('gplotinner'), parsePlotItems(parseTopLevelArgs(raw)), { xrange: [xmin, xmax] }); }
+  panel.innerHTML = '<div id="gplotinner" style="width:100%;height:100%;min-height:420px;"></div>';
+  const inner = document.getElementById('gplotinner');
+  if (!is3D) {
+    try { drawSpec(inner, parsePlotItems(parseTopLevelArgs(raw)), { xrange: [xmin, xmax], height: Math.max(420, panel.clientHeight - 60) }); }
     catch (e) { fail(e.message); }
+    return;
   }
+  let f;
+  try { f = realFunction(prepare(parseTopLevelArgs(raw)[0], ['x', 'y']), ['x', 'y'], ctx()); }
+  catch (e) { return fail(e.message); }
+  const n = 80, xs = [], ys = [], zs = [];
+  for (let i = 0; i <= n; i++) { xs.push(xmin + i * (xmax - xmin) / n); ys.push(xmin + i * (xmax - xmin) / n); }
+  for (let j = 0; j <= n; j++) zs.push(xs.map(x => { const z = f(x, ys[j]); return Number.isFinite(z) ? z : null; }));
+  inner.innerHTML = '<div class="spin" style="margin:20px"></div>';
+  const Plotly = (await import('plotly.js-dist-min')).default;
+  inner.innerHTML = '';
+  const dk = !document.body.classList.contains('light');
+  Plotly.newPlot(inner, [{ x: xs, y: ys, z: zs, type: 'surface', colorscale: 'Viridis', showscale: false }],
+    { paper_bgcolor: dk ? '#0f1218' : '#fbfaf6', font: { color: dk ? '#a3adc0' : '#3e4350' }, scene: { bgcolor: dk ? '#13171f' : '#f1efe8' }, margin: { l: 0, r: 0, t: 10, b: 0 } },
+    { responsive: true });
 }

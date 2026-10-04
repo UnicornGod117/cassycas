@@ -23,13 +23,14 @@ export function numInt(fn, v, a, b, base = null, tol = 1e-11) {
     if (!isFinite(y)) { const d = width * 1e-10; y = g(x < a + width / 2 ? x + d : x - d); }
     return y;
   };
-  let evals = 0;
+  let evals = 0, unresolved = 0;      // error left in pieces that never met their tolerance
   function rec(l, r, fl, fm, fr, whole, eps, depth) {
     const m = (l + r) / 2, lm = (l + m) / 2, rm = (m + r) / 2;
     const flm = safe(lm), frm = safe(rm); evals += 2;
     const left = (m - l) / 6 * (fl + 4 * flm + fm), right = (r - m) / 6 * (fm + 4 * frm + fr);
     const delta = left + right - whole;
-    if (depth <= 0 || evals > 400000 || Math.abs(delta) <= 15 * eps) return left + right + delta / 15;
+    if (Math.abs(delta) <= 15 * eps) return left + right + delta / 15;
+    if (depth <= 0 || evals > 400000) { unresolved += Math.abs(delta) / 15; return left + right + delta / 15; }
     return rec(l, m, fl, flm, fm, left, eps / 2, depth - 1) + rec(m, r, fm, frm, fr, right, eps / 2, depth - 1);
   }
   const panels = 16, hw = width / panels;
@@ -38,6 +39,9 @@ export function numInt(fn, v, a, b, base = null, tol = 1e-11) {
     const l = a + i * hw, r = l + hw, fl = safe(l), fr = safe(r), fm = safe((l + r) / 2);
     total += rec(l, r, fl, fm, fr, hw / 6 * (fl + 4 * fm + fr), tol * Math.max(1, width), 40);
   }
+  // A divergent integral (1/x across 0), an oscillating tail (sin(x)/x to ∞) or a non-integrable
+  // singularity leaves error the subdivision could not remove: report "no value", never a number.
+  if (!Number.isFinite(total) || unresolved > 1e-6 * (1 + Math.abs(total))) return NaN;
   return sign * total;
 }
 

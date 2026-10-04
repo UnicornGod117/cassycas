@@ -422,6 +422,7 @@ export function serializeNotebook() {
   };
 }
 export function persistNotebook() {
+  if (document.body.classList.contains('embed')) return;   // an embed must not overwrite the visitor's own notebook
   try { localStorage.setItem(STORE, JSON.stringify(serializeNotebook())); } catch {}
 }
 export function storedNotebook() {
