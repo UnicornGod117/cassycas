@@ -6,7 +6,9 @@ import { autocompletion, completionKeymap, acceptCompletion, completionStatus } 
 import { StreamLanguage, syntaxHighlighting, HighlightStyle, bracketMatching } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 import { ACD } from './modes.js';
-import { scope, userFns } from './state.js';
+import { scope, userFns, objects, state, OBJECT_CTORS } from './state.js';
+import { PLUGINS } from './plugins.js';
+import { TOOLS } from './tools.js';
 import { fmtR } from './format.js';
 
 const KEYWORDS = new Set(ACD.map(d => d.n).concat(['sqrt', 'exp', 'log', 'abs', 'to', 'unit', 'dsolve']));
@@ -54,15 +56,60 @@ const theme = EditorView.theme({
   '.cm-completionDetail': { color: 'var(--t2)', fontStyle: 'normal', marginLeft: '10px' },
 });
 
-function completions(context) {
+// Context-aware: after "X ~" only distributions; inside a call, the variables of the first
+// argument come first (integrate(x*y^2, |) offers x and y); the current mode's functions rank
+// above the rest; named objects, user functions, variables and plug-ins are always offered.
+const DISTS = new Set(OBJECT_CTORS.filter(n => ACD.some(d => d.n === n && d.t === 'stats')));
+const modeMatch = (t) => t && state.curMode && (state.curMode.startsWith(t) || t.startsWith(state.curMode));
+function enclosingCall(before) {
+  let depth = 0;
+  for (let i = before.length - 1; i >= 0; i--) {
+    const c = before[i];
+    if (c === ')' || c === ']') depth++;
+    else if (c === '(' || c === '[') {
+      if (depth === 0) {
+        if (c === '[') continue;
+        const m = before.slice(0, i).match(/([A-Za-z_]\w*)\s*$/);
+        return m ? { name: m[1], args: before.slice(i + 1) } : null;
+      }
+      depth--;
+    }
+  }
+  return null;
+}
+function firstArgSymbols(args) {
+  let depth = 0, end = args.length;
+  for (let i = 0; i < args.length; i++) {
+    const c = args[i];
+    if ('([{'.includes(c)) depth++; else if (')]}'.includes(c)) depth--;
+    else if (c === ',' && depth === 0) { end = i; break; }
+  }
+  if (end === args.length) return [];          // still typing the first argument
+  const names = args.slice(0, end).match(/[A-Za-z_]\w*/g) || [];
+  return [...new Set(names.filter(n => !KEYWORDS.has(n) && !CONSTANTS.has(n) && !userFns[n] && !objects[n]))];
+}
+export function completions(context) {
   const word = context.matchBefore(/[A-Za-z_]\w*/);
   if (!word || (word.from === word.to && !context.explicit)) return null;
+  const before = context.state.sliceDoc(0, word.from);
+  if (/~\s*$/.test(before)) {
+    return { from: word.from, validFor: /^\w*$/,
+      options: ACD.filter(d => DISTS.has(d.n)).map(d => ({ label: d.n, type: 'class', detail: d.s, info: d.d, apply: d.n + '(', boost: 5 })) };
+  }
+  const call = enclosingCall(before);
+  const argVars = call ? firstArgSymbols(call.args) : [];
+  const fn = (d) => ({ label: d.n, type: 'function', detail: d.s, info: d.d, apply: d.n + '(', boost: modeMatch(d.t) ? 2 : 0 });
   const options = [
-    ...ACD.map(d => ({ label: d.n, type: 'function', detail: d.s, apply: d.n + '(' })),
-    ...Object.keys(userFns).map(k => ({ label: k, type: 'function', detail: `${k}(${userFns[k].params.join(', ')})`, apply: k + '(' })),
-    ...Object.keys(scope).filter(k => typeof scope[k] !== 'function').map(k => ({ label: k, type: 'variable', detail: fmtR(scope[k]).slice(0, 24) })),
+    ...argVars.map(v => ({ label: v, type: 'variable', detail: `in ${call.name}'s first argument`, boost: 10 })),
+    ...ACD.filter(d => !PLUGINS[d.n]).map(fn),
+    ...Object.entries(PLUGINS).map(([n, p]) => ({ label: n, type: 'function', detail: p.sig, info: p.desc, apply: n + '(', boost: 1 })),
+    ...Object.entries(TOOLS).filter(([, t]) => t.python).map(([n, t]) => ({ label: n, type: 'function', detail: t.sig, info: t.desc, apply: n + '(', boost: 1 })),
+    ...Object.keys(objects).map(k => ({ label: k, type: 'constant', detail: 'object', boost: 3 })),
+    ...Object.keys(userFns).map(k => ({ label: k, type: 'function', detail: `${k}(${userFns[k].params.join(', ')})`, apply: k + '(', boost: 3 })),
+    ...Object.keys(scope).filter(k => typeof scope[k] !== 'function' && !argVars.includes(k)).map(k => ({ label: k, type: 'variable', detail: fmtR(scope[k]).slice(0, 24), boost: 3 })),
   ];
-  return { from: word.from, options, validFor: /^\w*$/ };
+  const seen = new Set();
+  return { from: word.from, options: options.filter(o => !seen.has(o.label) && seen.add(o.label)), validFor: /^\w*$/ };
 }
 
 export function createEditor(parent, { onRun, onChange }) {

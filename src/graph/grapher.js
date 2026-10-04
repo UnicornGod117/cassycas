@@ -33,6 +33,13 @@ const fmt = (v) => {
   if (a >= 1e6 || a < 1e-4) return v.toExponential(3).replace(/\.?0+e/, 'e');
   return String(parseFloat(v.toPrecision(6)));
 };
+// Multiples of step in [lo, hi], by index: x += step stops advancing once step is below the
+// spacing of floating-point numbers near x (a nearly constant function), which looped forever.
+function* ticks(lo, hi, step) {
+  const k0 = Math.ceil(lo / step), k1 = Math.floor(hi / step);
+  if (!(step > 0) || !Number.isFinite(k0) || !Number.isFinite(k1) || k1 - k0 > 2000) return;
+  for (let k = k0; k <= k1; k++) yield k * step;
+}
 function niceStep(raw) {
   const p = Math.pow(10, Math.floor(Math.log10(raw)));
   const m = raw / p;
@@ -115,6 +122,8 @@ export class Grapher {
     const v = this.view, x = this.wx(px), y = this.wy(py);
     v.xmin = x + (v.xmin - x) * factor; v.xmax = x + (v.xmax - x) * factor;
     v.ymin = y + (v.ymin - y) * factor; v.ymax = y + (v.ymax - y) * factor;
+    const span = (a, b) => b - a > Math.max(Math.abs(a), Math.abs(b)) * 1e-12;
+    if (factor < 1 && (!span(v.xmin, v.xmax) || !span(v.ymin, v.ymax))) { this.zoom(1 / factor, px, py); return; }   // as far in as doubles allow
     this.render();
   }
   reset() {
@@ -269,7 +278,8 @@ export class Grapher {
     this.setY(lo, hi);
   }
   setY(lo, hi) {
-    if (!(hi > lo)) { lo -= 1; hi += 1; }
+    const tiny = Math.max(Math.abs(lo), Math.abs(hi)) * 1e-9;
+    if (!(hi - lo > tiny)) { const m = (lo + hi) / 2, h = Math.max(tiny * 50, Math.abs(m) * 1e-6, 1e-12) || 1; lo = m - h; hi = m + h; }
     const pad = (hi - lo) * 0.12;
     this.view.ymin = lo - pad; this.view.ymax = hi + pad;
     // include the x-axis when it is close
@@ -283,17 +293,17 @@ export class Grapher {
     const stepY = this.equal ? stepX : niceStep((v.ymax - v.ymin) / Math.max(2, this.H / 70));
     const lines = (step, minor) => {
       ctx.beginPath();
-      for (let x = Math.ceil(v.xmin / step) * step; x <= v.xmax; x += step) { const s = Math.round(this.sx(x)) + 0.5; ctx.moveTo(s, 0); ctx.lineTo(s, this.H); }
+      for (const x of ticks(v.xmin, v.xmax, step)) { const s = Math.round(this.sx(x)) + 0.5; ctx.moveTo(s, 0); ctx.lineTo(s, this.H); }
       const sYs = minor ? step * stepY / stepX : step;
-      for (let y = Math.ceil(v.ymin / sYs) * sYs; y <= v.ymax; y += sYs) { const s = Math.round(this.sy(y)) + 0.5; ctx.moveTo(0, s); ctx.lineTo(this.W, s); }
+      for (const y of ticks(v.ymin, v.ymax, sYs)) { const s = Math.round(this.sy(y)) + 0.5; ctx.moveTo(0, s); ctx.lineTo(this.W, s); }
       ctx.stroke();
     };
     ctx.lineWidth = 1;
     ctx.strokeStyle = C.grid2; lines(stepX / 5, true);
     ctx.strokeStyle = C.grid;
     ctx.beginPath();
-    for (let x = Math.ceil(v.xmin / stepX) * stepX; x <= v.xmax; x += stepX) { const s = Math.round(this.sx(x)) + 0.5; ctx.moveTo(s, 0); ctx.lineTo(s, this.H); }
-    for (let y = Math.ceil(v.ymin / stepY) * stepY; y <= v.ymax; y += stepY) { const s = Math.round(this.sy(y)) + 0.5; ctx.moveTo(0, s); ctx.lineTo(this.W, s); }
+    for (const x of ticks(v.xmin, v.xmax, stepX)) { const s = Math.round(this.sx(x)) + 0.5; ctx.moveTo(s, 0); ctx.lineTo(s, this.H); }
+    for (const y of ticks(v.ymin, v.ymax, stepY)) { const s = Math.round(this.sy(y)) + 0.5; ctx.moveTo(0, s); ctx.lineTo(this.W, s); }
     ctx.stroke();
     // axes
     const ax = Math.min(Math.max(this.sy(0), 0), this.H), ay = Math.min(Math.max(this.sx(0), 0), this.W);
@@ -304,13 +314,13 @@ export class Grapher {
     ctx.fillStyle = C.text; ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     const ly = Math.min(Math.max(ax + 4, 2), this.H - 14);
-    for (let x = Math.ceil(v.xmin / stepX) * stepX; x <= v.xmax; x += stepX) {
+    for (const x of ticks(v.xmin, v.xmax, stepX)) {
       if (Math.abs(x) < stepX / 2) continue;
       ctx.fillText(fmt(x), this.sx(x), ly);
     }
     ctx.textAlign = ay > this.W - 40 ? 'right' : 'left'; ctx.textBaseline = 'middle';
     const lx = ay > this.W - 40 ? ay - 4 : Math.min(Math.max(ay + 4, 2), this.W - 40);
-    for (let y = Math.ceil(v.ymin / stepY) * stepY; y <= v.ymax; y += stepY) {
+    for (const y of ticks(v.ymin, v.ymax, stepY)) {
       if (Math.abs(y) < stepY / 2) continue;
       ctx.fillText(fmt(y), lx, this.sy(y));
     }

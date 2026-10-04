@@ -26,11 +26,22 @@ export const idle = () => queue;
 //  CELLS
 // ══════════════════════════════════════════════════════
 function hideWelcome() { const w = document.getElementById('welcome'); if (w) w.style.display = 'none'; }
-export function createMathCell(expr, mode, { after } = {}) {
+// Every cell has a uid that is the same on every collaborating peer, and a version
+// [clock, peer] (see collab.js) so concurrent edits converge.
+const newUid = () => Math.random().toString(36).slice(2, 12);
+const changeListeners = [];
+let silent = 0;                       // > 0 while loading or applying a peer's change
+export const onCellChange = (f) => changeListeners.push(f);
+function emit(op) { if (!silent) changeListeners.forEach(f => { try { f(op); } catch {} }); }
+const stampOf = () => hooks.stamp ? hooks.stamp() : null;
+export function createMathCell(expr, mode, { after, uid, ver } = {}) {
   hideWelcome();
-  const cell = { id: 'c' + (++cellCounter), n: cellCounter, kind: 'math', expr, mode, res: null, error: null };
+  const cell = { id: 'c' + (++cellCounter), n: cellCounter, kind: 'math', expr, mode, res: null, error: null, uid: uid || newUid(), ver: ver || null };
   const el = document.createElement('div');
   el.className = 'cell'; el.id = cell.id; el.dataset.mode = mode;
+  el.tabIndex = 0;
+  el.setAttribute('role', 'article');
+  el.setAttribute('aria-label', `Cell ${cell.n}: ${expr}`);
   el.innerHTML = `
     <div class="cin">
       <span class="cprompt"><span class="cprompt-num">${cell.n}</span><span class="cprompt-arrow">›</span></span>
@@ -48,19 +59,20 @@ export function createMathCell(expr, mode, { after } = {}) {
   el.scrollIntoView({ block: 'nearest' });
   return cell;
 }
-export function createTextCell(content) {
+export function createTextCell(content, { uid, ver } = {}) {
   hideWelcome();
-  const cell = { id: 'c' + (++cellCounter), kind: 'text', content: content || '' };
+  const cell = { id: 'c' + (++cellCounter), kind: 'text', content: content || '', uid: uid || newUid(), ver: ver || null };
   const el = document.createElement('div');
   el.className = 'cell text-cell'; el.id = cell.id;
   el.innerHTML = `<textarea class="text-cell-edit" placeholder="Notes, headings, derivations…" rows="2"></textarea><button class="cell-del" data-action="delete" title="Delete note">✕</button>`;
   const ta = el.querySelector('textarea');
   ta.value = cell.content;
   const fit = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
-  ta.addEventListener('input', () => { cell.content = ta.value; fit(); persistNotebook(); });
+  ta.setAttribute('aria-label', 'Note');
+  ta.addEventListener('input', () => { cell.content = ta.value; fit(); persistNotebook(); cell.ver = stampOf(); emit({ t: 'text', uid: cell.uid, content: cell.content, ver: cell.ver }); });
   nb().appendChild(el); cells.push(cell);
   requestAnimationFrame(fit);
-  if (content === undefined) ta.focus();
+  if (content === undefined) { ta.focus(); cell.ver = stampOf(); emit({ t: 'add', cell: { uid: cell.uid, kind: 'text', content: cell.content, ver: cell.ver }, after: cells[cells.length - 2]?.uid || null }); }
   return cell;
 }
 const mathCells = () => cells.filter(c => c.kind === 'math');
@@ -119,7 +131,8 @@ export function recompute({ ids = [], names = [], all = false } = {}) {
 }
 // A new cell at the end sees the current workspace; nothing downstream to update.
 export function runNewCell(expr, mode) {
-  const cell = createMathCell(expr, mode);
+  const cell = createMathCell(expr, mode, { ver: stampOf() });
+  emit({ t: 'add', cell: { uid: cell.uid, kind: 'math', expr, mode, ver: cell.ver }, after: cells[cells.length - 2]?.uid || null });
   persistNotebook();
   return enqueue(async () => {
     await new Promise(r => setTimeout(r, 0));
@@ -129,10 +142,13 @@ export function runNewCell(expr, mode) {
     return cell;
   });
 }
-export function editCell(cell, newExpr) {
+export function editCell(cell, newExpr, ver) {
   if (newExpr === cell.expr) return idle();
   const oldDef = cellDef(cell);
   cell.expr = newExpr;
+  cell.ver = ver || stampOf();
+  emit({ t: 'edit', uid: cell.uid, expr: newExpr, ver: cell.ver });
+  document.getElementById(cell.id)?.setAttribute('aria-label', `Cell ${cell.n}: ${newExpr}`);
   const el = document.getElementById(cell.id);
   el.querySelector('.cexpr').textContent = newExpr;
   persistNotebook();
@@ -141,6 +157,7 @@ export function editCell(cell, newExpr) {
 export function deleteCell(cell) {
   const idx = cells.indexOf(cell);
   if (idx < 0) return idle();
+  emit({ t: 'del', uid: cell.uid });
   cells.splice(idx, 1);
   document.getElementById(cell.id)?.remove();
   persistNotebook();
@@ -256,6 +273,7 @@ async function renderCell(cell) {
   const plot = plotCandidate(cell);
   const a = [];
   if (res.steps && res.steps.length) a.push(`<button class="cact" data-action="steps">∴ Steps</button>`);
+  if (res.type === 'funcdef') a.push(`<button class="cact" data-action="save-fn" title="Save to your function library (available in every notebook)">★ Save</button>`);
   if (morphFrames(res, latex).length >= 3) a.push(`<button class="cact violet" data-action="animate" title="Play the steps as an animation">▶ Animate</button>`);
   if (plot) a.push(`<button class="cact violet" data-action="plot">⌇ Plot</button>`);
   if (res.odeData || plot) a.push(`<button class="cact" data-action="export-plot">PNG</button>`);
@@ -401,6 +419,7 @@ export function bindNotebookEvents({ explain }) {
       case 'edit': startInlineEdit(cell); break;
       case 'delete': deleteCell(cell); break;
       case 'steps': el.querySelector('.steps').classList.toggle('open'); break;
+      case 'save-fn': hooks.saveFunction?.(cell.res.name, canonical(cell.expr)); break;
       case 'animate': {
         let host = el.querySelector('.morph-host');
         if (host) { host.remove(); break; }
@@ -436,12 +455,14 @@ export function serializeNotebook() {
     version: 4,
     exactMode: state.exactMode, angleMode: state.angleMode,
     scope: JSON.parse(JSON.stringify(state.baseScope, math.replacer)),
-    cells: cells.map(c => c.kind === 'text' ? { type: 'text', content: c.content } : { type: 'math', expr: c.expr, mode: c.mode }),
+    cells: cells.map(c => c.kind === 'text' ? { type: 'text', content: c.content, uid: c.uid } : { type: 'math', expr: c.expr, mode: c.mode, uid: c.uid }),
   };
 }
 export function persistNotebook() {
   if (document.body.classList.contains('embed')) return;   // an embed must not overwrite the visitor's own notebook
-  try { localStorage.setItem(STORE, JSON.stringify(serializeNotebook())); } catch {}
+  const data = serializeNotebook();
+  try { localStorage.setItem(STORE, JSON.stringify(data)); } catch {}
+  hooks.onPersist?.(data);
 }
 export function storedNotebook() {
   try { const s = localStorage.getItem(STORE); return s ? JSON.parse(s) : null; } catch { return null; }
@@ -452,18 +473,58 @@ export async function loadNotebook(data, { replace = true } = {}) {
   const imported = sanitizeScope(JSON.parse(JSON.stringify(data.scope || {}), reviveJSON));
   const list = Array.isArray(data.cells) ? data.cells.slice(0, 1000) : [];
   await idle();
-  if (replace) clearNotebook();
-  Object.assign(state.baseScope, imported);
-  if (data.exactMode === false || data.exactMode === true) state.exactMode = data.exactMode;
-  if (data.angleMode === 'deg' || data.angleMode === 'rad') state.angleMode = data.angleMode;
-  for (const c of list) {
-    if (!c || typeof c !== 'object') continue;
-    if (c.type === 'text' && typeof c.content === 'string') createTextCell(c.content);
-    else if (c.type === 'math' && typeof c.expr === 'string' && c.expr.trim() && c.expr.length < 5000)
-      createMathCell(c.expr.trim(), MODES[c.mode] ? c.mode : 'algebra');
-  }
+  silent++;
+  try {
+    if (replace) clearNotebook();
+    Object.assign(state.baseScope, imported);
+    if (data.exactMode === false || data.exactMode === true) state.exactMode = data.exactMode;
+    if (data.angleMode === 'deg' || data.angleMode === 'rad') state.angleMode = data.angleMode;
+    const ids = (c) => ({ uid: typeof c.uid === 'string' && /^[a-z0-9]{1,24}$/.test(c.uid) ? c.uid : undefined, ver: Array.isArray(c.ver) ? c.ver : null });
+    for (const c of list) {
+      if (!c || typeof c !== 'object') continue;
+      if (c.type === 'text' && typeof c.content === 'string') createTextCell(c.content, ids(c));
+      else if (c.type === 'math' && typeof c.expr === 'string' && c.expr.trim() && c.expr.length < 5000)
+        createMathCell(c.expr.trim(), MODES[c.mode] ? c.mode : 'algebra', ids(c));
+    }
+  } finally { silent--; }
   if (!cells.length) { const w = document.getElementById('welcome'); if (w) w.style.display = ''; }
   return recompute({ all: true });
+}
+
+// A collaborator's change (collab.js). Versions decide between concurrent edits of one cell.
+export async function applyRemote(op, newer) {
+  const find = (uid) => cells.find(c => c.uid === uid);
+  silent++;
+  try {
+    if (op.t === 'state') {
+      const s = op.state;
+      await loadNotebook({ ...s, cells: s.cells.map(c => ({ ...c, type: c.kind === 'text' ? 'text' : 'math' })) });
+      return;
+    }
+    if (op.t === 'add' && !find(op.cell.uid)) {
+      const after = op.after ? find(op.after) : null;
+      if (op.cell.kind === 'text') { createTextCell(op.cell.content, op.cell); persistNotebook(); return; }
+      const cell = createMathCell(op.cell.expr, MODES[op.cell.mode] ? op.cell.mode : 'algebra', { ...op.cell, after: after && after !== cells[cells.length - 1] ? after : undefined });
+      persistNotebook();
+      await recompute({ ids: [cell.id] });
+      return;
+    }
+    const cell = find(op.uid);
+    if (!cell) return;
+    if (op.t === 'edit' && newer(op.ver, cell.ver)) await editCell(cell, op.expr, op.ver);
+    if (op.t === 'text' && newer(op.ver, cell.ver)) {
+      cell.content = op.content; cell.ver = op.ver;
+      const ta = document.getElementById(cell.id)?.querySelector('textarea');
+      if (ta && ta.value !== op.content) ta.value = op.content;
+      persistNotebook();
+    }
+    if (op.t === 'del') await deleteCell(cell);
+  } finally { silent--; }
+}
+// The notebook as collaborators exchange it (with uids and versions).
+export function collabSnapshot() {
+  return { exactMode: state.exactMode, angleMode: state.angleMode, scope: {},
+    cells: cells.map(c => c.kind === 'text' ? { kind: 'text', uid: c.uid, ver: c.ver, content: c.content } : { kind: 'math', uid: c.uid, ver: c.ver, expr: c.expr, mode: c.mode }) };
 }
 
 // Share links: the notebook is deflate-compressed into the URL fragment (never sent to a server).

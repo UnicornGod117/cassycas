@@ -8,6 +8,7 @@ Every result that can be checked independently carries a verdict.
 """
 import itertools
 import math
+import re
 
 import mpmath
 
@@ -1999,3 +2000,27 @@ GEO_CTORS.update({
     'centroid': lambda o: _geo(o).centroid,
 })
 OBJECT_CTORS = set(RV_CTORS) | set(GEO_CTORS)
+
+
+# ── plug-ins (plugins.js) ────────────────────────────────────────────────────
+# A user's Python tool: the source defines t_<name>(...) and is run in its own namespace that
+# sees sympy, show() and the tools. Built-in tool names cannot be replaced.
+BUILTIN_TOOL_NAMES = set(TOOLS) | set(RAW_TOOLS)
+
+
+def op_plugin(req, b):
+    name, source = req.get('name', ''), req.get('source', '')
+    if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', name):
+        raise ValueError('Plug-in names are identifiers.')
+    if name in BUILTIN_TOOL_NAMES:
+        raise ValueError(name + ' is a built-in tool.')
+    ns = {'sp': sp, 'sympy': sp, 'show': show, 'tex': tex, 'TOOLS': TOOLS}
+    exec(compile(source, '<plugin ' + name + '>', 'exec'), ns)
+    fn = ns.get('t_' + name)
+    if not callable(fn):
+        raise ValueError('Define t_' + name + '(...) in the source.')
+    TOOLS[name] = fn
+    return {'ok': True, 'name': name}
+
+
+OPS['plugin'] = op_plugin

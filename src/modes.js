@@ -216,6 +216,15 @@ ACD.push(
   ...Object.entries(TOOLS).map(([n, t]) => ({ n, s: t.sig, t: t.mode, d: t.desc })),
   ...DISTRIBUTION_DOCS.map(d => ({ n: d.n, s: d.s, t: 'stats', d: d.desc })),
   { n: 'plot', s: 'plot(f, x^2+y^2=4, [x(t), y(t)], r = f(theta), [x, a, b])', t: 'calc', d: 'Plot functions, implicit, parametric and polar curves' },
+  { n: 'histogram', s: 'histogram([data][, bins])', t: 'stats', d: 'Histogram of data' },
+  { n: 'boxplot', s: 'boxplot([data], …)', t: 'stats', d: 'Box-and-whisker plot' },
+  { n: 'scatter', s: 'scatter([xs], [ys])', t: 'stats', d: 'Scatter plot with least-squares line' },
+  { n: 'graph', s: 'graph([[1, 2], [2, 3], …])', t: 'algebra', d: 'Draw a network; degrees, components, colouring' },
+  { n: 'shortestpath', s: 'shortestpath(edges, a, b)', t: 'algebra', d: 'Shortest path in a (weighted) network' },
+  { n: 'tree', s: 'tree(expr)', t: 'algebra', d: 'Expression tree diagram' },
+  { n: 'plot3d', s: 'plot3d(f(x, y)) or plot3d(x^2 + y^2 + z^2 = 1)', t: 'calc', d: 'Interactive 3D surface' },
+  { n: 'riemann', s: 'riemann(sqrt(z))', t: 'complex', d: 'Riemann surface of a multivalued function' },
+  { n: 'sdepaths', s: 'sdepaths(drift, diffusion, X0[, T, n])', t: 'calc', d: 'Simulated sample paths of an SDE' },
 );
 
 export const INSERT_MAP = {

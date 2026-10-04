@@ -253,7 +253,7 @@ function layout(G) {
 }
 function drawNetwork(host, { G, path }) {
   const css = getComputedStyle(document.body), col = (v, f) => css.getPropertyValue(v).trim() || f;
-  const fg = col('--txt', '#ddd'), mute = col('--txt-3', '#888'), accent = col('--blue', '#2f81f7'), bg = col('--bg-2', '#111');
+  const fg = col('--t0', '#ddd'), mute = col('--t2', '#888'), accent = col('--cyan', '#2f81f7'), bg = col('--s1', '#111');
   const W = Math.max(280, host.clientWidth || 600), H = 340, pad = 30;
   const P = layout(G);
   const xs = P.map(p => p[0]), ys = P.map(p => p[1]);
@@ -310,8 +310,8 @@ function drawTree(host, { expr }) {
   place(root, 0);
   const W = Math.max(280, (leaf + 1) * 56), H = (depth + 1) * 64 + 20, sx = (x) => 28 + x * 56, sy = (d) => 30 + d * 64;
   const css = getComputedStyle(document.body), col = (v, f) => css.getPropertyValue(v).trim() || f;
-  const C = { op: col('--blue', '#2f81f7'), fn: col('--violet', '#a371f7'), sym: col('--green', '#3fb950'), num: col('--amber', '#c69026') };
-  const fg = col('--txt', '#ddd'), mute = col('--txt-3', '#888'), bg = col('--bg-2', '#111');
+  const C = { op: col('--cyan', '#2f81f7'), fn: col('--violet', '#a371f7'), sym: col('--a0', '#3fb950'), num: col('--warm', '#c69026') };
+  const fg = col('--t0', '#ddd'), mute = col('--t2', '#888'), bg = col('--s1', '#111');
   let edges = '', nodes = '';
   const walk = (t) => {
     for (const k of t.kids) { edges += `<line x1="${sx(t.x)}" y1="${sy(t.d)}" x2="${sx(k.x)}" y2="${sy(k.d)}" stroke="${mute}" stroke-width="1.4"/>`; walk(k); }

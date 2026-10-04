@@ -118,4 +118,12 @@ describe('visualisations in the notebook', { skip: !hasWheels() && 'SymPy wheels
     assert.ok(res.glyphs > 5);
     assert.deepEqual(app.errors, []);
   });
+
+  test('nearly constant functions plot (the grid loop used to hang the page)', async () => {
+    for (const e of ['lorentz(v) = 1/sqrt(1 - v^2/299792458^2)', 'plot(1 + 1e-17 x^2, [x, -5, 5])', 'plot(1e-300 x, [x, -1, 1])']) {
+      const r = await ok(e, 'calculus');
+      const g = await grapherOf(r.id);
+      assert.ok(g && g.view.ymax > g.view.ymin, `${e}: ${JSON.stringify(g && g.view)}`);
+    }
+  });
 });

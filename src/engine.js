@@ -16,6 +16,7 @@ import {
 import { sympy, engineReady, engine, EngineUnavailable, EngineTimeout } from './sympy/client.js';
 import { toAst, expandPrimes, UnsupportedForSympy } from './sympy/ast.js';
 import { TOOLS, toolSpec } from './tools.js';
+import { PLUGINS } from './plugins.js';
 import { parsePlotItems, plotSpecTex } from './plotspec.js';
 import { evalStatPlot, evalGraph, evalTree, evalPlot3d, evalSdePaths } from './viz.js';
 
@@ -294,7 +295,9 @@ async function dispatchCanonical(expr, mode) {
   const head = (e.match(/^([A-Za-z_]\w*)\s*\(/) || [])[1];
   if (head === 'plot' && isWholeCall(e, head)) return evalPlot(parseTopLevelArgs(xarg(e, head)));
   if (['slopefield', 'vectorfield', 'domaincolor'].includes(head) && isWholeCall(e, head)) return evalPlot([e]);
-  if (head && VIZ_HEADS.includes(head) && isWholeCall(e, head)) return evalViz(head, parseTopLevelArgs(xarg(e, head)));
+  // riemann([[metric]], [coords]) is the curvature tensor (a tool); riemann(f(z)) the Riemann surface
+  if (head && VIZ_HEADS.includes(head) && isWholeCall(e, head) && !(head === 'riemann' && /^riemann\s*\(\s*\[/.test(e))) return evalViz(head, parseTopLevelArgs(xarg(e, head)));
+  if (head && PLUGINS[head] && isWholeCall(e, head)) return evalPlugin(head, parseTopLevelArgs(xarg(e, head)));
   if (head && TOOLS[head] && isWholeCall(e, head)) return evalTool(head, parseTopLevelArgs(xarg(e, head)), e);
   if (head && ALGEBRA_OPS[head]) return ALGEBRA_OPS[head](e);
   if (head && CALCULUS_OPS[head]) return CALCULUS_OPS[head](e);
@@ -974,6 +977,14 @@ function matchToolArgs(name, spec, args) {
   if (i < args.length) throw new Error(`Too many arguments. Use ${spec.sig || name + '(…)'}.`);
   return out;
 }
+// A JavaScript plug-in (plugins.js): run(args, helpers) returns { latex, plain }.
+async function evalPlugin(name, args) {
+  const helpers = { evaluate: (t) => math.evaluate(t, ctx()), sympy, math };
+  const r = await PLUGINS[name].run(args, helpers);
+  if (!r || typeof r !== 'object' || typeof r.latex !== 'string') throw new Error(`The plug-in ${name} returned nothing to show.`);
+  const res = texResult(r.latex, String(r.plain ?? r.latex), { note: r.note || `plug-in ${name}` });
+  return res;
+}
 async function evalTool(name, args, whole) {
   const spec = toolSpec(name);
   const parts = matchToolArgs(name, spec, args);
@@ -1071,6 +1082,8 @@ const JS_TOOLS = {
 
 // histogram, boxplot, scatter, graph, shortestpath, tree, plot3d, riemann (see viz.js)
 const VIZ_HEADS = ['histogram', 'boxplot', 'scatter', 'graph', 'shortestpath', 'tree', 'plot3d', 'riemann', 'sdepaths'];
+// Every function name the router handles itself (the language server must know them all).
+export const opHeads = () => [...Object.keys(ALGEBRA_OPS), ...Object.keys(CALCULUS_OPS), ...VIZ_HEADS];
 function evalViz(head, args) {
   const evaluate = (t) => math.evaluate(inlineUserFns(normalise(t)), ctx());
   if (['histogram', 'boxplot', 'scatter'].includes(head)) return evalStatPlot(head, args, evaluate);

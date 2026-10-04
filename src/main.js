@@ -5,7 +5,7 @@ import { escH, fmtR } from './format.js';
 import { state, scope, userFns, varDefs, CONSTANT_NAMES } from './state.js';
 import { workerEval, loadStoredScope, sanitizeScope, reviveJSON } from './kernel/mathjs-client.js';
 import { numericallyEqual } from './kernel/fallback.js';
-import { dispatch } from './engine.js';
+import { dispatch, opHeads } from './engine.js';
 import { createEditor } from './editor.js';
 import { renderTex } from './render.js';
 import { plotGraph, exportPlot } from './plot.js';
@@ -14,6 +14,15 @@ import { MODES, ACD, CONSTS, INSERT_MAP } from './modes.js';
 import { engine, startEngine, stopEngine, onEngineStatus } from './sympy/client.js';
 import * as NB from './notebook.js';
 import * as Assistant from './assistant.js';
+import * as WS from './workspace.js';
+import * as Dlg from './dialogs.js';
+import { FORMULAS } from './formulas.js';
+import { GALLERY } from './gallery.js';
+import { TOOLS } from './tools.js';
+import { PLUGINS, registerPlugin, registerPythonPlugin, unregisterPlugin } from './plugins.js';
+import { Collab, newer } from './collab.js';
+import { sympy } from './sympy/client.js';
+import { speak } from './speech.js';
 
 // MathLive (visual input) loads the first time the visual editor is opened. It uses the KaTeX
 // fonts already bundled with the app (no extra font downloads).
@@ -66,7 +75,13 @@ function runCell() {
   if (!expr) return Promise.resolve();
   editor.pushHistory(expr);
   clrInput();
-  return NB.runNewCell(expr, state.curMode);
+  return NB.runNewCell(expr, state.curMode).then(cell => { announce(cell); return cell; });
+}
+// Screen readers hear each result as words ("x squared plus 1"), through a polite live region.
+function announce(cell) {
+  const el = cell && document.getElementById(cell.id);
+  if (!el) return;
+  $('sr-live').textContent = cell.error ? `Error: ${cell.error}` : `Result: ${speak(el.dataset.plain || '')}${cell.res?.check?.status === 'verified' ? '. Verified.' : ''}`;
 }
 function setInputMode(m) {
   inpMode = m === 'ml' ? 'ml' : 'code';
@@ -254,11 +269,17 @@ function openPalette() { $('palette').classList.add('on'); $('palette-input').va
 function closePalette() { $('palette').classList.remove('on'); }
 function filterPalette() {
   const q = $('palette-input').value.toLowerCase();
+  const words = q.split(/\s+/).filter(Boolean);
+  const hit = (i) => { const hay = `${i.label} ${i.desc || ''} ${i.keys || ''} ${i.cat}`.toLowerCase(); return words.every(w => hay.includes(w)); };
   palItems = [
+    ...COMMANDS.map(([k, label, desc]) => ({ type: 'cmd', cat: 'Commands', k, label, desc })),
     ...Object.entries(MODES).map(([k, m]) => ({ type: 'mode', cat: 'Modes', k, label: m.label, desc: m.sub })),
-    ...ACD.filter(Boolean).map(d => ({ type: 'fn', cat: 'Functions', n: d.n, label: d.n, desc: d.s })),
+    ...ACD.filter(Boolean).map(d => ({ type: 'fn', cat: 'Functions', n: d.n, label: d.n, desc: d.d ? `${d.s} — ${d.d}` : d.s })),
+    ...Object.entries(PLUGINS).map(([n, p]) => ({ type: 'fn', cat: 'Plug-ins', n, label: n, desc: `${p.sig} — ${p.desc}` })),
+    ...FORMULAS.map(f => ({ type: 'formula', cat: `Formulas · ${f.cat}`, label: f.name, desc: f.def, keys: f.keys, def: f.def })),
+    ...GALLERY.map((g, i) => ({ type: 'gallery', cat: 'Gallery', i, label: g.title, desc: g.desc, keys: g.tags.join(' ') })),
     ...CONSTS.map(c => ({ type: 'const', cat: 'Constants', e: c.e, label: c.n, desc: c.v })),
-  ].filter(i => !q || i.label.toLowerCase().includes(q) || (i.desc || '').toLowerCase().includes(q)).slice(0, 40);
+  ].filter(i => !q || hit(i)).slice(0, 60);
   palIdx = 0;
   let html = '', last = '';
   palItems.forEach((i, idx) => {
@@ -269,8 +290,25 @@ function filterPalette() {
 }
 function palAction(idx) {
   const it = palItems[idx]; if (!it) return;
-  if (it.type === 'mode') setMode(it.k); else if (it.type === 'fn') insText(it.n + '('); else insText(it.e);
   closePalette();
+  if (it.type === 'mode') setMode(it.k);
+  else if (it.type === 'fn') insText(it.n + '(');
+  else if (it.type === 'formula') NB.runNewCell(it.def, 'algebra').then(announce);
+  else if (it.type === 'gallery') openGalleryItem(it.i);
+  else if (it.type === 'cmd') moreAction(it.k);
+  else insText(it.e);
+}
+const COMMANDS = [
+  ['gallery', 'Open the gallery', 'example notebooks and templates'], ['history', 'Version history', 'restore an earlier version'],
+  ['undo', 'Undo', 'Ctrl+Z'], ['redo', 'Redo', 'Ctrl+Shift+Z'], ['library', 'Function library', 'saved functions'],
+  ['md', 'Export Markdown', '.md'], ['qmd', 'Export Quarto', '.qmd'], ['import', 'Import Markdown or Quarto', '.md .qmd'],
+  ['collab', 'Collaborate', 'peer-to-peer session'], ['cite', 'Cite CassyCAS', 'BibTeX, APA'],
+];
+async function openGalleryItem(i) {
+  const g = GALLERY[i];
+  await checkpoint(`before opening “${g.title}”`);
+  await loadReplacing({ version: 4, exactMode: true, angleMode: 'rad', scope: {}, cells: g.cells });
+  toast(`Opened “${g.title}”`);
 }
 function palKey(e) {
   if (e.key === 'Escape') { closePalette(); return; }
@@ -384,7 +422,8 @@ function loadFile(ev) {
   const r = new FileReader();
   r.onload = async (e) => {
     try {
-      const d = JSON.parse(e.target.result);
+      const text = e.target.result;
+      const d = /\.(md|qmd|markdown)$/i.test(file.name) ? WS.fromMarkdown(text) : JSON.parse(text);
       await NB.loadNotebook(d, { replace: false });
       syncToggles();
       toast('Loaded');
@@ -416,6 +455,99 @@ async function embedNotebook() {
 function addText() { NB.createTextCell(); NB.persistNotebook(); }
 
 // ══════════════════════════════════════════════════════
+//  WORKSPACE: history, undo, library, export, collaboration, plug-ins
+// ══════════════════════════════════════════════════════
+async function loadReplacing(data) {
+  await NB.loadNotebook(data, { replace: true });
+  syncToggles(); renderDefs();
+}
+const checkpoint = (label) => WS.checkpoint(NB.serializeNotebook(), label);
+function download(name, text, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function exportMarkdown(quarto) {
+  const outputs = NB.cells.map(c => c.kind === 'text' ? null : { latex: document.getElementById(c.id)?.dataset.latex });
+  const md = WS.toMarkdown(NB.serializeNotebook(), outputs, { quarto });
+  download(quarto ? 'notebook.qmd' : 'notebook.md', md, 'text/markdown');
+  return md;
+}
+async function undoRedo(which) {
+  const data = which === 'undo' ? WS.undo() : WS.redo();
+  if (!data) { toast(`Nothing to ${which}`); return; }
+  await NB.loadNotebook(data, { replace: true });
+  syncToggles(); renderDefs();
+  toast(which === 'undo' ? 'Undone' : 'Redone');
+}
+async function saveFunction(name, def) {
+  await WS.librarySave(name, def);
+  toast(`★ ${name} saved to your library`);
+}
+function moreAction(k) {
+  switch (k) {
+    case 'gallery': return Dlg.openGallery();
+    case 'history': return Dlg.openHistory();
+    case 'library': return Dlg.openLibrary();
+    case 'formulas': openPalette(); $('palette-input').value = 'formulas '; return filterPalette();
+    case 'md': return exportMarkdown(false);
+    case 'qmd': return exportMarkdown(true);
+    case 'import': return $('floader').click();
+    case 'collab': return openCollab();
+    case 'cite': return Dlg.openCite();
+    case 'plugins': return Dlg.openPluginsHelp();
+    case 'undo': case 'redo': return undoRedo(k);
+  }
+}
+function toggleMore(btn) { Dlg.toggleMoreMenu(btn); }
+
+let collab = null;
+function ensureCollab() {
+  if (collab) return collab;
+  collab = new Collab({
+    snapshot: NB.collabSnapshot,
+    applyOp: (op) => NB.applyRemote(op, newer).then(() => { syncToggles(); renderDefs(); }),
+    onStatus: ({ peers, role }) => {
+      const pill = $('collab-pill');
+      pill.style.display = peers ? '' : 'none';
+      pill.textContent = `● ${peers} collaborator${peers === 1 ? '' : 's'}`;
+      if (peers) toast(role === 'host' ? 'A collaborator joined' : 'Connected to the session');
+      const st = document.querySelector('#modal .collab-status'); if (st) st.textContent = peers ? `Connected with ${peers} peer${peers === 1 ? '' : 's'}.` : 'Not connected.';
+    },
+  });
+  NB.onCellChange(op => collab.send(op));
+  return collab;
+}
+function openCollab() {
+  const c = ensureCollab();
+  const m = Dlg.modal('Collaborate', `<p class="modal-note">Edit this notebook together, directly between browsers — there is no CassyCAS server. One person makes an invite; the other answers it; the codes are exchanged by any chat or e-mail.</p>
+    <label class="collab-opt"><input type="checkbox" id="collab-stun"/> Connect across networks (uses Google’s public STUN server, which sees your IP address)</label>
+    <div class="collab-grid">
+      <section><h3>Start a session</h3>
+        <button class="cact violet" data-c="invite">Create invite</button>
+        <textarea class="cite-box" id="collab-invite" rows="3" readonly placeholder="Invite code appears here"></textarea>
+        <textarea class="cite-box" id="collab-reply-in" rows="3" placeholder="Paste the reply code here"></textarea>
+        <button class="cact warm" data-c="accept">Connect</button></section>
+      <section><h3>Join a session</h3>
+        <textarea class="cite-box" id="collab-invite-in" rows="3" placeholder="Paste an invite code"></textarea>
+        <button class="cact violet" data-c="join">Create reply</button>
+        <textarea class="cite-box" id="collab-reply" rows="3" readonly placeholder="Send this reply code back"></textarea></section>
+    </div><p class="collab-status" aria-live="polite">${c.connected ? `Connected with ${c.peers.size} peer(s).` : 'Not connected.'}</p>`, { wide: true });
+  m.el.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-c]'); if (!b) return;
+    const stun = $('collab-stun').checked;
+    try {
+      if (b.dataset.c === 'invite') { $('collab-invite').value = await c.invite({ stun }); navigator.clipboard?.writeText($('collab-invite').value).catch(() => {}); toast('Invite copied'); }
+      if (b.dataset.c === 'accept') { await c.accept($('collab-reply-in').value); toast('Connecting…'); }
+      if (b.dataset.c === 'join') { $('collab-reply').value = await c.join($('collab-invite-in').value); navigator.clipboard?.writeText($('collab-reply').value).catch(() => {}); toast('Reply copied — send it to the host'); }
+    } catch (err) { toast('Collaboration: ' + err.message); }
+  });
+}
+// Python plug-ins are re-sent to the engine after it restarts.
+const pythonPlugins = new Map();
+
+// ══════════════════════════════════════════════════════
 //  EVENTS
 // ══════════════════════════════════════════════════════
 function bindEvents() {
@@ -442,6 +574,10 @@ function bindEvents() {
   });
   document.addEventListener('keydown', e => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); openPalette(); return; }
+    const typing = e.target.closest && e.target.closest('input, textarea, .cm-editor, math-field, [contenteditable="true"]');
+    if ((e.metaKey || e.ctrlKey) && !typing && (e.key === 'z' || e.key === 'Z' || e.key === 'y')) {
+      e.preventDefault(); undoRedo(e.key === 'y' || e.shiftKey ? 'redo' : 'undo'); return;
+    }
     if (e.key === 'Escape') { closePalette(); NB.closeExploreMenu(); }
   });
   $('mf').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runCell(); } });
@@ -473,18 +609,30 @@ async function init() {
   editor = createEditor($('editor'), { onRun: runCell, onChange: onEditorChange });
   renderModeList(); renderModeUI(); buildConsts(); buildTweaks(); buildWelcomeGrid(); syncAssistant();
   bindEvents();
-  NB.setNotebookHooks({ onDefsChanged: renderDefs, toast, categorizeError });
+  NB.setNotebookHooks({ onDefsChanged: renderDefs, toast, categorizeError, saveFunction,
+    onPersist: (data) => { WS.saveNotebook(data); WS.trackForUndo(data); },
+    stamp: () => (collab && collab.connected ? collab.stamp() : null) });
+  Dlg.initDialogs({ load: loadReplacing, checkpoint, toast, run: (def) => NB.runNewCell(def, 'algebra'), shareLink: NB.shareLink, download, more: moreAction });
+  // every icon button is named for assistive technology
+  document.querySelectorAll('button[title]:not([aria-label])').forEach(b => b.setAttribute('aria-label', b.title));
   NB.bindNotebookEvents({ explain: explainCell });
   onEngineStatus(renderEngineStatus);
   let wasReady = false;
-  onEngineStatus(e => { if (e.status === 'ready' && !wasReady) { wasReady = true; NB.upgradePendingCells(); } if (e.status !== 'ready') wasReady = false; });
+  onEngineStatus(e => {
+    if (e.status === 'ready' && !wasReady) {
+      wasReady = true;
+      for (const [name, p] of pythonPlugins) registerPythonPlugin(name, p.source, p.opts, sympy).catch(() => {});
+      NB.upgradePendingCells();
+    }
+    if (e.status !== 'ready') wasReady = false;
+  });
 
   // Workspace: legacy stored scope (older versions) becomes part of the base workspace.
   loadStoredScope();
   try { localStorage.removeItem('cas2-scope'); } catch {}
   const opened = await openFromHash();
   if (!opened) {
-    const saved = NB.storedNotebook();
+    const saved = (await WS.loadCurrent()) || NB.storedNotebook();
     if (saved) { try { await NB.loadNotebook(saved, { replace: true }); } catch {} }
     else NB.recompute({ all: true });
   }
@@ -502,15 +650,21 @@ Object.assign(window, {
   runCell, setInputMode, insertDefInt, runDefInt, switchView, toggleSidebar, clearDefs, clearAll,
   toggleExact, toggleAngle, toggleTheme, toggleTweaks, openPalette, closePalette, filterPalette, palKey,
   evalUnit, setUnitInp, plotGraph, exportPlot: (id) => exportPlot(document.getElementById('gplot'), 'cas-plot-' + id),
-  saveSession, loadFile, exportLatex: NB.exportLatex, exportTxt: NB.exportTxt, shareNotebook, embedNotebook, addText,
+  saveSession, loadFile, exportLatex: NB.exportLatex, exportTxt: NB.exportTxt, shareNotebook, embedNotebook, addText, toggleMore, openCollab,
   engineInfo, setAutoPlot, setEngineEnabled, setAssistantKey, toggleAssistant, askAssistant, askFromPhoto,
 });
 
 // Automation / test API.
 window.CAS = {
-  ready: false, engine, state, scope, math, numericallyEqual, dispatch, MODES, clearDefs, jit: { compileReal },
+  ready: false, engine, state, scope, math, numericallyEqual, dispatch, opHeads, MODES, clearDefs, jit: { compileReal },
   cells: NB.cells, recompute: NB.recompute, idle: NB.idle, editCell: NB.editCell, deleteCell: NB.deleteCell,
   shareLink: NB.shareLink, setExact: async (b) => { if (state.exactMode !== b) await toggleExact(); },
+  workspace: { WS, GALLERY, FORMULAS, undo: () => undoRedo('undo'), redo: () => undoRedo('redo'), exportMarkdown, load: loadReplacing, checkpoint, openGalleryItem, more: moreAction },
+  get collab() { return ensureCollab(); },
+  plugins: {
+    register: registerPlugin, unregister: unregisterPlugin, list: () => Object.keys(PLUGINS),
+    async registerPython(name, source, opts = {}) { const t = await registerPythonPlugin(name, source, opts, sympy); pythonPlugins.set(name, { source, opts }); return t; },
+  },
   setAngle: async (a) => { if (state.angleMode !== a) await toggleAngle(); },
   // Run an expression through the real UI path and report the cell's result.
   async run(expr, mode = 'algebra') {

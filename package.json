@@ -3,6 +3,10 @@
   "private": true,
   "description": "Browser-native symbolic workstation (single HTML file).",
   "type": "module",
+  "bin": {
+    "cassycas": "bin/cassycas.mjs",
+    "cassycas-lsp": "bin/cassycas-lsp.mjs"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -10,7 +14,9 @@
     "test:setup": "node tests/setup.mjs && playwright install chromium",
     "test": "node --test --test-concurrency=1 tests/*.test.mjs",
     "build:single": "vite build --mode single",
-    "bench": "node tests/bench/run.mjs"
+    "bench": "node tests/bench/run.mjs",
+    "cas": "node bin/cassycas.mjs",
+    "lsp": "node bin/cassycas-lsp.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

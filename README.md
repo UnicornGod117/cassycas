@@ -8,7 +8,9 @@ A browser-native computer algebra system that checks its own answers. Exact resu
 | **Speed** | Interface ready in ~0.15 s and the exact engine in under 1 s on return visits (it restores a memory snapshot instead of starting Python and importing SymPy, which took 7–9 s); median answer 25 ms |
 | **Input** | Type maths the way you write it: `integral of x^2 from 0 to 1`, `d/dx x^3`, `sin^2 x`, `\|x - 3\| < 2`, `x²`, pasted LaTeX, Mathematica syntax, or a photo |
 | **Steps** | Worked solutions the way they are taught: product/quotient/chain rule, factor-and-cancel, L'Hôpital, quadratic formula, extraneous roots, sign charts, substitution, parts |
-| **Graphing** | Pan/zoom canvas grapher: asymptotes handled, implicit curves, shaded inequalities, slope and vector fields, domain colouring, clickable roots/extrema/intersections, animated sliders |
+| **Graphing** | Pan/zoom canvas grapher: asymptotes handled, **interval-certified** implicit curves, shaded inequalities, slope and vector fields, GPU domain colouring, 3D and Riemann surfaces, networks, statistical plots, clickable roots/extrema/intersections, animated sliders |
+| **Proof** | `prove(…)` proves identities and inequalities (canonical forms, Sturm sequences, interval branch-and-bound) and writes polynomial statements in Lean 4; `ieval` gives guaranteed enclosures |
+| **Workspace** | Version history and undo on this device, a function library, a gallery of templates, Markdown/Quarto round trips, peer-to-peer collaboration, plug-ins, a command line, a local API and a language server |
 
 ---
 
@@ -23,9 +25,34 @@ A browser-native computer algebra system that checks its own answers. Exact resu
 | **Linear algebra** | Determinant, inverse, eigenvalues/vectors (checked against det(A − λI)), RREF, rank, diagonalization, Jordan form, LU/QR, matrix exponential, pseudo-inverse, `linsolve` |
 | **Number theory** | Primality, factorization, divisors, totient, Möbius, modular inverse/power, CRT, continued fractions, Diophantine equations, special sequences, `identify(decimal)` |
 | **Probability, statistics, units, logic** | Normal/binomial/Poisson/t/χ²/exponential distributions, statistics, unit conversion and dimensional analysis, bitwise and boolean logic |
-| **Graphing** | `plot(tan(x), x^2 + y^2 = 16, y < x^2 - 2, r = 2 + 2cos(theta), [cos(3t), sin(2t)], point(1, 2))`, `slopefield(x - y)`, `vectorfield([-y, x])`, `domaincolor((z^2 - 1)/(z^2 + 1))`, 3D surfaces |
+| **Algebraic numbers, Galois theory, lattices** | `minpoly(sqrt(2) + sqrt(3))`, factoring over number fields `nfactor(x^2 - 2, sqrt(2))`, Galois groups up to degree 6 (and whether a polynomial is solvable by radicals), LLL lattice reduction, holonomic ODEs `holonomic(exp(x^2), x)` |
+| **Signals, optimisation, stochastic calculus** | Z-transform and its inverse, exact DFT, convolution, Bode plots; global extrema on intervals, Lagrange multipliers and linear programming (`maximize(x*y, [x + y = 10])`); Itô's lemma, closed-form SDE solutions, simulated sample paths |
+| **Geometry, tensors, forms** | Named objects (`A = Point(0, 0)`, `c = Circle(A, 2)`, `T = Triangle(…)`) with intersections, distances, tangents, circumcircle and incircle, drawn together; metrics → Christoffel symbols, Riemann/Ricci/Einstein tensors, geodesics; curvature of curves and surfaces; differential forms (`wedge`, exterior derivative, Hodge star); differential elimination |
+| **Random variables, quantum, knots** | `X ~ Normal(0, 1)` then `P(X > 1)`, `E(X^2)`, `Var(…)`; exact quantum circuit simulation `circuit(2, H(0), CNOT(0, 1))`; Alexander and Jones polynomials of standard knots |
+| **Proof and grading** | `prove(x^4 - 4x^3 + 6x^2 - 4x + 1 >= 0)` proves identities and polynomial and transcendental inequalities (Sturm sequences, interval branch-and-bound with Taylor forms), gives a counterexample when there is one, and writes polynomial statements in Lean 4; `ieval(expr, [x, a, b])` gives a guaranteed enclosure; `grade(answer, key)` marks answers (equivalent, correct up to a constant, simplified or not) |
+| **Graphing** | `plot(tan(x), x^2 + y^2 = 16, y < x^2 - 2, r = 2 + 2cos(theta), [cos(3t), sin(2t)], point(1, 2))`, `slopefield(x - y)`, `vectorfield([-y, x])`, `domaincolor((z^2 - 1)/(z^2 + 1))` (WebGL), `plot3d(x^2 + y^2 + z^2 = 1)`, `riemann(sqrt(z))`, `histogram`, `boxplot`, `scatter` (with least squares), `graph([[1, 2], [2, 3], …])` (degrees, components, colouring, `shortestpath`), `tree(expr)`, `sdepaths(…)`. Implicit curves are traced with outward-rounded interval arithmetic, so no piece of a curve is missed, and isolated points are shown |
 
-**Notebook.** Cells form a dependency graph: editing a definition re-runs only the cells that use it. Numeric definitions get sliders; plot parameters get sliders with ▶ to animate. Click any part of a result to differentiate, integrate, factor or plot it. Notebooks are kept in the browser, exported as `.cas`, LaTeX or text, shared as a link (compressed into the URL fragment, so it never reaches a server), or **embedded** in another page (`?embed`).
+**Notebook.** Cells form a dependency graph: editing a definition re-runs only the cells that use it. Numeric definitions get sliders; plot parameters get sliders with ▶ to animate; worked solutions play as an animation in which each step morphs into the next. Click any part of a result to differentiate, integrate, factor or plot it. Notebooks are kept in the browser, exported as `.cas`, LaTeX, Markdown, Quarto or text, shared as a link (compressed into the URL fragment, so it never reaches a server), or **embedded** in another page (`?embed`).
+
+**Workspace** (the ⋯ menu).
+- **Version history**: every change is kept on this device in IndexedDB, with named checkpoints and restore. Unchanged cells are stored once and shared between versions. Ctrl+Z and Ctrl+Shift+Z undo and redo outside the input line.
+- **Function library**: ★ on any definition makes it available in every notebook.
+- **Gallery**: twelve example notebooks and templates.
+- **Formula search** in the palette: 47 formulas from geometry, finance, physics and calculus.
+- **Markdown/Quarto import and export**: ```` ```cas ```` blocks, with results as display maths.
+- **Citations**: BibTeX and APA, for CassyCAS and the libraries that do the mathematics.
+- **Collaboration**: edit one notebook together, browser to browser over WebRTC, with no server of ours. One person makes an invite code and the other answers it; the codes travel by any chat. Concurrent edits converge (each cell carries a Lamport version).
+  - On one network, the peers' local addresses are enough.
+  - Connecting across networks uses a public STUN server, only if you opt in, because it sees your IP address.
+  - There is no relay (TURN), so very restrictive NATs cannot connect.
+
+**Plug-ins.** Add a JavaScript tool (`CAS.plugins.register({ name, run(args, helpers) })`) or a SymPy tool (`CAS.plugins.registerPython(name, 'def t_name(e): …')`) from the console. Plug-ins appear in autocomplete and the palette. Built-in names cannot be replaced, and nothing is ever loaded from a URL.
+
+**Accessibility.**
+- Cells are focusable and labelled, and results are announced to screen readers in words ("x squared plus 1").
+- Dialogs trap focus and close with Escape, and the menus work from the keyboard.
+- A skip link, visible focus rings, and respect for reduced-motion settings.
+- Autocomplete is context-aware. Inside `integrate(x*y^2, |` it offers the variables of the first argument, and after `X ~` it offers distributions. It also offers named objects and user functions, and the current mode's functions rank first.
 
 ---
 
@@ -54,6 +81,17 @@ Enter           evaluate              ⌘K / Ctrl+K   command palette
 Shift+Enter     newline               Tab           autocomplete
 Alt+↑/↓         input history
 ```
+
+**Outside the browser.** The same app runs headless for scripts and editors:
+
+```bash
+npx cassycas "integrate(x^2 sin(x), x)" "solve(x^2 = 2, x)"      # one result per line (✓ when verified)
+echo "factor(x^4 - 1)" | npx cassycas --json                     # JSON: plain, LaTeX, engine, check
+npx cassycas --serve 8787                                        # POST /eval {"expr", "mode"}, POST /batch, GET /health
+npx cassycas-lsp                                                 # language server (stdio) for VS Code, Neovim, Helix…
+```
+
+The command line and the local API drive the built app in headless Chromium, so their answers, checks and steps are the app's own. The API listens on 127.0.0.1 only and refuses cross-origin requests from web pages. The language server reads one cell per line, or the ```` ```cas ```` blocks of Markdown/Quarto files. It reports unknown functions with suggestions, unbalanced brackets and wrong argument counts, and offers hover documentation and completion.
 
 **Read as.** When input is written in free form, the cell shows the canonical form it was read as, so you can see (and correct) the interpretation.
 
@@ -99,7 +137,15 @@ src/
   tools.js                           registry of named tools: signatures, argument kinds, examples
   kernel/                            fallback engine: MathJS worker, Algebrite, numerics, BigInt number theory,
                                      probability distributions
+  sympy/advanced.py                  number fields to knots: the advanced tools, named objects, prove/ieval/grade
+  graph/interval.js, graph/glsl.js   interval arithmetic (outward rounding) for certified curves; WebGL domain colouring
+  viz.js, morph.js                   statistical plots, networks, trees, 3D/Riemann surfaces; step animations
+  store.js, workspace.js, dialogs.js IndexedDB, version history, undo, library, Markdown/Quarto, citations, dialogs
+  gallery.js, formulas.js            example notebooks; formula search
+  collab.js, plugins.js, speech.js   peer-to-peer collaboration; plug-in API; results in words
+  lsp.js                             analysis behind the language server
   assistant.js                       optional Claude assistant (loaded only when used)
+bin/                                 command line and local API (cassycas.mjs), language server (cassycas-lsp.mjs)
 public/                              manifest, icon, service worker
 tests/                               end-to-end suites, differential corpus, scoreboard (tests/bench)
 ```
@@ -138,6 +184,12 @@ The browser tests load `dist/` in headless Chromium; Pyodide is served from the 
 - `tests/bench.test.mjs` — the scoreboard: no wrong answers from either engine.
 - `tests/offline.test.mjs` — the service worker serves the app and SymPy offline; the engine restarts from its snapshot.
 - `tests/versions.test.mjs` — the Pyodide version is pinned consistently; engine packages are snapshot-safe.
+- `tests/property.test.mjs` — property-based tests: seeded random expressions, each answer checked by an oracle that shares no code with the engine (finite differences, Simpson's rule, substitution in mathjs). `PROPERTY_SEED` and `PROPERTY_CASES` replay or widen a run.
+- `tests/viz.test.mjs` — interval enclosures (randomised), GLSL compilation, every visualisation.
+- `tests/workspace.test.mjs` — every gallery notebook and formula runs; history, undo, library, Markdown/Quarto, plug-ins, the dialogs, accessibility, collaboration between two pages.
+- `tests/cli.test.mjs` — the language server (analysis and protocol), the command line and the local API.
+
+The collaboration test joins its two pages with an in-memory channel by default. Headless Chromium on some hosts cannot complete ICE without trickle, even between two bare `RTCPeerConnection`s. `CAS_WEBRTC=1` uses real data channels instead.
 
 ---
 
@@ -148,17 +200,23 @@ The original 10-level roadmap was written before the move to SymPy. Its status t
 | Level | Items |
 |---|---|
 | **1 Engine foundations** | 1.1–1.3 polynomial engines, partial fractions — SymPy · 1.4 Risch — SymPy (heuristic Risch) plus inverse-substitution fallback ✓ · 1.5 limits (Gruntz) — SymPy · 1.6 summation — SymPy · 1.7 solving — SymPy (solveset), readable solution sets ✓ |
-| **2 Domains** | 2.1 ODEs ✓ · 2.2 number theory ✓ · 2.3 multivariable calculus ✓ · 2.4 vector calculus ✓, differential forms ○ · 2.5 Laplace/Fourier transforms ✓, Z-transform ○ · 2.6 distributions ✓, random variables as objects ○ · 2.7 optimisation: extrema ✓, constrained/linear programming ○ · 2.8 signal processing ○ · 2.9 stochastic calculus ○ · 2.10 tensors and relativity ○ |
-| **3 Numerics** | 3.1 exact rationals ✓ · 3.2 algebraic numbers — SymPy ✓ · 3.3 number fields ◐ (SymPy, not exposed) · 3.4 arbitrary precision ✓ · 3.5 interval arithmetic and rigorous numerics ○ (verification is high-precision, not interval-certified) · 3.6 symbolic–numeric hybrids ◐ (verification layer, `identify`) · 3.7 GPU ○ |
-| **4 Architecture** | 4.1 workers ✓ · 4.2 WebAssembly ✓ (Pyodide) · 4.3 SymPy via Pyodide ✓, memory-snapshot start ✓ · 4.4 JIT compilation of expressions ✓ (plotting) · 4.5 persistent data structures ○ · 4.6 reactive evaluation ✓ · 4.7 plug-in API ○ · 4.8 IndexedDB sessions ◐ (localStorage; Cache Storage for the engine) |
-| **5 Notebook** | 5.1 LaTeX export ✓ · 5.2 share links ✓ · 5.3 version history ○ · 5.4 function library ○ · 5.5 step-by-step derivations ✓ · 5.6 templates ○ · 5.7 themes ✓, accessibility ◐ · 5.8 collaborative editing ○ |
-| **6 Visualisation** | 6.1 vector fields and phase portraits ✓ · 6.2 slope fields ✓ · 6.3 domain colouring ✓ · 6.4 Riemann surfaces ○ · 6.5 implicit surfaces ○ · 6.6 parameter animations ✓ · 6.7 equation morphing ○ · 6.8 manifolds ○ · 6.9 statistical plots ○ · 6.10 network plots ○ · 6.11 expression trees ○ |
-| **7 Verification** | 7.1 property-based testing ◐ (independent scoreboard instead) · 7.2 differential testing ✓ · 7.3 Lean export ○ · 7.4 certified plotting ◐ (pole and jump detection, not interval-certified) · 7.5 provenance ✓ (engine badge, "read as", verification method) · 7.6 unit checking ✓ |
-| **8 AI** | 8.1 natural language ✓ (offline parser and Claude) · 8.2 equation OCR ✓ (photo input) · 8.3 explanations ✓ (grounded in steps and checks) · 8.4 context-aware autocomplete ○ · 8.5 common-error detection ◐ ("did you mean", extraneous roots) · 8.6 auto-grading ○ · 8.7 formula search ○ |
-| **9 Ecosystem** | 9.1 gallery ○ · 9.2 citation export ○ · 9.3 language server ○ · 9.4 REST API ○ (at odds with the no-server design) · 9.5 embed widget ✓ · 9.6 Markdown/Quarto bridge ○ |
-| **10 Research** | 10.1 Gröbner bases ✓ · 10.2–10.10 (differential algebra, Galois theory, holonomic functions, symbolic differential geometry, constraint geometry, quantum simulation, lattices, knots, theorem proving) ○ |
+| **2 Domains** | 2.1 ODEs ✓ · 2.2 number theory ✓ · 2.3 multivariable calculus ✓ · 2.4 vector calculus and differential forms ✓ · 2.5 Laplace/Fourier/Z-transforms ✓ · 2.6 distributions and random variables as objects ✓ · 2.7 optimisation: extrema, Lagrange multipliers, linear programming ✓ · 2.8 signal processing (DFT, convolution, Bode) ✓ · 2.9 stochastic calculus (Itô, SDEs, sample paths) ✓ · 2.10 tensors and relativity ✓ |
+| **3 Numerics** | 3.1 exact rationals ✓ · 3.2 algebraic numbers ✓ · 3.3 number fields (`minpoly`, `nfactor`) ✓ · 3.4 arbitrary precision ✓ · 3.5 interval arithmetic and rigorous numerics (`ieval`, `prove`) ✓ · 3.6 symbolic–numeric hybrids (verification layer, `identify`, `holonomic`) ✓ · 3.7 GPU (WebGL domain colouring) ✓ |
+| **4 Architecture** | 4.1 workers ✓ · 4.2 WebAssembly ✓ (Pyodide) · 4.3 SymPy via Pyodide ✓, memory-snapshot start ✓ · 4.4 JIT compilation of expressions ✓ (plotting) · 4.5 persistent data structures (content-addressed versions sharing cells) ✓ · 4.6 reactive evaluation ✓ · 4.7 plug-in API ✓ · 4.8 IndexedDB sessions ✓ |
+| **5 Notebook** | 5.1 LaTeX export ✓ · 5.2 share links ✓ · 5.3 version history ✓ · 5.4 function library ✓ · 5.5 step-by-step derivations ✓ · 5.6 templates ✓ · 5.7 themes and accessibility ✓ · 5.8 collaborative editing (peer to peer) ✓ |
+| **6 Visualisation** | 6.1 vector fields and phase portraits ✓ · 6.2 slope fields ✓ · 6.3 domain colouring ✓ · 6.4 Riemann surfaces ✓ · 6.5 implicit surfaces ✓ · 6.6 parameter animations ✓ · 6.7 equation morphing ✓ · 6.8 manifolds (parametric surfaces, curvature, geodesics) ✓ · 6.9 statistical plots ✓ · 6.10 network plots ✓ · 6.11 expression trees ✓ |
+| **7 Verification** | 7.1 property-based testing ✓ · 7.2 differential testing ✓ · 7.3 Lean export ◐ (statements, not proofs; not compiled by Lean here) · 7.4 certified plotting ✓ (implicit curves) · 7.5 provenance ✓ (engine badge, "read as", verification method) · 7.6 unit checking ✓ |
+| **8 AI** | 8.1 natural language ✓ (offline parser and Claude) · 8.2 equation OCR ✓ (photo input) · 8.3 explanations ✓ (grounded in steps and checks) · 8.4 context-aware autocomplete ✓ · 8.5 common-error detection ✓ ("did you mean", extraneous roots, `grade`) · 8.6 auto-grading ✓ · 8.7 formula search ✓ |
+| **9 Ecosystem** | 9.1 gallery ✓ · 9.2 citation export ✓ · 9.3 language server ✓ · 9.4 API ✓ (a local command line and HTTP API, not a hosted service, in keeping with the no-server design) · 9.5 embed widget ✓ · 9.6 Markdown/Quarto bridge ✓ |
+| **10 Research** | 10.1 Gröbner bases ✓ · 10.2 differential algebra (`diffelim`) ✓ · 10.3 Galois theory ✓ · 10.4 holonomic functions ✓ · 10.5 symbolic differential geometry ✓ · 10.6 constraint geometry (named objects) ✓ · 10.7 quantum simulation ✓ · 10.8 lattices (LLL) ✓ · 10.9 knot invariants ✓ · 10.10 theorem proving (`prove`) ✓ |
 
-Nearest next steps: interval-certified plotting and verification (3.5, 7.4), a notebook gallery and templates (5.6, 9.1), version history (5.3), and exposing SymPy's number-field, Galois-group and holonomic modules as tools (3.3, 10.3, 10.4).
+**Limits, stated plainly.**
+- **Lean.** `prove` writes a Lean 4 statement for the polynomial identities and inequalities it proves, but the proof itself comes from CassyCAS's own method (Sturm sequences or interval bounds), and nothing here compiles the statement with Lean.
+- **Interval arithmetic.** Interval enclosures in JavaScript round outwards by one unit in the last place for each operation. The elementary functions (`sin`, `exp`, …) are trusted to be accurate to within that margin, which IEEE does not guarantee. The Python enclosures use mpmath's interval arithmetic.
+- **Galois groups** are computed up to degree 6, and **knot invariants** for a table of standard knots.
+- **Collaboration** cannot connect through NATs that need a relay (TURN).
+
+Possible next steps: compiling the Lean output in CI, TURN support for collaboration, and Galois groups beyond degree 6.
 
 ---
 
