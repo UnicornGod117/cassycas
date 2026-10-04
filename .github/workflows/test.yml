@@ -1,0 +1,26 @@
+name: test
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # Pyodide's SymPy/mpmath/gmpy2 wheels for the offline exact-engine tests, and the same
+      # SymPy on CPython for the corpus check (Pyodide pins mpmath 1.4.1, hence --no-deps).
+      - run: node tests/setup.mjs
+      - run: pip install --no-deps sympy==1.14.0 mpmath==1.4.1
+      - name: Corpus is up to date with its generator
+        run: python tests/corpus/generate.py && git diff --exit-code tests/corpus/corpus.json
+      - run: npm run build
+      - run: npm test

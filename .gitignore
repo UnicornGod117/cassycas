@@ -19,3 +19,9 @@ __pycache__/
 dist/
 build/
 
+
+# Test fixtures downloaded by `npm run test:setup`
+tests/.wheels/
+tests/corpus/last-*.json
+dist-single/
+tests/bench/results-*.json
