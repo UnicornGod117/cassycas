@@ -519,7 +519,7 @@ window.CAS = {
     editor.setValue(expr);
     const cell = await runCell();
     const el = document.getElementById(cell.id);
-    return cell.error ? { error: cell.error } : { plain: el.dataset.plain, latex: el.dataset.latex, engine: cell.res?.engine, note: cell.res?.note || null, id: cell.id };
+    return cell.error ? { error: cell.error } : { plain: el.dataset.plain, latex: el.dataset.latex, engine: cell.res?.engine, note: cell.res?.note || null, check: cell.res?.check || null, understood: cell.res?.understood || null, id: cell.id };
   },
 };
 

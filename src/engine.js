@@ -49,9 +49,12 @@ function numberNode(v) {
   return r ? math.parse(`(${r.n}/${r.d})`) : new math.ConstantNode(v);
 }
 export function substituteWorkspace(exprStr, keep = []) {
-  const sub = (node, depth) => node.transform((n, path, parent) => {
+  const sub = (node, stack) => node.transform((n, path, parent) => {
     if (!n.isSymbolNode || (parent && parent.isFunctionNode && path === 'fn') || keep.includes(n.name)) return n;
-    if (varDefs[n.name] !== undefined && depth < 12) return new math.ParenthesisNode(sub(math.parse(varDefs[n.name]), depth + 1));
+    if (varDefs[n.name] !== undefined) {
+      if (stack.includes(n.name)) throw new Error(`Circular definition: ${[...stack.slice(stack.indexOf(n.name)), n.name].join(' → ')}.`);
+      return new math.ParenthesisNode(sub(math.parse(varDefs[n.name]), [...stack, n.name]));
+    }
     const v = scope[n.name];
     if (CONSTANT_NAMES.includes(n.name) || v === undefined || typeof v === 'function') return n;
     if (typeof v === 'number') return numberNode(v);
@@ -62,7 +65,17 @@ export function substituteWorkspace(exprStr, keep = []) {
     }
     return n;
   });
-  return sub(math.parse(exprStr), 0);
+  return sub(math.parse(exprStr), []);
+}
+// Does an expression mention a variable (2x - 3 mentions x; sin(y) and xy do not mention x)?
+function mentionsName(text, name) {
+  try {
+    let found = false;
+    math.parse(text.replace(/(?<![<>!=])=(?!=)/g, '==')).traverse((n, path, parent) => {
+      if (n.isSymbolNode && n.name === name && !(parent && parent.isFunctionNode && path === 'fn')) found = true;
+    });
+    return found;
+  } catch { return new RegExp(`(?<![A-Za-z_.])${name}(?![\\w(])`).test(text); }
 }
 function ast(exprStr, keep = []) { return toAst(substituteWorkspace(exprStr, keep)); }
 
@@ -96,6 +109,8 @@ function needsExactHint() {
   return ' (SymPy, still loading — this cell will update automatically)';
 }
 const stepList = (steps) => (steps || []).map(s => ({ d: s.d, tex: s.tex, depth: s.depth || 0 }));
+// The engine's caveats ("variables treated as real") are shown as a final step.
+const noteStep = (steps, r) => r && r.note ? [...steps, { d: 'Note', e: r.note }] : steps;
 
 // Attach the exact engine's verification verdict ({status: 'verified'|'failed', how}) to a result.
 function checked(res, r) { if (r && r.check) res.check = r.check; return res; }
@@ -169,7 +184,9 @@ export function classifyDef(expr) {
     return null;
   }
   const va = expr.match(VAR_DEF_RE);
-  if (va && isDefinableName(va[1])) return { kind: 'var', name: va[1], rhs: va[2].trim() };
+  // x = 2x - 3 with x undefined is an equation to solve; n = n + 1 after n = 1 redefines n
+  const defined = (n) => scope[n] !== undefined || varDefs[n] !== undefined;
+  if (va && isDefinableName(va[1]) && (defined(va[1]) || !mentionsName(va[2], va[1]))) return { kind: 'var', name: va[1], rhs: va[2].trim() };
   return null;
 }
 // Names a cell reads (for the dependency graph).
@@ -206,7 +223,12 @@ export async function applyDefinition(def) {
   }
   const rhs = inlineUserFns(def.rhs);
   let resolved = null;
-  try { resolved = substituteWorkspace(rhs, []).toString(); } catch {}
+  try { resolved = substituteWorkspace(rhs, []).toString(); } catch (e) { if (/Circular/.test(e.message)) throw e; }
+  // a = b + 1 after b = a + 1: the definition would refer to itself
+  if (resolved !== null && mentionsName(resolved, def.name)) {
+    const via = freeSymbols(rhs).filter(n => varDefs[n] !== undefined);
+    throw new Error(`Circular definition: ${def.name} would depend on itself${via.length ? ' through ' + via.join(', ') : ''}.`);
+  }
   let value, symbolic = false;
   try { value = await workerEval(rhs); }
   catch (e) {
@@ -254,8 +276,22 @@ async function dispatchCanonical(expr, mode) {
   if (head && CALCULUS_OPS[head]) return CALCULUS_OPS[head](e);
   if (head === 'solve' || head === 'zeros' || head === 'roots') return evalSolve(e, head);
   if (head && MATRIX_OPS[head]) { const r = await MATRIX_OPS[head](e); if (r) return r; }
+  const parts = parseTopLevelArgs(e);
+  // y' = x*y, y(0) = 1: a differential equation (with conditions)
+  if (topLevelRelation(parts[0]) && odeFunction(parts[0])) return evalDsolve(`dsolve(${e})`);
+  // x + y = 7, x - y = 1: a system
+  if (parts.length >= 2 && parts.every(p => isRelation(p) && splitRelation(p).rel === '=')) return evalSystem(parts);
   if (topLevelRelation(e)) return evalRelation(e);
   return evalExpression(e);
+}
+// The unknown function of a differential equation written with primes (y'' + y = 0, f'(t) = f(t)):
+// {name, var}, or null. Names the workspace defines as functions are derivatives, not unknowns.
+function odeFunction(eq) {
+  const m = eq.match(/(?<![\w.])([A-Za-z])('+)(?:\s*\(\s*([A-Za-z])\s*\))?/);
+  if (!m || userFns[m[1]]) return null;
+  const v = m[3] || (new RegExp(`(?<![\\w.])${m[1]}\\s*\\(\\s*([A-Za-z])\\s*\\)`).exec(eq) || [])[1]
+    || (/(?<![\w.])x(?![\w(])/.test(eq) ? 'x' : /(?<![\w.])t(?![\w(])/.test(eq) ? 't' : 'x');
+  return { name: m[1], var: v };
 }
 
 // ── Bare equations and inequalities: 2x^2 + 3x = 5, x^2 < 4, x^2 + y^2 = 25 ──
@@ -496,7 +532,7 @@ async function evalDerivative(e) {
   const oTex = order > 1 ? `\\frac{d^{${order}}}{d${v}^{${order}}}` : `\\frac{d}{d${v}}`;
   const a = tryAst(f, [v]);
   const r = a ? await exact('diff', { expr: a, var: v, order }) : null;
-  if (r && !r.error) return checked(presentValue(r.value, { prefix: `${oTex}\\left[${texOf(f)}\\right] = `, steps: stepList(r.steps), plotVar: true }), r);
+  if (r && !r.error) return checked(presentValue(r.value, { prefix: `${oTex}\\left[${texOf(f)}\\right] = `, steps: noteStep(stepList(r.steps), r), plotVar: true }), r);
   const steps = [{ d: `f(${v}) = ${f}`, e: f }];
   let node = math.parse(f);
   for (let i = 0; i < order; i++) { node = math.derivative(node, v); steps.push({ d: `d/d${v} (order ${i + 1})`, e: node.toString() }); }
@@ -550,7 +586,7 @@ async function evalIntegrate(e) {
     if (r.noForm) return texResult(`\\int ${texOf(f)} \\, d${v} \\quad \\text{(no closed form found)}`,
       `∫ ${f} d${v} — no closed form found (SymPy and substitution heuristics failed; this does not prove none exists)`,
       { engine: 'sympy', steps: [...stepList(r.steps), { d: 'Tip', e: `integrate(${f}, ${v}, a, b) gives a numerical value` }] });
-    const res = checked(presentValue(r.value, { prefix: pre, suffix: ' + C', steps: stepList(r.steps) }), r);
+    const res = checked(presentValue(r.value, { prefix: pre, suffix: ' + C', steps: noteStep(stepList(r.steps), r) }), r);
     res.plain = `${r.value.plain} + C`;
     return res;
   }
@@ -611,9 +647,19 @@ function sumOp(kind) {
       return texResult(`${pre.replace(/ = $/, '')}${r.to ? ' = ' + r.to.latex : ''}\\quad\\text{(diverges)}`,
         `diverges${r.to ? ' to ' + r.to.plain : ''}`, { engine: 'sympy' });
     }
+    if (r && !r.error && r.when) {      // Σ x^n = 1/(1 − x) for |x| < 1
+      const res = presentValue(r.value, { prefix: pre, suffix: `\\quad\\text{for } ${r.when.latex}`, plotVar: false });
+      res.copy = res.plain = `${r.value.plain} for ${r.when.plain}`;
+      return checked(res, r);
+    }
+    if (r && !r.error && r.numeric) {   // convergent, no closed form: the value to 25 digits
+      const guess = r.looksLike ? `\\quad\\text{(numerical; matches } ${r.looksLike.latex} \\text{ to 20 digits — not a proof)}` : '\\quad\\text{(numerical; no closed form found)}';
+      return texResult(`${pre}${r.value.latex}${guess}`, `${r.value.plain}  (numerical${r.looksLike ? `; matches ${r.looksLike.plain} to 20 digits — not a proof` : '; no closed form found'})`, { engine: 'sympy' });
+    }
     if (r && !r.error && !r.noForm) return checked(presentValue(r.value, { prefix: pre, plotVar: true }), r);
     const bound = (s) => { try { return Math.round(toReal(math.evaluate(s, ctx()))); } catch { return NaN; } };
     const st = bound(lo), en = bound(hi);
+    if ((!isFinite(st) || !isFinite(en)) && r) throw new Error(r.error ? `The exact engine could not evaluate this ${kind}: ${r.error}` : `No closed form found for this ${kind}.`);
     if (!isFinite(st) || !isFinite(en)) throw new Error(`Symbolic or infinite bounds need the exact engine${needsExactHint()}.`);
     if (Math.abs(en - st) > 100000) throw new Error(`Range too large (${st} to ${en}).`);
     const fn = math.compile(f), loc = ctx();
@@ -692,7 +738,12 @@ async function evalOde(e) {
 // dsolve(y'' + y = 0, y(x))   dsolve(y' = y, y(x), y(0) = 1, y'(0) = 2)
 async function evalDsolve(e) {
   const args = parseTopLevelArgs(xarg(e, 'dsolve'));
-  if (args.length < 2) throw new Error("Use dsolve(y'' + y = 0, y(x)) with optional conditions like y(0) = 1.");
+  if (!args.length) throw new Error("Use dsolve(y'' + y = 0, y(x)) with optional conditions like y(0) = 1.");
+  if (!args[1] || LONE_EQ.test(args[1])) {        // no y(x): infer it from the primes
+    const f = odeFunction(args[0]);
+    if (!f) throw new Error("Use dsolve(y'' + y = 0, y(x)) with optional conditions like y(0) = 1.");
+    args.splice(1, 0, `${f.name}(${f.var})`);
+  }
   const fm = args[1].match(/^([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*)\s*\)$/);
   if (!fm) throw new Error('The second argument must name the unknown function, e.g. y(x).');
   const [, fname, xname] = fm;
@@ -941,11 +992,14 @@ const JS_TOOLS = {
   }])),
   // subs(f, x, a) with a numeric value: evaluate f there.
   subs: (texts) => {
-    const [f, v, at] = texts;
+    const [f, ...rest] = texts;
     if (/\bdiff\s*\(/.test(f)) throw new NotCertain('derivatives need the exact engine');
-    const val = substituteWorkspace(f, [v]).compile().evaluate(ctx({ [v]: math.evaluate(at, ctx()) }));
+    const pairs = [];
+    for (let i = 0; i + 1 < rest.length; i += 2) pairs.push([rest[i], rest[i + 1]]);
+    const at = Object.fromEntries(pairs.map(([v, a]) => [v, math.evaluate(a, ctx())]));
+    const val = substituteWorkspace(f, pairs.map(p => p[0])).compile().evaluate(ctx(at));
     if (typeof val !== 'number' && !(val && val.isComplex)) throw new NotCertain('not a number');
-    return texResult(`\\left. ${texOf(f)} \\right|_{${v} = ${texOf(at)}} = ${toTex(val)}`, fmtR(val), { engine: 'js' });
+    return texResult(`\\left. ${texOf(f)} \\right|_{${pairs.map(([v, a]) => `${v} = ${texOf(a)}`).join(',\\ ')}} = ${toTex(val)}`, fmtR(val), { engine: 'js' });
   },
   // ∫∫ f over [x, a, b], [y, c(x), d(x)], …: nested adaptive quadrature (innermost range first).
   integrate_multi: (texts) => {

@@ -53,7 +53,7 @@ export const TOOLS = {
   N: { args: 'e,e?', mode: 'numeric', sig: 'N(expr[, digits])', desc: 'Evaluate to any number of digits', ex: 'N(pi, 100)' },
 
   // ── algebra ──
-  subs: { args: 'e,v,e', mode: 'algebra', sig: 'subs(expr, x, value)', desc: 'Substitute a value (or expression) for a variable', ex: 'subs(x^2 + 3x, x, 2)', jsFallback: true },
+  subs: { args: 'e,v,e,v?,e?,v?,e?', mode: 'algebra', sig: 'subs(expr, x, value[, y, value…])', desc: 'Substitute a value (or expression) for a variable', ex: 'subs(x^2 + 3x, x, 2)', jsFallback: true },
   resultant: { args: 'e,e,v', mode: 'algebra', sig: 'resultant(p, q, x)', desc: 'Resultant of two polynomials', ex: 'resultant(x^2 - 2, x^3 - x - 1, x)' },
   discriminant: { args: 'e,v', mode: 'algebra', sig: 'discriminant(p, x)', desc: 'Polynomial discriminant', ex: 'discriminant(a*x^2 + b*x + c, x)' },
   degree: { args: 'e,v', mode: 'algebra', sig: 'degree(p, x)', desc: 'Degree in x', ex: 'degree((x^2 + 1)^3, x)' },

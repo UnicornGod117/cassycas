@@ -473,10 +473,15 @@ def t_rsolve(b, eq_node, fn_node, *ic_nodes):
 
 
 # ── algebra ─────────────────────────────────────────────────────────────────
-def t_subs(e, x, v):
-    _syms(x)
-    r = e.doit().subs(x, v).doit()
-    return {'value': value(_tidy(r)), 'prefix': r'\left. %s \right|_{%s = %s} = ' % (tex(e.doit()), tex(x), tex(v))}
+def t_subs(e, x, v, *more):
+    if len(more) % 2:
+        raise ValueError('Use subs(expr, x, a) or subs(expr, x, a, y, b)')
+    pairs = [(x, v)] + list(zip(more[::2], more[1::2]))
+    for name, _ in pairs:
+        _syms(name)
+    r = e.doit().subs(pairs, simultaneous=True).doit()
+    at = r',\ '.join('%s = %s' % (tex(n), tex(w)) for n, w in pairs)
+    return {'value': value(_tidy(r)), 'prefix': r'\left. %s \right|_{%s} = ' % (tex(e.doit()), at)}
 
 
 def t_resultant(p, q, x):

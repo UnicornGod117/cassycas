@@ -24,6 +24,7 @@ export const ALIASES = {
   deriv: 'derivative', differentiate: 'derivative', lim: 'limit', factorise: 'factor', simplfy: 'simplify',
   nCr: 'combinations', choose: 'combinations', binom: 'combinations', nPr: 'permutations', gcf: 'gcd', hcf: 'gcd',
   arcsec: 'asec', arccsc: 'acsc', arccot: 'acot', root: 'nthRoot', partialfractions: 'apart', taylorseries: 'series',
+  trigexpand: 'expand_trig', expandtrig: 'expand_trig', trigreduce: 'trigsimp', nthroot: 'nthRoot',
 };
 
 // ── helpers ──────────────────────────────────────────────────────────────
@@ -102,11 +103,19 @@ export function fromEnglish(raw) {
     return `integrate(${f}, ${guessVar(f)}, ${m[2]}, ${m[3]})`;
   }
   // limit
+  if ((m = s.match(/^lim(?:it)?\s*_?\s*\{?\s*([A-Za-z])\s*(?:->|→|⟶|to)\s*([^\s{}]+?)\s*(\^?[+-])?\s*\}?\s+(.+)$/i))) {
+    const side = m[3] ? `, "${m[3].replace('^', '')}"` : '';
+    return `limit(${m[4]}, ${m[1]}, ${m[2]}${side})`;
+  }
+  if ((m = s.match(new RegExp(`^(?:the\\s+)?(?:limit|lim)\\s+(?:as|when)\\s+([A-Za-z_]\\w*)\\s*${POINT_WORDS}\\s*(.+?)\\s+of\\s+(.+)$`, 'i'))))
+    return `limit(${m[3]}, ${m[1]}, ${m[2].trim()})`;
   if ((m = s.match(new RegExp(`^(?:the\\s+)?(?:limit|lim)\\s+(?:of\\s+)?(.+?)\\s+(?:as|when|for)\\s+([A-Za-z_]\\w*)\\s*${POINT_WORDS}\\s*(.+?)(?:\\s+from\\s+(?:the\\s+)?(left|right|below|above))?\\s*([+-])?$`, 'i')))) {
     const side = m[4] ? (/left|below/i.test(m[4]) ? '"-"' : '"+"') : m[5] ? `"${m[5]}"` : null;
     return `limit(${m[1]}, ${m[2]}, ${m[3].trim()}${side ? ', ' + side : ''})`;
   }
-  // solving
+  // solving; "x + y = 7 and x - y = 1" is a system
+  if (/=.*\s+and\s+.*=/i.test(s) && s.split(/\s+and\s+/i).every(p => /(?<![<>!=])=(?!=)/.test(p)))
+    s = s.split(/\s+and\s+/i).join(', ');
   if ((m = s.match(/^solve\s+(.+?)\s+for\s+([A-Za-z_]\w*)$/i))) return `solve(${m[1]}, ${m[2]})`;
   if ((m = s.match(/^solve\s+(?!\()(.+)$/i)) && !/^\(/.test(m[1])) return `solve(${m[1]})`;
   if ((m = s.match(/^(?:the\s+)?(?:roots|zeros|zeroes|solutions)\s+of\s+(.+)$/i))) {
@@ -128,6 +137,7 @@ export function fromEnglish(raw) {
     return `${verb}(${m[2]})`;
   }
   if ((m = s.match(/^(?:the\s+)?(?:prime\s+)?factori[sz]ation\s+of\s+(-?\d+)$/i))) return `factorint(${m[1]})`;
+  if ((m = s.match(/^(?:the\s+)?partial[\s-]+fractions?\s+(?:decomposition\s+)?(?:of\s+)?(.+)$/i))) return `apart(${m[1]})`;
   if ((m = s.match(/^is\s+(\d+)\s+(?:a\s+)?prime(?:\s+number)?$/i))) return `isprime(${m[1]})`;
   if ((m = s.match(/^(?:the\s+)?(gcd|lcm|greatest common divisor|least common multiple|highest common factor)\s+of\s+(.+?)\s+and\s+(.+)$/i))) {
     const fn = /lcm|least/i.test(m[1]) ? 'lcm' : 'gcd';
@@ -139,8 +149,10 @@ export function fromEnglish(raw) {
     return m[3] !== undefined ? `plot(${f}, [${m[2] || guessVar(f)}, ${m[3]}, ${m[4]}])` : `plot(${f})`;
   }
   // evaluation at a point
-  if ((m = s.match(/^(.+?)\s+(?:at|when|for|where)\s+([A-Za-z_]\w*)\s*=\s*(.+)$/i)) && !/^(solve|limit|integrate|plot)\b/i.test(m[1]))
-    return `subs(${m[1]}, ${m[2]}, ${m[3]})`;
+  if ((m = s.match(/^(.+?)\s+(?:at|when|for|where)\s+([A-Za-z_]\w*\s*=.+)$/i)) && !/^(solve|limit|integrate|plot)\b/i.test(m[1])) {
+    const pairs = splitArgs(m[2].replace(/\s+and\s+/gi, ', ')).map(p => p.match(/^([A-Za-z_]\w*)\s*=\s*(.+)$/));
+    if (pairs.every(Boolean)) return `subs(${m[1]}, ${pairs.map(p => `${p[1]}, ${p[2].trim()}`).join(', ')})`;
+  }
   if ((m = s.match(/^(?:the\s+)?(?:square\s+root|sqrt)\s+of\s+(.+)$/i))) return `sqrt(${m[1]})`;
   if ((m = s.match(/^(?:the\s+)?(?:absolute value|modulus)\s+of\s+(.+)$/i))) return `abs(${m[1]})`;
   return s;
@@ -408,6 +420,14 @@ export function fromNotation(raw) {
   s = absBars(s);
   // sin^2(x) → sin(x)^2, sin^-1(x) → asin(x), sin x → sin(x)
   s = fnPowers(s);
+  s = s.replace(/\bgolden ratio\b/gi, 'phi');
+  // 15% of 80 → (15/100)*80
+  s = s.replace(/(\d+(?:\.\d+)?)\s*%\s*of\s+/gi, '($1/100)*');
+  s = implicitCalls(s);
+  // log_2(8), log_{b}(x), log_2 8 → log(8, 2)
+  s = logBase(s);
+  // 5 choose 2 → binomial(5, 2)
+  s = s.replace(/(\b\w+|\([^()]*\))\s+choose\s+(\w+\b|\([^()]*\))/g, 'binomial($1, $2)');
   // f'(x), f''(2) for user-defined f → derivative / subs
   s = s.replace(/\b([A-Za-z_]\w*)('+)\s*\(([^()]*)\)/g, (m, f, primes, arg) => {
     if (!userFns[f] || userFns[f].params.length !== 1) return m;
@@ -415,6 +435,32 @@ export function fromNotation(raw) {
     if (/^[A-Za-z_]\w*$/.test(arg.trim())) return `derivative(${f}(${arg.trim()}), ${arg.trim()}${order})`;
     return `subs(diff(${f}(x_), x_${order}), x_, ${arg.trim()})`;
   });
+  return s;
+}
+// One-letter names before "(" are functions (f(x), y(0)) unless the same letter is also used
+// as a plain variable: then k(k + 1) and x(x - 2) mean multiplication. Differential equations
+// (y'' + y = 0, y(0) = 1) and workspace functions are left alone.
+function implicitCalls(s) {
+  if (/'/.test(s) || /^\s*dsolve\s*\(/.test(s)) return s;
+  const letters = new Set([...s.matchAll(/(?<![A-Za-z_.])([A-Za-z])\s*\(/g)].map(m => m[1]));
+  for (const L of letters) {
+    if (userFns[L]) continue;
+    if (!new RegExp(`(?<![A-Za-z_.])${L}(?![\\w(]|\\s*\\()`).test(s)) continue;
+    s = s.replace(new RegExp(`(?<![A-Za-z_.])${L}\\s*\\(`, 'g'), `${L}*(`);
+  }
+  return s;
+}
+function logBase(s) {
+  for (let guard = 0; guard < 20; guard++) {
+    const m = /\blog_\s*(?:\{([^{}]+)\}|([A-Za-z0-9.]+))\s*/.exec(s);
+    if (!m) return s;
+    const base = (m[1] ?? m[2]).trim(), at = m.index + m[0].length;
+    let arg, end;
+    if (s[at] === '(') { end = matchBracket(s, at); if (end < 0) return s; arg = s.slice(at + 1, end); end++; }
+    else { end = operandEnd(s, at); arg = s.slice(at, end); }
+    if (!arg.trim()) return s;
+    s = s.slice(0, m.index) + `log(${arg.trim()}, ${base})` + s.slice(end);
+  }
   return s;
 }
 function leibniz(s) {

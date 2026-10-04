@@ -155,6 +155,57 @@ describe('trust: exact engine', { skip: !hasWheels() && 'SymPy wheels missing: r
     await has('factor(2x^3 - 8x)', 'algebra', /common factor 2\*x/, /Difference of squares/);
   });
 
+  test('second bug hunt: each of these was wrong or rejected', async () => {
+    await fresh();
+    // extraneous candidates are rejected, not listed with a failed check
+    await is('log(x) + log(x - 3) = log(10)', 'algebra', 'x = 5');
+    await is('solve(x^(2/3) = 4, x)', 'solve', 'x = 8');
+    // a line that mentions its own undefined name is an equation (was "x = 8192*x - 24573")
+    await is('x = x + 1', 'algebra', 'no solutions in ℝ', { check: 'any' });
+    await is('x = 2x - 3', 'algebra', 'x = 3');
+    // circular definitions are reported instead of expanding forever
+    await fresh();
+    await plainOf('p = q + 1');
+    assert.match((await go('q = p + 1')).error, /Circular definition/);
+    await fresh();
+    // infinite sums: conditions, divergence, numerical values (was "SymPy still loading")
+    await is('sum(x^n, n, 0, oo)', 'calculus', '1/(1 - x) for abs(x) < 1', { check: 'any' });
+    assert.match((await plainOf('sum((-1)^n, n, 0, oo)', 'calculus')).plain, /diverges/);
+    assert.match((await plainOf('sum(1/(k^3 + k + 1), k, 1, oo)', 'calculus')).plain, /^0\.49472491964567588\d*\s+\(numerical; no closed form found\)$/);
+    assert.match((await plainOf('product(1 - 1/k^2, k, 2, oo)', 'calculus')).plain, /^0\.5\d*\s+\(numerical; matches 1\/2 to 20 digits/);
+    await is('sum(1/(k(k+1)), k, 1, oo)', 'calculus', '1');
+    // |x| over the reals (was an unreadable Piecewise with re/im)
+    await is('diff(abs(x), x)', 'calculus', 'sign(x)');
+    await is('integrate(abs(x), x)', 'calculus', 'x*abs(x)/2 + C');
+    await is('diff(x*abs(x), x)', 'calculus', '2*abs(x)');
+    // poles inside the interval (sec² on [0, π] used to time out after 20 s)
+    assert.equal((await plainOf('integrate(sec(x)^2, x, 0, pi)', 'calculus')).plain, 'diverges to Infinity');
+    assert.equal((await plainOf('integrate(1/x^2, x, -1, 1)', 'calculus')).plain, 'diverges to Infinity');
+    // an oscillatory integral whose quadrature cannot be trusted is not marked "failed"
+    await is('integrate(sin(x^2), x, 0, oo)', 'calculus', 'sqrt(2)*sqrt(pi)/4 ≈ 0.6266570687', { check: null });
+    // numbers in simplest form
+    await is('(1 + i)^8', 'algebra', '16', { check: null });
+    await is('(sqrt(3) + sqrt(2))*(sqrt(3) - sqrt(2))', 'algebra', '1', { check: null });
+    // free-form input that used to be rejected or misread
+    await is('log_2(8)', 'algebra', '3', { check: null });
+    await is('5 choose 2', 'algebra', '10', { check: null });
+    await is('lim x->0 (1-cos(x))/x^2', 'calculus', '1/2');
+    await is('x^2 + y at x = 1, y = 2', 'algebra', '3', { check: null });
+    await is('50% of 80', 'algebra', '40', { check: null });
+    await is('partial fractions of 1/(x^2 + 3x + 2)', 'algebra', ['-1/(x + 2) + 1/(x + 1)', '1/(x + 1) - 1/(x + 2)']);
+    await is('trigexpand(sin(2x))', 'algebra', '2*sin(x)*cos(x)');
+    // systems and differential equations typed bare
+    await is('x^2 + y^2 = 25, x + y = 7', 'algebra', 'x=3, y=4  or  x=4, y=3');
+    await is('x + y = 7 and x - y = 1', 'algebra', 'x=4, y=3');
+    await is("y' = x*y", 'calculus', 'y(x) = C1*exp(x^2/2)');
+    await is("y'' + y = 0, y(0) = 0, y'(0) = 1", 'calculus', 'y(x) = sin(x)');
+    await is("dsolve(y'' - 3y' + 2y = 0)", 'calculus', ['y(x) = (C1 + C2*exp(x))*exp(x)', 'y(x) = C1*exp(x) + C2*exp(2*x)']);
+    // sequential redefinition still works
+    await fresh();
+    await plainOf('n = 1');
+    await is('n = n + 1', 'algebra', 'n = 2', { check: null });
+  });
+
   test('every rendered result is well-formed LaTeX; no page errors', async () => {
     assert.deepEqual(await latexProblems(page), []);
     assert.deepEqual(app.errors, []);

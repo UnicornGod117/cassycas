@@ -438,7 +438,10 @@ def check_definite(r, f, x, a, c):
     if exact is None:
         return None
     try:
-        q = _cnum(sp.Integral(f, (x, a, c)).evalf(20, maxn=200))
+        n = sp.Integral(f, (x, a, c)).evalf(20, maxn=200)
+        # evalf reports how many bits it could vouch for: oscillatory tails (sin(x²) on [0, ∞))
+        # come back as "-0.e+104", which is no evidence either way
+        q = _cnum(n) if all(fl._prec >= 40 for fl in n.atoms(sp.Float) if fl != 0) else None
     except Exception:
         q = None
     if q is None:
@@ -714,6 +717,17 @@ def op_eval(req, b):
                     'check': check_identity(e, s, 'simplified form')}
     if isinstance(e, sp.Expr) and e.has(sp.Derivative, sp.Integral):
         e = e.doit()
+    if isinstance(e, sp.Expr) and e.is_number and not e.is_Atom and sp.count_ops(e) <= 40 \
+            and not any(p.is_Pow and p.exp.is_Integer and abs(p.exp) > 64 for p in sp.preorder_traversal(e)):
+        best = e
+        for cand in (lambda t: sp.expand(t, complex=t.has(sp.I)), sp.radsimp, sp.simplify):
+            try:
+                c = cand(e)
+                if sp.count_ops(c) < sp.count_ops(best) and _same_number(c, e):
+                    best = c
+            except Exception:
+                pass
+        e = best
     return {'value': value(e)}
 
 
@@ -774,10 +788,49 @@ def op_polydiv(req, b):
     return {'quotient': value(quo), 'remainder': value(rem), 'check': check_identity(p, quo * q + rem, 'quotient × divisor + remainder')}
 
 
+def _real_map(e):
+    """Symbols of unknown sign → real ones, when the expression has |…| or sign (whose complex
+    derivatives are not what anyone means by d|x|/dx). Returns (forward, back) maps."""
+    if not e.has(sp.Abs, sp.sign, sp.re, sp.im, sp.arg):
+        return {}, {}
+    fwd = {s: sp.Symbol(s.name, real=True) for s in e.free_symbols if isinstance(s, sp.Symbol) and s.is_real is None}
+    return fwd, {r: s for s, r in fwd.items()}
+
+
+def _unpiece(r, x):
+    """Fold the piecewise forms |x| produces back into |x|: (−x²/2 if x ≤ 0, x²/2 otherwise) is
+    x·|x|/2, and (0 if x = 0, 2x²/|x| otherwise) is 2|x|. Kept only if numerically identical."""
+    if not isinstance(r, sp.Piecewise) or len(r.args) != 2 or r.args[1].cond is not sp.true:
+        return r
+    (e1, c1), (e2, _) = r.args
+    cand = None
+    if c1 == sp.Eq(x, 0) or c1 == sp.Eq(0, x):
+        cand = e2
+    elif c1 in (x <= 0, x < 0) and sp.simplify(e1 + e2) == 0:
+        cand = sp.cancel(e2 * sp.Abs(x) / x)
+    elif c1 in (x >= 0, x > 0) and sp.simplify(e1 + e2) == 0:
+        cand = sp.cancel(e1 * sp.Abs(x) / x)
+    if cand is None:
+        return r
+    a = sp.Dummy('a', positive=True)        # |x| (a real |x|² would turn straight back into x²)
+    cand = cand.subs(sp.Abs(x), a).replace(lambda t: t.is_Pow and t.base == x and t.exp.is_even, lambda t: a ** t.exp)
+    cand = (sp.cancel(cand) if not cand.has(sp.Piecewise) else cand).subs(a, sp.Abs(x))
+    for p in (sp.Rational(-27, 10), sp.Rational(-13, 10), sp.Rational(-1, 2), sp.Rational(1, 2), sp.Rational(13, 10), sp.Rational(27, 10)):
+        if not _close(_cnum(cand.subs(x, p)) or 0, _cnum(r.subs(x, p)) or 0, 1e-12):
+            return r
+    return cand
+
+
 def op_diff(req, b):
     e = b.build(req['expr'])
     v = _var(b, req['var'])
     n = int(req.get('order', 1))
+    fwd, back = _real_map(e)
+    if fwd:
+        er, vr = e.xreplace(fwd), fwd.get(v, v)
+        r = _unpiece(sp.simplify(sp.diff(er, vr, n)), vr).xreplace(back)
+        return {'value': value(r), 'steps': [], 'check': check_derivative(e, v, n, r),
+                'note': 'variables treated as real'}
     r = sp.simplify(sp.diff(e, v, n)) if n > 1 else sp.diff(e, v)
     r2 = sp.simplify(r)
     if sp.count_ops(r2) <= sp.count_ops(r):
@@ -816,12 +869,70 @@ def _divergent(r):
     return r is sp.nan or r.has(sp.zoo, sp.nan) or isinstance(r, sp.AccumBounds) or r.is_infinite
 
 
+def _interior_poles(f, v, a, c):
+    """Real singularities strictly inside the interval of integration (sec(x)² on [0, π] has π/2)."""
+    try:
+        if not (a.is_real and c.is_real) or a == c:
+            return []
+        lo, hi = (a, c) if bool(a < c) else (c, a)
+        from sympy.calculus.singularities import singularities
+        s = singularities(f, v, sp.Interval.open(lo, hi))
+        if not isinstance(s, sp.FiniteSet) or len(s) > 8:
+            return []
+        return sorted((p for p in s if p.is_real and p.is_finite), key=lambda p: float(p))
+    except Exception:
+        return []
+
+
+def _split_integral(f, v, a, c, poles):
+    """∫ over [a, c] as a sum of improper integrals between the poles, from one antiderivative:
+    F(q⁻) − F(p⁺) on each piece. Returns the value, 'diverges', or None (no antiderivative)."""
+    F, _ = antiderivative(f, v)
+    if F is None or F.has(sp.Integral):
+        return None
+    sign = 1
+    if not bool(a < c):
+        a, c, sign = c, a, -1
+    pts = [a] + poles + [c]
+    total, infinite, unknown = sp.Integer(0), set(), False
+    for p, q in zip(pts, pts[1:]):
+        Fq, Fp = sp.limit(F, v, q, '-'), sp.limit(F, v, p, '+')
+        if any(isinstance(L, sp.AccumBounds) or L.has(sp.Limit) for L in (Fq, Fp)):
+            unknown = True
+            continue
+        piece = Fq - Fp
+        if piece in (sp.oo, -sp.oo):
+            infinite.add(piece)
+        elif _divergent(piece):
+            unknown = True
+        else:
+            total += piece
+    if infinite or unknown:
+        # every piece that diverges does so the same way (∫ 1/x² over [−1, 1] = +∞)
+        return ('diverges', sign * infinite.pop()) if len(infinite) == 1 and not unknown else ('diverges', None)
+    return sign * nicest(total)
+
+
 def op_integrate(req, b):
     f = b.build(req['expr'])
     v = _var(b, req['var'])
     if req.get('a') is not None:
         a, c = b.build(req['a']), b.build(req['b'])
-        r = sp.integrate(f, (v, a, c))
+        # A pole inside the interval: integrate up to it from each side (SymPy's own integrator can
+        # spend a long time here, and the answer is usually "diverges").
+        poles = _interior_poles(f, v, a, c)
+        split = _split_integral(f, v, a, c, poles) if poles else None
+        if isinstance(split, tuple):
+            out = {'diverges': True, 'to': value(split[1]) if split[1] is not None else None}
+            if f.is_rational_function(v) and len(poles) == 1:
+                try:
+                    pv = sp.Integral(f, (v, a, c)).principal_value()
+                    if pv.is_finite and not pv.has(sp.Integral):
+                        out['pv'] = value(pv)
+                except Exception:
+                    pass
+            return out
+        r = split if split is not None else sp.integrate(f, (v, a, c))
         if not r.has(sp.Integral) and _divergent(r):
             out = {'diverges': True, 'to': value(r) if r.is_infinite and r is not sp.zoo else None}
             try:
@@ -840,6 +951,14 @@ def op_integrate(req, b):
                 'check': check_definite(r, f, v, a, c) if exact else None}
     steps = integral_steps_list(f, v)
     r, how = antiderivative(f, v)
+    fwd, back = _real_map(f)
+    if fwd and (r is None or r.has(sp.re, sp.im, sp.Integral)):
+        fr, vr = f.xreplace(fwd), fwd.get(v, v)
+        rr, how_r = antiderivative(fr, vr)
+        if rr is not None and not rr.has(sp.Integral):
+            rr = _unpiece(rr, vr)
+            return {'value': value(rr.xreplace(back)), 'steps': [], 'check': check_antiderivative(rr, fr, vr),
+                    'note': 'variables treated as real'}
     if r is None:
         return {'noForm': True, 'steps': steps}
     simp = sp.simplify(r)
@@ -910,12 +1029,63 @@ def _ascending(poly, v, a):
     return join(ps), join(ts)
 
 
+def _numeric_series(f, v, lo, hi, product):
+    """A convergent infinite sum or product to 25 digits (mpmath's extrapolating nsum / nprod)."""
+    import mpmath
+    try:
+        g = sp.lambdify(v, f, 'mpmath')
+        conv = lambda t: mpmath.inf if t is sp.oo else -mpmath.inf if t is -sp.oo else mpmath.mpf(int(t))
+        with mpmath.workdps(30):
+            val = (mpmath.nprod if product else mpmath.nsum)(g, [conv(lo), conv(hi)])
+        val = complex(val)
+        if not (math.isfinite(val.real) and math.isfinite(val.imag)):
+            return None
+        return sp.Float(mpmath.mpf(val.real), 25) if abs(val.imag) < 1e-25 else None
+    except Exception:
+        return None
+
+
+def _recognise(x):
+    """A simple closed form matching a numerical value to 20 digits (a guess, shown as one)."""
+    try:
+        g = sp.nsimplify(x, [sp.pi, sp.E, sp.sqrt(2), sp.sqrt(3), sp.log(2)], tolerance=sp.Float('1e-20'))
+        small = all(r.q <= 1000 and abs(r.p) <= 10 ** 6 for r in g.atoms(sp.Rational))
+        if g.is_Float or not small or sp.count_ops(g) > 8 or abs(_cnum(g) - _cnum(x)) > 1e-18 * max(1, abs(_cnum(x))):
+            return None
+        return g
+    except Exception:
+        return None
+
+
 def op_sum(req, b, product=False):
     f = b.build(req['expr'])
     v = _var(b, req['var'])
     lo, hi = b.build(req['a']), b.build(req['b'])
     r = sp.product(f, (v, lo, hi)) if product else sp.summation(f, (v, lo, hi))
+    # Σ x^n = 1/(1 - x) for |x| < 1: SymPy answers with a Piecewise whose last piece is unevaluated.
+    if isinstance(r, sp.Piecewise) and r.args[-1].expr.has(sp.Sum, sp.Product):
+        known = [(e, c) for e, c in r.args[:-1] if not e.has(sp.Sum, sp.Product)]
+        if len(known) == 1:
+            e, c = known[0]
+            e = _tidy(e)
+            return {'value': value(e), 'when': value(c), 'check': None if product else check_sum(e, f, v, lo, hi)}
     if isinstance(r, (sp.Sum, sp.Product)) or r.has(sp.Sum, sp.Product):
+        if (hi.is_infinite or lo.is_infinite) and not (f.free_symbols - {v}):
+            Op = sp.Product if product else sp.Sum
+            try:
+                conv = Op(f, (v, lo, hi)).is_convergent()
+            except Exception:
+                conv = None
+            if conv == sp.false:      # is_convergent answers with SymPy booleans
+                return {'diverges': True, 'to': None}
+            if conv == sp.true:
+                num = _numeric_series(f, v, lo, hi, product)
+                if num is not None:
+                    out = {'value': value(num), 'numeric': True}
+                    guess = _recognise(num)
+                    if guess is not None:
+                        out['looksLike'] = value(guess)
+                    return out
         return {'noForm': True}
     if _divergent(r):
         return {'diverges': True, 'to': value(r) if r.is_infinite and r is not sp.zoo else None}
@@ -938,6 +1108,16 @@ def _tidy(r):
 
 def _solution_values(sols):
     return [value(s) for s in sols]
+
+
+def _reject_extraneous(expr, v, sols, steps):
+    """Drop candidate solutions that do not satisfy the original equation (log and radical
+    equations produce them when the equation is transformed)."""
+    bad = [s for s in sols if check_root(expr, v, s) is False]
+    if bad:
+        steps.append({'d': 'Reject candidates that do not satisfy the original equation',
+                      'tex': r',\ '.join(r'%s = %s' % (tex(v), tex(s)) for s in bad)})
+    return [s for s in sols if s not in bad]
 
 
 def op_solve(req, b):
@@ -983,13 +1163,16 @@ def op_solve(req, b):
             uniq = [sp.CRootOf(poly, k) for k in range(poly.degree())]
         if worked:
             steps = worked
+        uniq = _reject_extraneous(lhs - rhs, v, uniq, steps)
         steps = steps + [{'d': 'Solutions', 'tex': r',\quad '.join('%s = %s' % (tex(v), tex(r)) for r in uniq) or r'\text{none}'}]
         return {'solutions': _solution_values(uniq), 'steps': steps, 'check': check_solutions(lhs - rhs, v, uniq)}
     if worked:
         steps = worked
     s = sp.solveset(sp.Eq(lhs, rhs), v, domain=sp.S.Reals)
     if isinstance(s, sp.FiniteSet):
-        sols = list(s)
+        steps = list(steps)
+        sols = _reject_extraneous(lhs - rhs, v, list(s), steps)
+        s = sp.FiniteSet(*sols)
         return {'solutions': _solution_values(sols), 'steps': steps + [{'d': 'Solution over ℝ', 'tex': describe_set(s, v)['latex']}],
                 'check': check_solutions(lhs - rhs, v, sols)}
     if isinstance(s, sp.ConditionSet) or s is None:
