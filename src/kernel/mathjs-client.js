@@ -2,7 +2,7 @@
 import EvalWorker from './eval.worker.js?worker';
 import { math } from '../expr.js';
 import { makeDegFns } from './degree.js';
-import { state, scope, userFns, varDefs, assumptions, CONSTANT_NAMES, IDENT_RE, FORBIDDEN_NAMES } from '../state.js';
+import { state, scope, userFns, varDefs, assumptions, objects, CONSTANT_NAMES, IDENT_RE, FORBIDDEN_NAMES } from '../state.js';
 
 export const DEG_FNS = makeDegFns(math);
 // Evaluation context: the workspace plus the angle-mode overrides.
@@ -101,6 +101,7 @@ export function restoreBaseScope() {
   for (const k of Object.keys(userFns)) delete userFns[k];
   for (const k of Object.keys(varDefs)) delete varDefs[k];
   for (const k of Object.keys(assumptions)) delete assumptions[k];
+  for (const k of Object.keys(objects)) delete objects[k];
 }
 export function persistScope() {
   try { localStorage.setItem('cas2-scope', JSON.stringify(snapshotScope(), math.replacer)); } catch {}

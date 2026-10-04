@@ -2,7 +2,7 @@
 // persistence, sharing and export.
 import { math, canonical, escTex, prettify } from './expr.js';
 import { escH, fmtR, toTex } from './format.js';
-import { state, scope, userFns, varDefs, assumptions, CONSTANT_NAMES } from './state.js';
+import { state, scope, userFns, varDefs, assumptions, objects, CONSTANT_NAMES } from './state.js';
 import { dispatch, classifyDef, cellUses, applyDefinition, transformSub } from './engine.js';
 import { restoreBaseScope, sanitizeScope, reviveJSON, snapshotScope } from './kernel/mathjs-client.js';
 import { renderTex, explorableTex } from './render.js';
@@ -87,6 +87,7 @@ async function applyCached(cell) {
   if (!r) return;
   if (r.type === 'funcdef') { await applyDefinition({ kind: 'fn', name: r.name, params: r.params, rhs: r.body }); return; }
   if (r.type === 'assume') { Object.assign(assumptions, r.flags); return; }
+  if (r.type === 'objdef') { objects[r.name] = r.ast; delete userFns[r.name]; delete varDefs[r.name]; delete scope[r.name]; return; }
   if (r.type === 'vardef') {
     delete userFns[r.name];
     if (r.expr !== null && r.expr !== undefined) varDefs[r.name] = r.expr; else delete varDefs[r.name];
@@ -180,7 +181,7 @@ async function renderCell(cell) {
   }
   const res = cell.res;
   let latex, plain, prompt = '⇒';
-  if (res.type === 'assume') {
+  if (res.type === 'assume' || res.type === 'objdef') {
     prompt = '≔';
     latex = res.out; plain = res.plain;
   } else if (res.type === 'funcdef') {
@@ -256,7 +257,7 @@ async function renderCell(cell) {
     `<button class="cact warm" data-action="edit">Edit</button>`, `<button class="cact" data-action="delete">Delete</button>`);
   acts.innerHTML = a.join('');
 
-  if (res.plotSpec && (res.type === 'plot' || state.autoPlot)) { plotEl.classList.add('open'); plotSpecInline(plotEl, res.plotSpec); }
+  if (res.plotSpec && (res.type === 'plot' || res.openPlot || state.autoPlot)) { plotEl.classList.add('open'); plotSpecInline(plotEl, res.plotSpec); }
   else if (res.odeData) { plotEl.classList.add('open'); plotSeries(plotEl, res.odeData.xs, res.odeData.ys, `${res.odeData.yv}(${res.odeData.xv}) — RK4`, res.odeData.xv, res.odeData.yv); }
   else if (plot && state.autoPlot && res.type !== 'val') { plotEl.classList.add('open'); plotInline(plotEl, plot.expr, plot.v, plot.title); }
 }

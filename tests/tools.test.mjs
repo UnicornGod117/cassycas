@@ -45,6 +45,46 @@ const EXPECTED = {
   'adj([[1, 2], [3, 4]])': '[[4, -2], [-3, 1]]', 'columnspace([[1, 2], [2, 4]])': 'span{[[1], [2]]}',
   'rowspace([[1, 2, 3], [2, 4, 6]])': 'span{[[1, 2, 3]]}', 'pinv([[1, 2], [2, 4]])': '[[1/25, 2/25], [2/25, 4/25]]',
   'linsolve([[1, 1], [2, 2]], [3, 6])': 'x = [[3 - tau0], [tau0]]',
+  // advanced.py — each value checked against a textbook or table, not against SymPy
+  'lll([[1, 1, 1], [-1, 0, 2], [3, 5, 6]])': '[[0, 1, 0], [1, 0, 1], [-1, 0, 2]]',
+  'minpoly(sqrt(2) + sqrt(3))': 'x^4 - 10*x^2 + 1', 'nfactor(x^2 - 2, sqrt(2))': '(x - sqrt(2))*(x + sqrt(2))',
+  'galois(x^5 - x - 1)': 'Gal = S₅, order 120 — not solvable: the roots cannot be written with radicals',
+  'ztrans(2^n, n, z)': 'z/(z - 2)', 'iztrans(z/(z^2 + 1), z, n)': 'sin(pi*n/2)',
+  'convolve(exp(-t), exp(-2t), t)': '(exp(t) - 1)*exp(-2*t)',
+  'dft([1, 2, 3, 4])': '[[10, -2 + 2*i, -2, -2 - 2*i]]', 'idft([10, -2 + 2i, -2, -2 - 2i])': '[[1, 2, 3, 4]]',
+  'bode(1/(s + 1), s)': 'Bode plot of H(s) = 1/(s + 1)', 'holonomic(exp(x^2), x)': "-2*x*y(x) + y'(x) = 0",
+  'maximize(x*y, [x + y = 10])': 'maximum 25 at x = 5, y = 5', 'minimize(x^2 + y^2, [x + 2y = 5])': 'minimum 5 at x = 1, y = 2',
+  'lagrange(x + y, [x^2 + y^2 = 1], [x, y])': 'x = -sqrt(2)/2, y = -sqrt(2)/2, lambda = -sqrt(2)/2 => f = -sqrt(2); x = sqrt(2)/2, y = sqrt(2)/2, lambda = sqrt(2)/2 => f = sqrt(2)',
+  'ito(X^2, X, 0, 1)': 'd(X^2) = 1 dt + (2*X) dW',
+  'sdesolve(2X, 3X, X)': 'X_t = X_0*exp(3*W_t - 5*t/2) (geometric Brownian motion)',
+  'christoffel([[1, 0], [0, r^2]], [r, theta])': 'Γ^r_(theta,theta) = -r; Γ^theta_(r,theta) = 1/r',
+  'riemann([[r^2, 0], [0, r^2 sin(theta)^2]], [theta, phi])': 'R^theta_(phi,theta,phi) = sin(theta)^2; R^phi_(theta,theta,phi) = -1',
+  'ricci([[r^2, 0], [0, r^2 sin(theta)^2]], [theta, phi])': '[[1, 0], [0, sin(theta)^2]]',
+  'ricciscalar([[r^2, 0], [0, r^2 sin(theta)^2]], [theta, phi])': '2/r^2',
+  'einstein([[-(1 - 2M/r), 0, 0, 0], [0, 1/(1 - 2M/r), 0, 0], [0, 0, r^2, 0], [0, 0, 0, r^2 sin(theta)^2]], [t, r, theta, phi])': '[[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]',
+  'geodesic([[1, 0], [0, r^2]], [r, theta])': "-r(s)*theta'(s)^2 + r''(s) = 0; theta''(s) + 2*r'(s)*theta'(s)/r(s) = 0",
+  'curvature(x^2, x)': '2/(4*x^2 + 1)^(3/2)', 'surfcurv([sin(u) cos(v), sin(u) sin(v), cos(u)], [u, v])': '1',
+  'wedge(x*dx + y*dy, dz)': 'x*wedge(dx, dz) + y*wedge(dy, dz)', 'extd(x*dy - y*dx)': '2*wedge(dx, dy)',
+  'hodge(dx, [x, y, z])': 'wedge(dy, dz)', "diffelim([x' = y, y' = -x], [x], t)": "x(t) + x''(t) = 0",
+  'circuit(2, H(0), CNOT(0, 1))': 'sqrt(2)/2|00> + sqrt(2)/2|11>',
+  'alexander(figure8)': 'Δ(t) = -t + 3 - 1/t', 'jones(trefoil)': 'V(q) = -q^4 + q^3 + q',
+  'ieval(x^2 - 2x, [x, 0, 1])': '[-1.0077972412109375, 0.0000152587890625]',
+  'prove(x^4 - 4x^3 + 6x^2 - 4x + 1 >= 0)': 'proved: x^4 - 4*x^3 + 6*x^2 - 4*x + 1 >= 0 for all x',
+  'grade(x^3/3 + 5, x^3/3, x)': 'correct up to a constant',
+  // random variables and geometry
+  'P(Normal(0, 1) > 1)': '1/2 - erf(sqrt(2)/2)/2 ≈ 0.1586552539', 'E(Die(6))': '7/2', 'Var(Exponential(2))': '1/4',
+  'Std(Uniform(0, 12))': '2*sqrt(3) ≈ 3.464101615', 'density(Exponential(2))': '2*exp(-2*x)',
+  'cdf(Uniform(0, 2))': 'Piecewise((0, x < 0), (x/2, x <= 2), (1, True))',
+  'intersect(Circle(Point(0, 0), 2), Line(Point(-3, 1), Point(3, 1)))': '(sqrt(3), 1), (-sqrt(3), 1)',
+  'distance([0, 0], [3, 4])': '5', 'midpoint(Point(0, 0), Point(4, 2))': '(2, 1)',
+  'angle(Point(1, 0), Point(0, 0), Point(0, 1))': 'pi/2 ≈ 1.570796327',
+  'area(Triangle(Point(0, 0), Point(4, 0), Point(0, 3)))': '6', 'perimeter(Triangle(Point(0, 0), Point(4, 0), Point(0, 3)))': '12',
+  'perpendicular(Line(Point(0, 0), Point(1, 1)), Point(2, 0))': 'y = 2 - x', 'parallel(Line(Point(0, 0), Point(1, 2)), Point(0, 3))': 'y = 2*x + 3',
+  'tangents(Circle(Point(0, 0), 2), Point(4, 0))': 'y = sqrt(3)*(x - 4)/3; y = sqrt(3)*(4 - x)/3',
+  'circumcircle(Triangle(Point(0, 0), Point(4, 0), Point(0, 3)))': '(x - 2)^2 + (y - 3/2)^2 = 25/4',
+  'incircle(Triangle(Point(0, 0), Point(4, 0), Point(0, 3)))': '(x - 1)^2 + (y - 1)^2 = 1',
+  'centroid(Triangle(Point(0, 0), Point(4, 0), Point(0, 3)))': '(4/3, 1)', 'equation(Circle(Point(1, 2), 3))': '(x - 1)^2 + (y - 2)^2 = 9',
+  'draw(Triangle(Point(0, 0), Point(4, 0), Point(0, 3)), Circle(Point(2, 3/2), 5/2))': '2 objects',
 };
 
 for (const name of ENGINES) {
@@ -90,6 +130,56 @@ for (const name of ENGINES) {
       assert.equal((await res('integrate(x*y, [y, 0, x], [x, 0, 1])', 'calculus')).plain, '1/8');
       assert.equal((await res('integrate(1, [x, 0, 1], [y, 0, 2])', 'calculus')).plain, '2');
       assert.match((await res('integrate(exp(-x^2 - y^2), [x, -Infinity, Infinity], [y, -Infinity, Infinity])', 'calculus')).plain, /^pi\b/);
+    });
+
+    test('advanced tools: knots, proofs, optimisation, plots', { skip: !exact }, async () => {
+      const p = async (e, m = 'algebra') => { const r = await res(e, m); assert.ok(!r.error, `${e}: ${r.error}`); return r; };
+      // knot invariants against the Rolfsen table (Alexander) and KnotAtlas (Jones, up to mirror image q ↔ 1/q)
+      const table = { trefoil: ['t - 1 + 1/t', 3], figure8: ['-t + 3 - 1/t', 5], cinquefoil: ['t^2 - t + 1 - 1/t + t^(-2)', 5],
+        threetwist: ['2*t - 3 + 2/t', 7], stevedore: ['-2*t + 5 - 2/t', 9] };
+      for (const [k, [alex]] of Object.entries(table)) assert.equal(flat((await p(`alexander(${k})`)).plain), flat(`Δ(t) = ${alex}`), k);
+      assert.equal(flat((await p('jones(cinquefoil)')).plain), flat('V(q) = q^(-2) + q^(-4) - 1/q^5 + q^(-6) - 1/q^7'));
+      assert.equal(flat((await p('jones(stevedore)')).plain), flat('V(q) = q^2 - q + 2 - 2/q + q^(-2) - 1/q^3 + q^(-4)'));
+      // proofs: a counterexample with the classic mistake named, interval arithmetic at a touching point
+      assert.match((await p('prove((x+y)^2 = x^2 + y^2)')).plain, /^false — Powers do not distribute/);
+      assert.match((await p('prove(sin(x)^2 + cos(x)^2 = 1)')).plain, /^proved/);
+      assert.equal((await p('prove(exp(x) >= 1 + x, [x, -2, 2])')).plain, 'proved on the box');
+      assert.equal((await p('prove(x^2 > 0)')).plain, 'false at x = 0');
+      assert.match((await p('prove(x^2 + y^2 >= 2x*y)')).plain, /^proved/);
+      // linear programming, closed interval method
+      assert.equal((await p('maximize(3x + 2y, [x + y <= 4, x + 3y <= 6, x >= 0, y >= 0])', 'calculus')).plain, 'maximum 12 at x = 4, y = 0');
+      assert.equal((await p('maximize(x^3 - 3x, [x, -2, 3])', 'calculus')).plain, 'maximum 18 at x = 3');
+      // phi as a coordinate, not the golden ratio
+      assert.equal(flat((await p('ricciscalar([[r^2, 0], [0, r^2 sin(phi)^2]], [phi, theta])', 'calculus')).plain), flat('2/r^2'));
+      // three-qubit GHZ state
+      assert.equal(flat((await p('circuit(3, H(0), CNOT(0, 1), CNOT(1, 2))')).plain), flat('sqrt(2)/2|000> + sqrt(2)/2|111>'));
+      // a Bode plot is drawn
+      const b = await p('bode(1/(s + 1), s)', 'calculus');
+      assert.ok(await page.evaluate(id => !!document.getElementById(id).querySelector('.cell-plot.open canvas'), b.id), 'bode draws a plot');
+    });
+
+    test('named objects: random variables and geometric constructions', { skip: !exact }, async () => {
+      const clear = () => page.evaluate(async () => { for (const c of [...window.CAS.cells]) await window.CAS.deleteCell(c); await window.CAS.idle(); });
+      const p = async (e, m = 'algebra') => { const r = await res(e, m); assert.ok(!r.error, `${e}: ${r.error}`); return r; };
+      await clear();
+      assert.equal((await p('X ~ Normal(100, 15)', 'stats')).plain, 'X ~ Normal(100, 15)');
+      assert.equal((await p('P(X > 130)', 'stats')).plain, '1/2 - erf(sqrt(2))/2 ≈ 0.02275013195');   // 2σ above the mean
+      assert.equal((await p('Var(2*X + 3)', 'stats')).plain, '900');
+      assert.equal((await p('Y = Binomial(20, 0.3)', 'stats')).plain, 'Y ~ Binomial(20, 3/10)');
+      assert.equal((await p('E(Y)', 'stats')).plain, '6');
+      // geometry objects, a construction defined from another, and a constraint solved for a point
+      await p('A = Point(0, 0)'); await p('B = Point(6, 0)'); await p('C = Point(2, 4)');
+      assert.equal((await p('T = Triangle(A, B, C)')).plain, 'T: triangle (0, 0), (6, 0), (2, 4)');
+      assert.equal((await p('area(T)')).plain, '12');
+      assert.equal((await p('c = circumcircle(T)')).plain, 'c: (x - 3)^2 + (y - 1)^2 = 10');
+      await p('P = Point(a, b)');
+      assert.equal(flat((await p('solve([distance(P, A) = 5, distance(P, B) = 5], [a, b])', 'solve')).plain), flat('a=3, b=-4  or  a=3, b=4'));
+      // editing a point re-runs everything built from it
+      const bId = await page.evaluate(() => window.CAS.cells.find(c => c.expr === 'B = Point(6, 0)').id);
+      await page.evaluate(async id => { await window.CAS.editCell(window.CAS.cells.find(c => c.id === id), 'B = Point(4, 0)'); await window.CAS.idle(); }, bId);
+      const areaPlain = await page.evaluate(() => document.getElementById(window.CAS.cells.find(c => c.expr === 'area(T)').id).dataset.plain);
+      assert.equal(areaPlain, '8');
+      await clear();
     });
 
     test('workspace values do not leak into tool variables', { skip: !exact }, async () => {

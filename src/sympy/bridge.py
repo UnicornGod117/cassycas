@@ -159,8 +159,14 @@ BINOPS = {
 
 
 class Builder:
-    def __init__(self, deg=False, undefined_functions=False, deriv_ctx=None, assume=None):
+    def __init__(self, deg=False, undefined_functions=False, deriv_ctx=None, assume=None, variables=None, objects=None):
         self.deg = deg
+        # named objects defined in the notebook (X = Normal(0, 1), A = Point(0, 0)): name → tree,
+        # built on first use by Builder.object (advanced.py)
+        self.objects = {k: v for k, v in (objects or {}).items() if isinstance(k, str) and IDENT.match(k) and isinstance(v, dict)}
+        # names a tool call declares as variables (riemann(g, [theta, phi])): symbols, even when
+        # the name is also a constant such as phi
+        self.variables = {v for v in (variables or []) if isinstance(v, str) and IDENT.match(v)}
         self.undefined_functions = undefined_functions
         self.deriv_ctx = deriv_ctx      # (function name, variable symbol) for dsolve primes
         self.symbols = {}
@@ -197,7 +203,9 @@ class Builder:
             return sp.Rational(v)
         if t == 'sym':
             n = node['n']
-            if n in CONST:
+            if n in self.objects and n not in self.variables:
+                return self.object(n)
+            if n in CONST and n not in self.variables:
                 return CONST[n]
             if self.deriv_ctx and n == self.deriv_ctx[0]:
                 return sp.Function(n)(self.deriv_ctx[1])
@@ -222,6 +230,8 @@ class Builder:
             if n == '__deriv' and self.deriv_ctx:
                 name, var = self.deriv_ctx
                 return sp.Derivative(sp.Function(name)(var), var, int(raw[1]['v']))
+            if n == '__list':               # a list of relations or values (constraints, ranges)
+                return sp.Tuple(*[self.build(x) for x in raw])
             if n == 'diff' and len(raw) >= 2:
                 a = [self.build(x) for x in raw]
                 return sp.Derivative(*a)
@@ -1307,7 +1317,9 @@ def handle(request_json):
         op = OPS.get(req.get('op'))
         if op is None:
             raise ValueError('unknown operation')
-        b = Builder(deg=bool(req.get('deg')), undefined_functions=bool(req.get('undefinedFunctions')), assume=req.get('assume'))
+        b = Builder(deg=bool(req.get('deg')), undefined_functions=bool(req.get('undefinedFunctions')), assume=req.get('assume'),
+                    variables=req.get('vars') if isinstance(req.get('vars'), list) else None,
+                    objects=req.get('objects') if isinstance(req.get('objects'), dict) else None)
         return json.dumps({'ok': True, **op(req, b)}, allow_nan=False)
     except Exception as err:  # reported to the UI, never re-raised into JS
         msg = str(err) or type(err).__name__

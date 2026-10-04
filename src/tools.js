@@ -3,6 +3,8 @@
 //   e  expression            r  equation (lhs = rhs) or expression
 //   v  variable name         V  variable or list of variables, e.g. [x, y]
 //   f  sequence form a(n)    R  range [x, a, b]
+//   q  equation or inequality             L  list of constraints [x + y = 1, x >= 0] or a range
+//   D  system of ODEs written with primes [x' = y, y' = -x]
 // A kind may end in ? (optional), * (repeats, zero or more) or =name (a variable with a default).
 // Variables named by v/V/f/R arguments are kept symbolic even if the workspace defines them.
 // fallback: 'mathjs' lets the numeric engine answer when SymPy is unavailable; jsFallback: a
@@ -78,6 +80,78 @@ export const TOOLS = {
   rowspace: { args: 'e', mode: 'matrix', sig: 'rowspace(A)', desc: 'Basis of the row space', ex: 'rowspace([[1, 2, 3], [2, 4, 6]])' },
   pinv: { args: 'e', mode: 'matrix', sig: 'pinv(A)', desc: 'Moore–Penrose pseudo-inverse', ex: 'pinv([[1, 2], [2, 4]])', fallback: 'mathjs' },
   linsolve: { args: 'e,e', mode: 'matrix', sig: 'linsolve(A, b)', desc: 'Solve A·x = b (parametric if underdetermined)', ex: 'linsolve([[1, 1], [2, 2]], [3, 6])' },
+  lll: { args: 'e', mode: 'matrix', sig: 'lll(B)', desc: 'LLL-reduced basis of an integer lattice (rows)', ex: 'lll([[1, 1, 1], [-1, 0, 2], [3, 5, 6]])' },
+
+  // ── number fields, Galois theory ── (src/sympy/advanced.py)
+  minpoly: { args: 'e,v=x', mode: 'algebra', sig: 'minpoly(α[, x])', desc: 'Minimal polynomial of an algebraic number over ℚ', ex: 'minpoly(sqrt(2) + sqrt(3))' },
+  nfactor: { args: 'e,e', mode: 'algebra', sig: 'nfactor(p, α) or nfactor(p, [α, β])', desc: 'Factor over the number field ℚ(α)', ex: 'nfactor(x^2 - 2, sqrt(2))' },
+  galois: { args: 'e,v?', mode: 'algebra', sig: 'galois(p[, x])', desc: 'Galois group of an irreducible polynomial (degree ≤ 6); solvable by radicals?', ex: 'galois(x^5 - x - 1)' },
+
+  // ── transforms, signals ──
+  ztrans: { args: 'e,v=n,v=z', mode: 'calculus', sig: 'ztrans(f, n, z)', desc: 'Z-transform Σ f(n) z⁻ⁿ', ex: 'ztrans(2^n, n, z)' },
+  iztrans: { args: 'e,v=z,v=n', mode: 'calculus', sig: 'iztrans(F, z, n)', desc: 'Inverse Z-transform of a rational function', ex: 'iztrans(z/(z^2 + 1), z, n)' },
+  convolve: { args: 'e,e,v=t', mode: 'calculus', sig: 'convolve(f, g, t) or convolve([a…], [b…])', desc: 'Convolution ∫₀ᵗ f(τ)g(t−τ)dτ, or of two sequences', ex: 'convolve(exp(-t), exp(-2t), t)' },
+  dft: { args: 'e', mode: 'calculus', sig: 'dft([x0, x1, …])', desc: 'Exact discrete Fourier transform', ex: 'dft([1, 2, 3, 4])' },
+  idft: { args: 'e', mode: 'calculus', sig: 'idft([X0, X1, …])', desc: 'Inverse discrete Fourier transform', ex: 'idft([10, -2 + 2i, -2, -2 - 2i])' },
+  bode: { args: 'e,v=s', mode: 'calculus', sig: 'bode(H, s)', desc: 'Bode plot (gain in dB and phase) of a transfer function', ex: 'bode(1/(s + 1), s)' },
+  holonomic: { args: 'e,v=x', mode: 'calculus', sig: 'holonomic(f, x)', desc: 'Linear ODE with polynomial coefficients that f satisfies', ex: 'holonomic(exp(x^2), x)' },
+
+  // ── optimisation ──
+  maximize: { args: 'e,L?,V?', mode: 'calculus', sig: 'maximize(f, [constraints] or [x, a, b])', desc: 'Global maximum: closed interval, Lagrange multipliers or linear programming', ex: 'maximize(x*y, [x + y = 10])' },
+  minimize: { args: 'e,L?,V?', mode: 'calculus', sig: 'minimize(f, [constraints] or [x, a, b])', desc: 'Global minimum: closed interval, Lagrange multipliers or linear programming', ex: 'minimize(x^2 + y^2, [x + 2y = 5])' },
+  lagrange: { args: 'e,L,V', mode: 'calculus', sig: 'lagrange(f, [g = c, …], [x, y])', desc: 'Lagrange multiplier system and its solutions', ex: 'lagrange(x + y, [x^2 + y^2 = 1], [x, y])' },
+
+  // ── stochastic calculus ──
+  ito: { args: 'e,v,e,e,v=t', mode: 'calculus', sig: 'ito(f, X, μ, σ[, t])', desc: 'Itô’s lemma for f(t, X) with dX = μ dt + σ dW', ex: 'ito(X^2, X, 0, 1)' },
+  sdesolve: { args: 'e,e,v,e=X_0,v=t', mode: 'calculus', sig: 'sdesolve(μ, σ, X[, X0, t])', desc: 'Solve dX = μ dt + σ dW (geometric BM, drifted BM, Ornstein–Uhlenbeck)', ex: 'sdesolve(2X, 3X, X)' },
+
+  // ── differential geometry, relativity ──
+  christoffel: { args: 'e,V', mode: 'calculus', sig: 'christoffel(g, [coords])', desc: 'Christoffel symbols of a metric', ex: 'christoffel([[1, 0], [0, r^2]], [r, theta])' },
+  riemann: { args: 'e,V', mode: 'calculus', sig: 'riemann(g, [coords])', desc: 'Riemann curvature tensor (non-zero components)', ex: 'riemann([[r^2, 0], [0, r^2 sin(theta)^2]], [theta, phi])' },
+  ricci: { args: 'e,V', mode: 'calculus', sig: 'ricci(g, [coords])', desc: 'Ricci tensor', ex: 'ricci([[r^2, 0], [0, r^2 sin(theta)^2]], [theta, phi])' },
+  ricciscalar: { args: 'e,V', mode: 'calculus', sig: 'ricciscalar(g, [coords])', desc: 'Scalar curvature', ex: 'ricciscalar([[r^2, 0], [0, r^2 sin(theta)^2]], [theta, phi])' },
+  einstein: { args: 'e,V', mode: 'calculus', sig: 'einstein(g, [coords])', desc: 'Einstein tensor G = Ric − ½Rg', ex: 'einstein([[-(1 - 2M/r), 0, 0, 0], [0, 1/(1 - 2M/r), 0, 0], [0, 0, r^2, 0], [0, 0, 0, r^2 sin(theta)^2]], [t, r, theta, phi])' },
+  geodesic: { args: 'e,V,v=s', mode: 'calculus', sig: 'geodesic(g, [coords][, s])', desc: 'Geodesic equations', ex: 'geodesic([[1, 0], [0, r^2]], [r, theta])' },
+  curvature: { args: 'e,v', mode: 'calculus', sig: 'curvature(f, x) or curvature([x(t), y(t)], t)', desc: 'Curvature of a curve', ex: 'curvature(x^2, x)' },
+  surfcurv: { args: 'e,V', mode: 'calculus', sig: 'surfcurv([x, y, z], [u, v])', desc: 'Gaussian and mean curvature of a parametric surface', ex: 'surfcurv([sin(u) cos(v), sin(u) sin(v), cos(u)], [u, v])' },
+  wedge: { args: 'e,e,e*', mode: 'calculus', sig: 'wedge(α, β, …)', desc: 'Exterior product of differential forms (write dx, dy, …)', ex: 'wedge(x*dx + y*dy, dz)' },
+  extd: { args: 'e,V?', mode: 'calculus', sig: 'extd(ω[, [coords]])', desc: 'Exterior derivative dω', ex: 'extd(x*dy - y*dx)' },
+  hodge: { args: 'e,V', mode: 'calculus', sig: 'hodge(ω, [coords])', desc: 'Hodge star (Euclidean metric)', ex: 'hodge(dx, [x, y, z])' },
+  diffelim: { args: 'D,V,v=t', mode: 'calculus', sig: "diffelim([x' = …, y' = …], [keep], t)", desc: 'Differential elimination: an ODE for the kept functions only', ex: "diffelim([x' = y, y' = -x], [x], t)" },
+
+  // ── quantum, knots ──
+  circuit: { args: 'e,e*', mode: 'algebra', sig: 'circuit(n, H(0), CNOT(0, 1), …)', desc: 'Simulate a quantum circuit on n qubits (exact amplitudes)', ex: 'circuit(2, H(0), CNOT(0, 1))' },
+  alexander: { args: 'e', mode: 'algebra', sig: 'alexander(knot)', desc: 'Alexander polynomial (trefoil, figure8, cinquefoil, threetwist, stevedore or a PD code)', ex: 'alexander(figure8)' },
+  jones: { args: 'e', mode: 'algebra', sig: 'jones(knot)', desc: 'Jones polynomial via the Kauffman bracket', ex: 'jones(trefoil)' },
+
+  // ── random variables (define with X = Normal(0, 1) or X ~ Normal(0, 1), or write inline) ──
+  P: { args: 'q,q?', mode: 'stats', sig: 'P(condition[, given])', desc: 'Probability of an event, e.g. P(X > 1) after X = Normal(0, 1)', ex: 'P(Normal(0, 1) > 1)' },
+  E: { args: 'e,q?', mode: 'stats', sig: 'E(expr[, given])', desc: 'Expected value', ex: 'E(Die(6))' },
+  Var: { args: 'e', mode: 'stats', sig: 'Var(X)', desc: 'Variance of a random variable', ex: 'Var(Exponential(2))' },
+  Std: { args: 'e', mode: 'stats', sig: 'Std(X)', desc: 'Standard deviation of a random variable', ex: 'Std(Uniform(0, 12))' },
+  density: { args: 'e', mode: 'stats', sig: 'density(X)', desc: 'Density or probability mass function', ex: 'density(Exponential(2))' },
+  cdf: { args: 'e', mode: 'stats', sig: 'cdf(X)', desc: 'Cumulative distribution function', ex: 'cdf(Uniform(0, 2))' },
+
+  // ── geometry (define with A = Point(0, 0), c = Circle(A, 2), T = Triangle(A, B, C), …) ──
+  intersect: { args: 'e,e', mode: 'algebra', sig: 'intersect(a, b)', desc: 'Intersection of lines, circles, segments, polygons', ex: 'intersect(Circle(Point(0, 0), 2), Line(Point(-3, 1), Point(3, 1)))' },
+  distance: { args: 'e,e', mode: 'algebra', sig: 'distance(a, b)', desc: 'Distance between points, lines, …', ex: 'distance([0, 0], [3, 4])', fallback: 'mathjs' },
+  midpoint: { args: 'e,e?', mode: 'algebra', sig: 'midpoint(A, B) or midpoint(segment)', desc: 'Midpoint', ex: 'midpoint(Point(0, 0), Point(4, 2))' },
+  angle: { args: 'e,e,e?', mode: 'algebra', sig: 'angle(A, B, C) or angle(line1, line2)', desc: 'Angle ABC at B, or between two lines', ex: 'angle(Point(1, 0), Point(0, 0), Point(0, 1))' },
+  area: { args: 'e', mode: 'algebra', sig: 'area(shape)', desc: 'Area of a polygon, triangle, circle or ellipse', ex: 'area(Triangle(Point(0, 0), Point(4, 0), Point(0, 3)))' },
+  perimeter: { args: 'e', mode: 'algebra', sig: 'perimeter(shape)', desc: 'Perimeter or circumference', ex: 'perimeter(Triangle(Point(0, 0), Point(4, 0), Point(0, 3)))' },
+  perpendicular: { args: 'e,e', mode: 'algebra', sig: 'perpendicular(line, P)', desc: 'Line through P perpendicular to a line', ex: 'perpendicular(Line(Point(0, 0), Point(1, 1)), Point(2, 0))' },
+  parallel: { args: 'e,e', mode: 'algebra', sig: 'parallel(line, P)', desc: 'Line through P parallel to a line', ex: 'parallel(Line(Point(0, 0), Point(1, 2)), Point(0, 3))' },
+  tangents: { args: 'e,e', mode: 'algebra', sig: 'tangents(circle, P)', desc: 'Tangent lines from a point to a circle', ex: 'tangents(Circle(Point(0, 0), 2), Point(4, 0))' },
+  circumcircle: { args: 'e', mode: 'algebra', sig: 'circumcircle(T)', desc: 'Circle through the vertices of a triangle', ex: 'circumcircle(Triangle(Point(0, 0), Point(4, 0), Point(0, 3)))' },
+  incircle: { args: 'e', mode: 'algebra', sig: 'incircle(T)', desc: 'Inscribed circle of a triangle', ex: 'incircle(Triangle(Point(0, 0), Point(4, 0), Point(0, 3)))' },
+  centroid: { args: 'e', mode: 'algebra', sig: 'centroid(shape)', desc: 'Centroid', ex: 'centroid(Triangle(Point(0, 0), Point(4, 0), Point(0, 3)))' },
+  equation: { args: 'e', mode: 'algebra', sig: 'equation(line or circle)', desc: 'Equation of a line, circle or ellipse', ex: 'equation(Circle(Point(1, 2), 3))' },
+  draw: { args: 'e,e*', mode: 'algebra', sig: 'draw(A, c, T, …)', desc: 'Draw geometric objects together', ex: 'draw(Triangle(Point(0, 0), Point(4, 0), Point(0, 3)), Circle(Point(2, 3/2), 5/2))' },
+
+  // ── rigorous numerics, proofs, grading ──
+  ieval: { args: 'e,R*', mode: 'numeric', sig: 'ieval(expr[, [x, a, b], …])', desc: 'Guaranteed enclosure by interval arithmetic', ex: 'ieval(x^2 - 2x, [x, 0, 1])' },
+  prove: { args: 'q,R*', mode: 'algebra', sig: 'prove(a = b) or prove(f > 0[, [x, a, b]])', desc: 'Prove an identity or inequality (canonical forms, Sturm sequences, interval arithmetic)', ex: 'prove(x^4 - 4x^3 + 6x^2 - 4x + 1 >= 0)' },
+  grade: { args: 'e,e,v?', mode: 'algebra', sig: 'grade(answer, key[, x])', desc: 'Check an answer against a key (equivalence, up to a constant, simplified?)', ex: 'grade(x^3/3 + 5, x^3/3, x)' },
 };
 
 // Internal tools reached through other syntax (integrate with ranges, mixed partials).

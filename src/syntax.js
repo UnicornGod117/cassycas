@@ -409,6 +409,8 @@ export function fromNotation(raw) {
     .replace(/∞/g, 'Infinity').replace(/→|⟶/g, '->');
   s = s.replace(/[αβγδεζηθικλμνξρσςυχψωΔΩΣΓΛΦΨΘφϕπτ]/g, (c) => ` ${GREEK[c]} `).replace(/ +/g, ' ');
   s = s.replace(/√\s*([A-Za-z_]\w*|\d+(?:\.\d+)?)/g, 'sqrt($1)').replace(/∛\s*([A-Za-z_]\w*|\d+(?:\.\d+)?)/g, 'cbrt($1)').replace(/√\s*\(/g, 'sqrt(').replace(/∛\s*\(/g, 'cbrt(');
+  // X ~ Normal(0, 1) defines a random variable
+  s = s.replace(/^\s*([A-Za-z_]\w*)\s*~\s*(?=[A-Z]\w*\s*\()/, '$1 = ');
   // x := 3   2 + 2 = ?   trailing "="
   s = s.replace(/^\s*([A-Za-z_]\w*(?:\([^)]*\))?)\s*:=/, '$1 =').replace(/\s*=\s*\?\s*$/, '').replace(/([^=<>!])\s*=\s*$/, '$1');
   // ∫ f dx   ∫_a^b f dx   ∫ from a to b f dx

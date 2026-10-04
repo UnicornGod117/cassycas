@@ -9,6 +9,7 @@
 import bridgeSource from './bridge.py?raw';
 import toolsSource from './tools.py?raw';
 import stepsSource from './steps.py?raw';
+import advancedSource from './advanced.py?raw';
 import { PYODIDE_INDEX, PYODIDE_VERSION, ENGINE_PACKAGES } from './version.js';
 
 const SNAPSHOT_CACHE = 'cassycas-engine-snapshot';
@@ -25,7 +26,7 @@ const gzip = (bytes, mode) => new Response(new Blob([bytes]).stream().pipeThroug
 
 async function snapshotKey() {
   // An absolute key: the worker runs from a blob: URL, against which relative URLs do not resolve.
-  return `https://engine.cassycas.invalid/snapshot-${PYODIDE_VERSION}-${(await sha256(new TextEncoder().encode(bridgeSource + toolsSource + stepsSource))).slice(0, 16)}`;
+  return `https://engine.cassycas.invalid/snapshot-${PYODIDE_VERSION}-${(await sha256(new TextEncoder().encode(bridgeSource + toolsSource + stepsSource + advancedSource))).slice(0, 16)}`;
 }
 async function snapshotCache() {
   try { return self.caches ? await caches.open(SNAPSHOT_CACHE) : null; } catch { return null; }
@@ -109,6 +110,7 @@ async function freshBoot(loadPyodide, canSnapshot) {
   py.runPython(bridgeSource);
   py.runPython(toolsSource);          // same namespace: registers the 'tool' operation
   py.runPython(stepsSource);          // worked solutions (replaces the bridge's simpler step generators)
+  py.runPython(advancedSource);       // number fields, transforms, tensors, forms, knots, intervals, proofs, …
   status('Warming up…');
   py.runPython(`for _op in ({'op': 'integrate', 'expr': {'t': 'fn', 'n': 'sin', 'args': [{'t': 'sym', 'n': 'x'}]}, 'var': 'x'},
             {'op': 'limit', 'expr': {'t': 'op', 'op': '/', 'args': [{'t': 'fn', 'n': 'sin', 'args': [{'t': 'sym', 'n': 'x'}]}, {'t': 'sym', 'n': 'x'}]}, 'var': 'x', 'point': {'t': 'num', 'v': '0'}},

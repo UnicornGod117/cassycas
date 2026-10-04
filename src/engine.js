@@ -5,7 +5,7 @@ import {
   prettify, texOf, escTex, isIdent, stripParens,
 } from './expr.js';
 import { fmtN, fmtNum, texNum, toTex, fmtR, fmtComplexDec as fmtComplex, texComplexDec as texComplex, asRational, toReal } from './format.js';
-import { state, scope, userFns, varDefs, assumptions, CONSTANT_NAMES, IDENT_RE, FORBIDDEN_NAMES } from './state.js';
+import { state, scope, userFns, varDefs, assumptions, objects, OBJECT_CTORS, CONSTANT_NAMES, IDENT_RE, FORBIDDEN_NAMES } from './state.js';
 import { ALIASES } from './syntax.js';
 import { ctx, workerEval } from './kernel/mathjs-client.js';
 import { numInt, numLim, rk4Solve, findRoots, solveSys } from './kernel/numeric.js';
@@ -184,6 +184,11 @@ export function classifyDef(expr) {
     return null;
   }
   const va = expr.match(VAR_DEF_RE);
+  // X = Normal(0, 1), A = Point(0, 0), c = Circle(A, 2): a named object
+  if (va && isDefinableName(va[1])) {
+    const head = (va[2].trim().match(/^([A-Za-z]\w*)\s*\(/) || [])[1];
+    if (head && OBJECT_CTORS.includes(head) && isWholeCall(va[2].trim(), head)) return { kind: 'object', name: va[1], rhs: va[2].trim() };
+  }
   // x = 2x - 3 with x undefined is an equation to solve; n = n + 1 after n = 1 redefines n
   const defined = (n) => scope[n] !== undefined || varDefs[n] !== undefined;
   if (va && isDefinableName(va[1]) && (defined(va[1]) || !mentionsName(va[2], va[1]))) return { kind: 'var', name: va[1], rhs: va[2].trim() };
@@ -206,6 +211,23 @@ export function cellUses(rawExpr) {
 }
 
 export async function applyDefinition(def) {
+  if (def.kind === 'object') {
+    const a = tryAst(def.rhs);
+    if (!a) throw new Error(`Could not read ${def.rhs}.`);
+    if (!engineReady()) throw new Error(`Distributions and geometric objects need the exact engine${needsExactHint()}.`);
+    const before = objects[def.name];
+    objects[def.name] = a;
+    const r = await exact('object', { name: def.name });
+    if (!r || r.error) { if (before) objects[def.name] = before; else delete objects[def.name]; throw new Error(r ? r.error : 'The exact engine is unavailable.'); }
+    delete userFns[def.name]; delete varDefs[def.name]; delete scope[def.name];
+    const res = texResult(r.display.latex, r.display.plain, { engine: 'sympy', steps: stepList(r.steps) });
+    Object.assign(res, { type: 'objdef', name: def.name, ast: a });
+    if (r.plotSpec) {
+      res.plotSpec = { items: r.plotSpec.items, range: r.plotSpec.range ? { v: 'x', a: r.plotSpec.range[0], b: r.plotSpec.range[1] } : null };
+      res.openPlot = true;
+    }
+    return res;
+  }
   if (def.kind === 'assume') {
     for (const [name, flags] of Object.entries(def.flags)) assumptions[name] = flags;
     const words = Object.entries(def.flags).map(([n, fs]) => `${n}: ${fs.join(', ')}`);
@@ -308,7 +330,7 @@ function topLevelRelation(e) {
 }
 // Unknowns of an expression: free names the workspace does not define.
 function unknowns(text) {
-  try { return freeSymbols(substituteWorkspace(text.replace(/(?<![<>!=])=(?!=)/g, '=='), [])).filter(s => scope[s] === undefined && !varDefs[s]); }
+  try { return freeSymbols(substituteWorkspace(text.replace(/(?<![<>!=])=(?!=)/g, '=='), [])).filter(s => scope[s] === undefined && !varDefs[s] && !objects[s]); }
   catch { return []; }
 }
 const PREFERRED_VARS = ['x', 'y', 'z', 't', 'n', 'k'];
@@ -923,6 +945,17 @@ function relationText(s) {
   return `(${lhs}) == (${rhs})`;
 }
 const listItems = (s) => /^\[.*\]$/s.test(s) ? parseTopLevelArgs(s.slice(1, -1)) : [s];
+// x' = y in a system of ODEs → diff(x(t), t, 1) = y(t): every name written with a prime anywhere
+// in the system is an unknown function of t.
+function odeSystemText(eq, system, t) {
+  const fns = [...new Set([...system.matchAll(/(?<![\w.])([A-Za-z])'+/g)].map(m => m[1]))];
+  let s = eq;
+  for (const f of fns) {
+    s = s.replace(new RegExp(`(?<![\\w.])${f}('+)(?:\\s*\\(\\s*${t}\\s*\\))?`, 'g'), (m, p) => `diff(${f}(${t}), ${t}, ${p.length})`)
+      .replace(new RegExp(`(?<![\\w.])${f}(?![\\w(])`, 'g'), `${f}(${t})`);
+  }
+  return s;
+}
 // Match argument strings to a tool's kinds; returns [{kind, text}] with defaults filled in.
 function matchToolArgs(name, spec, args) {
   const kinds = spec.args.split(',');
@@ -960,21 +993,34 @@ async function evalTool(name, args, whole) {
     throw new Error(`${name}() needs the exact engine${needsExactHint()}.`);
   };
   if (!state.engineEnabled || !engineReady()) return unavailable();
+  for (const { kind, text } of parts) if (kind === 'L') listItems(text).forEach(t => { if (IDENT_RE.test(t) && !CONSTANT_NAMES.includes(t)) keep.add(t); });
+  const tVar = (parts.find(p => p.kind === 'v' && name === 'diffelim') || {}).text || 't';
+  const argText = ({ kind, text }) => kind === 'r' ? relationText(text)
+    : kind === 'q' ? (LONE_EQ.test(text) ? relationText(text) : text)
+    : kind === 'L' ? `__list(${listItems(text).map(t => LONE_EQ.test(t) ? relationText(t) : t).join(', ')})`
+    : kind === 'D' ? `__list(${listItems(text).map(t => relationText(odeSystemText(t, text, tVar))).join(', ')})`
+    : text;
   let payload;
-  try { payload = parts.map(({ kind, text }) => ast(kind === 'r' ? relationText(text) : text, [...keep])); }
+  try { payload = parts.map(p => ast(argText(p), [...keep])); }
   catch (err) { if (err instanceof UnsupportedForSympy) return unavailable(); throw err; }
-  const r = await exact('tool', { name, args: payload });
+  const r = await exact('tool', { name, args: payload, vars: [...keep] });
   if (!r) return unavailable();
   if (r.error) throw new Error(r.error);
   const steps = stepList(r.steps);
   const argTex = parts.map(({ kind, text }) => { try { return math.parse(kind === 'r' ? relationText(text) : text).toTex({ parenthesis: 'auto' }); } catch { return `\\text{${escTex(text)}}`; } });
   let res;
-  if (r.display) res = texResult(r.display.latex, r.display.plain, { engine: 'sympy', steps });
+  if (r.display) res = checked(texResult(r.display.latex, r.display.plain, { engine: 'sympy', steps }), r);
   else {
     const prefix = r.prefix ?? `\\operatorname{${escTex(name)}}\\left(${argTex.join(',\\ ')}\\right) = `;
-    res = presentValue(r.value, { prefix, steps, plotVar: false });
+    res = checked(presentValue(r.value, { prefix, steps, plotVar: false }), r);
     if (r.numeric) res.note = 'numeric';
   }
+  if (r.plotSpec) {        // tools that draw (bode): shown open, like plot(...)
+    const rg = r.plotSpec.range;
+    res.plotSpec = { items: r.plotSpec.items.map(it => ({ ...it, v: it.v || r.plotSpec.v })), range: rg ? { v: r.plotSpec.v, a: rg[0], b: rg[1] } : null };
+    res.type = 'plot';
+  }
+  if (r.lean) res.lean = r.lean;
   if (Array.isArray(r.plot) && r.plot.length) {
     const v = r.plotVar || 'x';
     res.plot = r.plot.length === 1 ? { expr: r.plot[0], v } : null;

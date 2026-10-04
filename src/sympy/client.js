@@ -1,6 +1,6 @@
 // Main-thread client for the SymPy worker: lazy start, status events, timeouts with restart.
 import SympyWorker from './sympy.worker.js?worker';
-import { state, assumptions } from '../state.js';
+import { state, assumptions, objects } from '../state.js';
 
 export const engine = { status: 'off', detail: '' };   // off | loading | ready | failed | restarting
 const listeners = new Set();
@@ -48,7 +48,8 @@ export function stopEngine(keepStatus = false) {
 // fall back to the JavaScript engine) and restarts the worker if an operation hangs.
 export function sympy(op, payload = {}, timeout = SYMPY_TIMEOUT_MS) {
   if (!engineReady() || !worker) return Promise.reject(new EngineUnavailable('SymPy is not ready'));
-  const request = { op, deg: false, ...(Object.keys(assumptions).length ? { assume: assumptions } : {}), ...payload };
+  const request = { op, deg: false, ...(Object.keys(assumptions).length ? { assume: assumptions } : {}),
+    ...(Object.keys(objects).length ? { objects } : {}), ...payload };
   return new Promise((resolve, reject) => {
     const id = ++msgId;
     const timer = setTimeout(() => {

@@ -25,3 +25,10 @@ export const varDefs = {};
 // Assumptions placed on symbols by assume(...) cells: name → ['positive', 'integer', …].
 // Sent with every exact-engine request; rebuilt from the cells on each recomputation.
 export const assumptions = {};
+// Named objects (X = Normal(0, 1), A = Point(0, 0)): name → expression tree of the constructor,
+// sent with every exact-engine request and built there on first use.
+export const objects = {};
+export const OBJECT_CTORS = ['Normal', 'Uniform', 'Exponential', 'Poisson', 'Binomial', 'Bernoulli', 'Geometric', 'Die', 'Coin',
+  'Gamma', 'Beta', 'ChiSquared', 'StudentT', 'LogNormal', 'Cauchy', 'Laplace', 'Weibull', 'Rayleigh', 'Erlang', 'Pareto',
+  'Hypergeometric', 'NegativeBinomial', 'Point', 'Line', 'Segment', 'Ray', 'Circle', 'Ellipse', 'Triangle', 'Polygon',
+  'circumcircle', 'incircle', 'perpendicular', 'parallel', 'midpoint', 'centroid'];
