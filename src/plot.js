@@ -39,7 +39,7 @@ function compileItem(it, params, values) {
     const f = realFunction(prepare(src, [...vars, ...params]), [...vars, ...params], ctx());
     return (...xs) => f(...xs, ...params.map(p => values[p]));
   };
-  const base = { label: it.label };
+  const base = { label: it.label, ...(it.color ? { color: it.color } : {}) };
   switch (it.kind) {
     case 'fn': { const f = fn(it.expr, [it.v || 'x']); return { ...base, kind: 'fn', f }; }
     case 'ineq-fn': return { ...base, kind: 'ineq-fn', f: fn(it.expr, ['x']), rel: it.rel };
@@ -99,7 +99,7 @@ function sliders(host, params, values, onChange) {
     let dir = 1;
     b.textContent = '❚❚';
     timers[p] = setInterval(() => {
-      if (!host.isConnected) { clearInterval(timers[p]); return; }
+      if (!box.isConnected) { clearInterval(timers[p]); return; }
       let v = Number(inp.value) + dir * 0.05;
       if (v > 10 || v < -10) { dir = -dir; v = Math.max(-10, Math.min(10, v)); }
       set(inp, v.toFixed(2));
@@ -107,10 +107,17 @@ function sliders(host, params, values, onChange) {
   });
 }
 
-// Draw a plot spec (see plotspec.js) into a container.
-export function drawSpec(container, spec, { xrange, height = 320 } = {}) {
+// Validate a layer without allocating a canvas or ResizeObserver.
+export function validateSpec(spec, values = {}) {
   const params = specParams(spec);
-  const values = Object.fromEntries(params.map(p => [p, 1]));
+  const defaults = Object.fromEntries(params.map(p => [p, Number.isFinite(values[p]) ? values[p] : 1]));
+  spec.items.forEach(it => compileItem(it, params, defaults));
+}
+
+// Draw a plot spec (see plotspec.js) into a container.
+export function drawSpec(container, spec, { xrange, height = 320, values = {} } = {}) {
+  const params = specParams(spec);
+  params.forEach(p => { if (!Number.isFinite(values[p])) values[p] = 1; });
   container.innerHTML = '';
   const host = document.createElement('div');
   container.appendChild(host);
@@ -125,7 +132,8 @@ export function drawSpec(container, spec, { xrange, height = 320 } = {}) {
   const compiled = items.map(it => compileItem(it, params, values));
   g.setItems(compiled);
   g.spec = spec;
-  sliders(container, params, values, () => g.render());
+  g.parameterValues = values;
+  sliders(container, params, values, () => { g.render(); g.onParameterChange?.(); });
   return g;
 }
 

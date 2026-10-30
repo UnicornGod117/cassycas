@@ -14,96 +14,33 @@
 <div id="sr-live" class="sr-only" aria-live="polite" role="status"></div>
 <!-- ============ TOP BAR ============ -->
 <header class="topbar">
-  <div class="brand">
-    <div class="brand-mark">∫</div>
-    <span class="brand-name">CassyCAS</span>
-    <span class="brand-sub">Your maths workspace</span>
-  </div>
-
-  <div class="topbar-divider"></div>
-
-  <button class="cmd-pill" onclick="openPalette()">
-    <span>⌕</span>
-    <span>Search functions, modes…</span>
-    <kbd>⌘K</kbd>
-  </button>
-
+  <div class="page-location"><span class="location-dot"></span> Workspace <span class="location-slash">/</span> <strong id="page-name">Calculator</strong></div>
+  <button class="cmd-pill" onclick="openPalette()"><span>⌕</span><span>Find a command or function</span><kbd>⌘ K</kbd></button>
   <div class="topbar-spacer"></div>
-
-  <button class="engine-pill" id="engine-pill" onclick="engineInfo()" title="Exact engine status">
-    <span class="engine-dot"></span><span id="engine-text">SymPy · off</span>
-  </button>
-
-  <div class="tg-group" title="Output mode">
-    <button class="tg on" id="tg-exact" onclick="toggleExact()">Exact</button>
-    <button class="tg" id="tg-approx" onclick="toggleExact()">≈ Approx</button>
-  </div>
-
-  <div class="tg-group" title="Angle mode">
-    <button class="tg on" id="tg-rad" onclick="toggleAngle()" title="Radian mode: trigonometric inputs are treated as radians (default)">Rad</button>
-    <button class="tg" id="tg-deg" onclick="toggleAngle()" title="Degree mode: trigonometric inputs are treated as degrees">Deg</button>
-  </div>
-
-  <div class="topbar-divider"></div>
-
-  <details class="workspace-menu"><summary>Session & settings</summary><div class="workspace-menu-items">
-  <button class="icon-btn" title="Copy a shareable link to this notebook" onclick="shareNotebook()">
-    <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="18" cy="18" r="2.2"/><path d="M8 11l8-4M8 13l8 4"/></svg>
-  </button>
-  <button class="icon-btn" title="Copy HTML to embed this notebook in a web page" onclick="embedNotebook()">
-    <svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M13.5 5l-3 14"/></svg>
-  </button>
-  <button class="icon-btn" title="Save session" onclick="saveSession()">
-    <svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 14h8"/></svg>
-  </button>
-  <button class="icon-btn" title="Load session" onclick="document.getElementById('floader').click()">
-    <svg viewBox="0 0 24 24"><path d="M3 7h7l2 3h9v9H3z"/></svg>
-  </button>
-  <button class="icon-btn" title="Export as text" onclick="exportTxt()">
-    <svg viewBox="0 0 24 24"><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>
-  </button>
-  <button class="icon-btn" title="Export as LaTeX" onclick="exportLatex()">
-    <svg viewBox="0 0 24 24"><text x="12" y="17" font-family="serif" font-size="16" font-weight="bold" text-anchor="middle" fill="currentColor">T</text></svg>
-  </button>
-  <button class="icon-btn" title="Toggle theme" onclick="toggleTheme()">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/></svg>
-  </button>
-  <button class="icon-btn" title="Tweaks" onclick="toggleTweaks()">
-    <svg viewBox="0 0 24 24"><circle cx="6" cy="8" r="2"/><circle cx="18" cy="16" r="2"/><path d="M8 8h12"/><path d="M4 16h12"/></svg>
-  </button>
-  </div></details>
-  <span class="collab-pill" id="collab-pill" style="display:none" onclick="openCollab()" title="Collaboration"></span>
-  <button class="icon-btn" title="More: gallery, history, library, Markdown, collaborate, cite" onclick="toggleMore(this)" aria-haspopup="menu">
-    <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
-  </button>
-  <button class="icon-btn danger" title="Clear all" onclick="clearAll()">
-    <svg viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M10 7V4h4v3"/><path d="M6 7l1 13h10l1-13"/></svg>
-  </button>
+  <button class="collab-pill" id="collab-pill" style="display:none" onclick="openCollab()" title="Collaboration"></button>
+  <button class="engine-pill" id="engine-pill" onclick="engineInfo()" title="Exact engine status"><span class="engine-dot"></span><span id="engine-text">Starting engine</span></button>
+  <button class="top-action" onclick="saveSession()">↓ <span>Save notebook</span></button>
+  <button class="avatar-button" onclick="switchView('settings')" title="Open settings">✺</button>
 </header>
 
 <!-- ============ APP ============ -->
 <div class="app">
 
   <!-- LEFT RAIL (workspace nav) -->
-  <nav class="rail">
-    <button class="rail-btn on" id="view-tab-nb" onclick="switchView('nb')" title="Notebook">
-      <span class="rail-glyph">¶</span>
-      <span class="rail-label">Calculate</span>
-    </button>
-    <button class="rail-btn" id="view-tab-graph" onclick="switchView('graph')" title="Graph">
-      <span class="rail-glyph">⌇</span>
-      <span class="rail-label">Graph</span>
-    </button>
-    <button class="rail-btn" id="view-tab-units" onclick="switchView('units')" title="Units">
-      <span class="rail-glyph">Ω</span>
-      <span class="rail-label">Units</span>
-    </button>
+  <nav class="rail" aria-label="Main navigation">
+    <a class="nav-brand" href="#" onclick="event.preventDefault();switchView('nb')"><span class="nav-logo">∫</span><span>Cassy<span class="brand-cas">CAS</span><small>THE MATHEMATICS STUDIO</small></span></a>
+    <div class="nav-caption">WORKSPACE</div>
+    <button class="rail-btn on" id="view-tab-nb" onclick="switchView('nb')" title="Notebook"><span class="rail-glyph">▦</span><span class="rail-label">Calculator</span><span class="nav-shortcut">01</span></button>
+    <button class="rail-btn" id="view-tab-graph" onclick="switchView('graph')" title="Graph"><span class="rail-glyph">⌁</span><span class="rail-label">Graph studio</span><span class="nav-shortcut">02</span></button>
+    <button class="rail-btn" id="view-tab-library" onclick="switchView('library')" title="Explore library"><span class="rail-glyph">◈</span><span class="rail-label">Explore</span><span class="nav-shortcut">03</span></button>
+    <button class="rail-btn" id="view-tab-units" onclick="switchView('units')" title="Units"><span class="rail-glyph">⇄</span><span class="rail-label">Units & constants</span><span class="nav-shortcut">04</span></button>
+    <div class="nav-caption">YOUR TOOLS</div>
+    <button class="rail-btn" id="view-tab-panel" aria-expanded="false" aria-controls="sidebar" onclick="toggleSidebar()" title="Show / hide the side panel"><span class="rail-glyph">⊞</span><span class="rail-label">Function toolkit</span></button>
+    <button class="rail-btn" onclick="openPalette()"><span class="rail-glyph">⌕</span><span class="rail-label">Command search</span></button>
     <div class="rail-spacer"></div>
-    <div class="rail-divider"></div>
-    <button class="rail-btn" id="view-tab-panel" aria-expanded="false" aria-controls="sidebar" onclick="toggleSidebar()" title="Show / hide the side panel">
-      <span class="rail-glyph">☰</span>
-      <span class="rail-label">Tools</span>
-    </button>
+    <div class="nav-note"><span class="nav-orbit">✧</span><strong>More space for big ideas.</strong><p>From a quick calculation to your next discovery.</p></div>
+    <button class="rail-btn" id="view-tab-settings" onclick="switchView('settings')" title="Settings"><span class="rail-glyph">☷</span><span class="rail-label">Settings</span></button>
+    <div class="nav-footer"><span class="status-dot"></span> Local-first · Yours to explore</div>
   </nav>
 
   <!-- SIDEBAR (mode context) -->
@@ -163,6 +100,8 @@
 
     <!-- ============ NOTEBOOK VIEW ============ -->
     <div class="view on" id="view-nb">
+      <div class="section-bar"><div><span class="eyebrow">THINK WITHOUT LIMITS</span><h1>Calculator<span class="title-dot">.</span></h1></div><div class="calc-controls"><div class="tg-group"><button class="tg on" id="tg-exact" onclick="toggleExact()">Exact</button><button class="tg" id="tg-approx" onclick="toggleExact()">Decimal</button></div><div class="tg-group"><button class="tg on" id="tg-rad" onclick="toggleAngle()">Rad</button><button class="tg" id="tg-deg" onclick="toggleAngle()">Deg</button></div><button class="subtle-button" onclick="toggleMore(this)" aria-haspopup="menu">Notebook ···</button></div></div>
+
 
       <!-- definite integral helper, hidden by default -->
       <div class="defint-panel" id="defint-panel">
@@ -181,18 +120,7 @@
 
       <div class="notebook" id="notebook">
         <!-- WELCOME -->
-        <div class="welcome" id="welcome">
-          <div class="welcome-mark">∑</div>
-          <div class="welcome-title">Big ideas. <em>Room to think.</em></div>
-          <div class="welcome-sub">Start with a calculation, an equation, or a function. Press Enter to see the answer. Open Graph to explore curves, or Tools when you need more.</div>
-          <div class="welcome-grid" id="welcome-grid"></div>
-          <div class="welcome-tip">
-            <span><kbd>Enter</kbd> run</span>
-            <span><kbd>Shift</kbd>+<kbd>Enter</kbd> newline</span>
-            <span><kbd>⌘</kbd>+<kbd>K</kbd> command palette</span>
-            <span><kbd>Tab</kbd> complete</span>
-          </div>
-        </div>
+        <div class="welcome" id="welcome"></div>
       </div>
 
       <!-- INPUT -->
@@ -244,36 +172,49 @@
 
     <!-- ============ GRAPH VIEW ============ -->
     <div class="view" id="view-graph">
-      <div class="graph-view">
-        <div class="graph-head">
-          <h2><em>Plot</em> · 2D &amp; 3D</h2>
-          <div class="graph-head-sub">multi-trace overlays, surfaces, and parametric curves</div>
-        </div>
-        <div class="graph-controls">
-          <div>
-            <div class="glabel">Curves — comma-separated: functions of <code style="color:var(--a0)">x</code>, equations in <code style="color:var(--a0)">x, y</code>, <code style="color:var(--a0)">[x(t), y(t)]</code>, <code style="color:var(--a0)">r = f(theta)</code> · 3D: <code style="color:var(--a0)">f(x, y)</code></div>
-            <input class="ginp" id="ginp" placeholder="e.g.  sin(x), x^2 + y^2 = 16, [cos(t), sin(2t)], r = 1 + cos(theta)"
-                   onkeydown="if(event.key==='Enter')plotGraph(false)"/>
-          </div>
-          <div class="graph-row">
-            <div>
-              <div class="glabel">X Range</div>
-              <div class="graph-range">
-                <input class="ginp" id="gxmin" type="number" value="-10"/>
-                <span>→</span>
-                <input class="ginp" id="gxmax" type="number" value="10"/>
-              </div>
-            </div>
-            <div class="graph-actions">
-              <button class="btn-plot" onclick="plotGraph(false)">Plot 2D</button>
-              <button class="btn-plot violet" onclick="plotGraph(true)">Plot 3D Surface</button>
-              <button class="btn-plot" onclick="exportPlot('graph')" style="background:var(--s2);color:var(--t1);border:1px solid var(--b0);">Export PNG</button>
-            </div>
-          </div>
-        </div>
-        <div class="gplot" id="gplot"></div>
+      <div class="section-bar"><div><span class="eyebrow">MAKE THE ABSTRACT VISIBLE</span><h1>Graph studio<span class="title-dot">.</span></h1></div><div class="studio-actions"><button class="subtle-button" id="studio-table-toggle">▦ Value table</button><button class="top-action" onclick="exportPlot('graph')">↓ Export PNG</button></div></div>
+      <div class="studio-layout">
+        <aside class="expression-panel"><div class="panel-heading"><span>Expressions</span><span class="tiny-badge">LIVE</span></div><div id="expression-list"></div><button class="add-expression" id="add-expression">＋ Add expression</button>
+          <div class="studio-presets"><span class="eyebrow">TRY A DIFFERENT PERSPECTIVE</span><div id="studio-presets"></div></div>
+          <details class="graph-options"><summary>Viewport & 3D surface</summary><label>X minimum<input id="gxmin" type="number" value="-10"></label><label>X maximum<input id="gxmax" type="number" value="10"></label><button class="subtle-button" id="studio-range">Apply range</button><input id="ginp" aria-label="3D surface expression" placeholder="sin(x) * cos(y)"><button class="subtle-button" id="studio-3d">Plot 3D surface</button><button class="subtle-button" id="studio-2d">Back to 2D</button></details>
+          <div class="studio-help">Drag to pan · Scroll or pinch to zoom<br>Hover on points to discover coordinates</div>
+        </aside>
+        <div class="studio-canvas-area"><div class="canvas-caption"><span><i></i> Interactive canvas</span><span id="studio-status" role="status">Ready to explore</span></div><div class="gplot" id="gplot"></div><div class="analysis-controls"><span class="eyebrow">INSPECT FIRST CURVE</span><label>x = <input id="inspect-x" type="number" step="any" value="0" aria-label="Inspect at x"></label><label>Area from <input id="inspect-a" type="number" step="any" value="0" aria-label="Area lower bound"></label><label>to <input id="inspect-b" type="number" step="any" value="1" aria-label="Area upper bound"></label><label class="tangent-switch"><input id="inspect-tangent" type="checkbox"> Tangent</label></div><div id="studio-insights" class="studio-insights"></div><div class="studio-table" id="studio-table" hidden></div></div>
       </div>
     </div>
+    <div class="view" id="view-library"><div class="section-bar"><div><span class="eyebrow">A LITTLE CURIOSITY GOES A LONG WAY</span><h1>Explore<span class="title-dot">.</span></h1></div></div><div class="explore-intro"><h2>Your next “what if?” starts here.</h2><p>Working notebooks, graph experiments, and a searchable collection of mathematical tools.</p><input id="explore-search" class="explore-search" placeholder="Search notebooks, topics, or ideas…" aria-label="Search example notebooks"></div><div id="explore-grid" class="explore-grid"></div></div>
+    <div class="view" id="view-settings"><div class="section-bar"><div><span class="eyebrow">MAKE YOURSELF AT HOME</span><h1>Settings<span class="title-dot">.</span></h1></div><span class="settings-saved" id="settings-saved" role="status">Preferences saved on this device</span></div><div class="settings-layout"><div class="settings-intro"><h2>A workspace that feels like you.</h2><p>Tune your environment. Stay in your flow.</p><div class="settings-art">✺</div></div><div id="settings-content"><div class="settings-card" id="tweaks">
+  <div class="tweaks-head">
+    <h3>Workspace preferences</h3>
+
+  </div>
+  <div class="tweaks-body">
+    <div class="tweak-group">
+      <div class="tweak-label">Accent</div>
+      <div class="tweak-row" id="tweak-accent"></div>
+    </div>
+    <div class="tweak-group">
+      <div class="tweak-label">Density</div>
+      <div class="tweak-row" id="tweak-density"></div>
+    </div>
+    <div class="tweak-group">
+      <div class="tweak-label">Font</div>
+      <div class="tweak-row" id="tweak-font"></div>
+    </div>
+    <div class="tweak-group">
+      <div class="tweak-label">Behaviour</div>
+      <label class="tweak-check"><input type="checkbox" id="tw-autoplot" onchange="setAutoPlot(this.checked)"/> Plot results automatically</label>
+      <label class="tweak-check"><input type="checkbox" id="tw-engine" onchange="setEngineEnabled(this.checked)"/> Advanced symbolic tools (SymPy)</label>
+    </div>
+    <div class="tweak-group">
+      <div class="tweak-label">Claude assistant (optional)</div>
+      <input class="defint-input" id="tw-key" type="password" placeholder="Anthropic API key (stays in this browser)" style="width:100%;" onchange="setAssistantKey(this.value)"/>
+      <div class="tweak-note">Enables plain-English input and “Explain”. Requests go directly from your browser to api.anthropic.com.</div>
+    </div>
+  </div>
+</div>
+
+</div></div></div>
 
     <!-- ============ UNITS VIEW ============ -->
     <div class="view" id="view-units">
@@ -310,37 +251,6 @@
 <div class="toast" id="toast"></div>
 
 <!-- ============ TWEAKS PANEL ============ -->
-<div class="tweaks" id="tweaks">
-  <div class="tweaks-head">
-    <h3>Tweaks</h3>
-    <button class="icon-btn" onclick="toggleTweaks()" style="width:24px;height:24px;font-size:14px;">✕</button>
-  </div>
-  <div class="tweaks-body">
-    <div class="tweak-group">
-      <div class="tweak-label">Accent</div>
-      <div class="tweak-row" id="tweak-accent"></div>
-    </div>
-    <div class="tweak-group">
-      <div class="tweak-label">Density</div>
-      <div class="tweak-row" id="tweak-density"></div>
-    </div>
-    <div class="tweak-group">
-      <div class="tweak-label">Font</div>
-      <div class="tweak-row" id="tweak-font"></div>
-    </div>
-    <div class="tweak-group">
-      <div class="tweak-label">Behaviour</div>
-      <label class="tweak-check"><input type="checkbox" id="tw-autoplot" onchange="setAutoPlot(this.checked)"/> Plot results automatically</label>
-      <label class="tweak-check"><input type="checkbox" id="tw-engine" onchange="setEngineEnabled(this.checked)"/> Exact engine (SymPy, ~20 MB once)</label>
-    </div>
-    <div class="tweak-group">
-      <div class="tweak-label">Claude assistant (optional)</div>
-      <input class="defint-input" id="tw-key" type="password" placeholder="Anthropic API key (stays in this browser)" style="width:100%;" onchange="setAssistantKey(this.value)"/>
-      <div class="tweak-note">Enables plain-English input and “Explain”. Requests go directly from your browser to api.anthropic.com.</div>
-    </div>
-  </div>
-</div>
-
 <!-- ============ COMMAND PALETTE ============ -->
 <div class="palette-overlay" id="palette" onclick="if(event.target===this)closePalette()">
   <div class="palette">

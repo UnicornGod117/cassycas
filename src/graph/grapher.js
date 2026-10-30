@@ -299,12 +299,14 @@ export class Grapher {
       ctx.stroke();
     };
     ctx.lineWidth = 1;
-    ctx.strokeStyle = C.grid2; lines(stepX / 5, true);
-    ctx.strokeStyle = C.grid;
-    ctx.beginPath();
-    for (const x of ticks(v.xmin, v.xmax, stepX)) { const s = Math.round(this.sx(x)) + 0.5; ctx.moveTo(s, 0); ctx.lineTo(s, this.H); }
-    for (const y of ticks(v.ymin, v.ymax, stepY)) { const s = Math.round(this.sy(y)) + 0.5; ctx.moveTo(0, s); ctx.lineTo(this.W, s); }
-    ctx.stroke();
+    if (!document.body.classList.contains('graph-no-grid')) {
+      ctx.strokeStyle = C.grid2; lines(stepX / 5, true);
+      ctx.strokeStyle = C.grid;
+      ctx.beginPath();
+      for (const x of ticks(v.xmin, v.xmax, stepX)) { const s = Math.round(this.sx(x)) + 0.5; ctx.moveTo(s, 0); ctx.lineTo(s, this.H); }
+      for (const y of ticks(v.ymin, v.ymax, stepY)) { const s = Math.round(this.sy(y)) + 0.5; ctx.moveTo(0, s); ctx.lineTo(this.W, s); }
+      ctx.stroke();
+    }
     // axes
     const ax = Math.min(Math.max(this.sy(0), 0), this.H), ay = Math.min(Math.max(this.sx(0), 0), this.W);
     ctx.strokeStyle = C.axis; ctx.lineWidth = 1.3;

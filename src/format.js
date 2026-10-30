@@ -23,8 +23,8 @@ export function fmtN(n) {
   if (typeof n !== 'number') return fmtR(n);
   if (!isFinite(n)) return String(n);
   if (Math.abs(n) < 1e-12 && n !== 0) return '0';
-  if (Math.abs(n) >= 1e10 || (Math.abs(n) < 0.001 && n !== 0)) return n.toExponential(9).replace(/\.?0+e/, 'e');
-  return parseFloat(n.toPrecision(10)).toString();
+  if (Math.abs(n) >= 1e10 || (Math.abs(n) < 0.001 && n !== 0)) return n.toExponential((state.precision || 10) - 1).replace(/\.?0+e/, 'e');
+  return parseFloat(n.toPrecision(state.precision || 10)).toString();
 }
 export function fmtNum(n) {
   if (state.exactMode) { const r = asRational(n); if (r) return `${r.n}/${r.d}`; }

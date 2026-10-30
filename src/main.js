@@ -1,5 +1,8 @@
 // CassyCAS entry point: wires the UI to the engines and notebook.
 import './styles.css';
+import './workbench.css';
+import { initStudio, enterStudio, leaveStudio } from './studio.js';
+import { initWorkbench, welcomeMarkup } from './workbench.js';
 import { math, normalise, canonical } from './expr.js';
 import { escH, fmtR } from './format.js';
 import { state, scope, userFns, varDefs, CONSTANT_NAMES } from './state.js';
@@ -152,10 +155,15 @@ function insertDefInt() {
 }
 function runDefInt() { insertDefInt(); runCell(); }
 function switchView(v) {
-  ['nb', 'graph', 'units'].forEach(id => {
+  if (!['nb', 'graph', 'units', 'library', 'settings'].includes(v)) return;
+  leaveStudio();
+  ['nb', 'graph', 'units', 'library', 'settings'].forEach(id => {
     $('view-' + id).classList.toggle('on', id === v);
     $('view-tab-' + id).classList.toggle('on', id === v);
+    $('view-tab-' + id).setAttribute('aria-current', id === v ? 'page' : 'false');
   });
+  $('page-name').textContent = ({ nb: 'Calculator', graph: 'Graph studio', units: 'Units & constants', library: 'Explore', settings: 'Settings' })[v];
+  if (v === 'graph') enterStudio();
 }
 function toggleSidebar() {
   const sb = document.querySelector('.sidebar');
@@ -220,8 +228,7 @@ function setEngineEnabled(on) {
 function renderEngineStatus(e) {
   const pill = $('engine-pill'), text = $('engine-text');
   pill.dataset.status = e.status;
-  const label = { off: 'numeric only', loading: 'loading…', restarting: 'restarting…', ready: 'exact', failed: 'unavailable' }[e.status] || e.status;
-  text.textContent = `SymPy · ${label}`;
+  text.textContent = e.status === 'ready' ? 'Exact engine ready' : ['off', 'failed'].includes(e.status) ? 'Local engine' : 'Starting exact engine…';
   pill.title = e.status === 'ready' ? 'Exact engine ready (SymPy on WebAssembly)'
     : e.status === 'failed' ? `Exact engine unavailable: ${e.detail}. Using the JavaScript engine.`
     : e.status === 'off' ? 'Exact engine disabled (Tweaks). Using the JavaScript engine.' : (e.detail || 'Loading');
@@ -251,11 +258,7 @@ function buildConsts() {
 function buildWelcomeNode() {
   const w = document.createElement('div');
   w.className = 'welcome'; w.id = 'welcome';
-  w.innerHTML = `<div class="welcome-mark">∑</div>
-    <div class="welcome-title">Big ideas. <em>Room to think.</em></div>
-    <div class="welcome-sub">Start with a calculation, an equation, or a function. Press Enter to see the answer. Open Graph to explore curves, or Tools when you need more.</div>
-    <div class="welcome-grid" id="welcome-grid"></div>
-    <div class="welcome-tip"><span><kbd>Enter</kbd> run</span><span><kbd>Shift</kbd>+<kbd>Enter</kbd> newline</span><span><kbd>⌘</kbd>+<kbd>K</kbd> palette</span><span><kbd>Tab</kbd> complete</span></div>`;
+  w.innerHTML = welcomeMarkup();
   return w;
 }
 function buildWelcomeGrid() {
@@ -265,6 +268,7 @@ function buildWelcomeGrid() {
     { mode: 'algebra', label: 'Factor', expr: 'factor(x^2 - 9)', desc: 'Explore an exact expression' },
     { mode: 'calculus', label: 'Calculus', expr: 'integrate(x^2, x)', desc: 'Find an antiderivative' },
   ];
+  if ($('welcome') && !$('welcome-grid')) $('welcome').innerHTML = welcomeMarkup();
   const el = $('welcome-grid');
   if (el) el.innerHTML = sample.map(s => `<button type="button" class="wcell" data-ex="${escH(s.expr)}" data-mode="${s.mode}"><span class="wcell-tag">${escH(s.label)}</span><span class="wcell-expr">${escH(s.expr)}</span><span class="wcell-desc">${escH(s.desc)}</span></button>`).join('') +
     `<details class="syntax-help"><summary>Used a CAS calculator before? Start here</summary><p>Use ^ for powers, * for multiplication, pi for π, and parentheses for function arguments.</p><p><code>solve(x^2 = 4, x)</code> · <code>factor(x^2 - 1)</code><br><code>diff(sin(x), x)</code> · <code>integrate(x^2, x)</code><br><code>f(x) := x^2</code> defines a function. Choose Rad or Deg for angles.</p><p>These commands follow familiar CAS conventions; syntax varies between calculator brands. Search functions for supported commands and examples.</p><p>Basic calculation and 2D graphing work without internet. Advanced symbolic tools download the exact engine when a connection is available.</p></details>`;
@@ -335,7 +339,7 @@ function buildTweaks() {
   $('tw-engine').checked = state.engineEnabled;
   $('tw-key').value = Assistant.getApiKey() ? '••••••••••••' : '';
 }
-function toggleTweaks() { $('tweaks').classList.toggle('on'); }
+function toggleTweaks() { switchView('settings'); }
 
 // ══════════════════════════════════════════════════════
 //  ASSISTANT (optional)
@@ -492,6 +496,7 @@ async function saveFunction(name, def) {
 }
 function moreAction(k) {
   switch (k) {
+    case 'clear': return clearAll();
     case 'gallery': return Dlg.openGallery();
     case 'history': return Dlg.openHistory();
     case 'library': return Dlg.openLibrary();
@@ -618,6 +623,8 @@ async function init() {
     onPersist: (data) => { WS.saveNotebook(data); WS.trackForUndo(data); },
     stamp: () => (collab && collab.connected ? collab.stamp() : null) });
   Dlg.initDialogs({ load: loadReplacing, checkpoint, toast, run: (def) => NB.runNewCell(def, 'algebra'), shareLink: NB.shareLink, download, more: moreAction });
+  initStudio({ toast, download });
+  initWorkbench({ recompute: () => NB.recompute({ all: true }), openGallery: openGalleryItem, switchView });
   // every icon button is named for assistive technology
   document.querySelectorAll('button[title]:not([aria-label])').forEach(b => b.setAttribute('aria-label', b.title));
   NB.bindNotebookEvents({ explain: explainCell });

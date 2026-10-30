@@ -24,8 +24,9 @@ test('root index opens from disk and calculates and graphs without a network', a
     assert.match(solved.plain, /3/);
     await page.getByTitle('Graph', { exact: true }).click();
     await page.waitForFunction(() => document.querySelector('#view-graph').classList.contains('on'));
-    await page.locator('#ginp').fill('sin(x), x^2');
-    await page.getByRole('button', { name: 'Plot 2D', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Expression 1', exact: true }).fill('sin(x)');
+    await page.getByRole('textbox', { name: 'Expression 2', exact: true }).fill('x^2');
+    await page.waitForTimeout(400);
     await page.waitForFunction(() => document.querySelector('#gplot canvas')?.width > 0);
     assert.ok(await page.locator('#gplot canvas').count(), '2D plot is rendered');
     await page.getByTitle('Notebook', { exact: true }).click();

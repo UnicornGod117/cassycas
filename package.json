@@ -17,7 +17,8 @@
     "bench": "node tests/bench/run.mjs",
     "cas": "node bin/cassycas.mjs",
     "lsp": "node bin/cassycas-lsp.mjs",
-    "test:portable": "node --test tests/portable.test.mjs"
+    "test:portable": "node --test tests/portable.test.mjs tests/studio.test.mjs",
+    "audit:ui": "node tests/audit-ui.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

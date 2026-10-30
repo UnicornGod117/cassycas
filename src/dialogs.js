@@ -103,7 +103,7 @@ export function toggleMoreMenu(anchor) {
   const open = document.getElementById('more-menu');
   if (open) { open.remove(); return; }
   const items = [
-    ['gallery', 'Gallery & templates'], ['history', 'Version history'], ['library', 'Function library'], ['formulas', 'Search formulas…'],
+    ['clear', 'Clear notebook…'], ['gallery', 'Gallery & templates'], ['history', 'Version history'], ['library', 'Function library'], ['formulas', 'Search formulas…'],
     ['-'], ['md', 'Export Markdown'], ['qmd', 'Export Quarto (.qmd)'], ['import', 'Import Markdown / Quarto…'],
     ['-'], ['collab', 'Collaborate (peer to peer)…'], ['cite', 'Cite…'], ['plugins', 'Plug-in API…'],
   ];

@@ -6,7 +6,13 @@ A browser-native computer algebra system that checks its own answers. Exact resu
 
 Download the repository and **double-click the root `index.html`**. It is the compiled portable calculator: no terminal, server, installation, or account is required. You can also copy that file by itself.
 
-The opening screen offers four examples. **Calculate** is the working notebook, **Graph** opens plotting, and **Tools** reveals disciplines and specialist operations. Session export and preferences live under **Session & settings**. Search functions for commands and syntax examples.
+The studio has five dedicated sections: **Calculator**, **Graph studio**, **Explore**, **Units & constants**, and **Settings**. Open the **Function toolkit** for specialist operations, or search commands from anywhere.
+
+Graph studio supports live expression layers with per-layer visibility and color, implicit equations, inequalities, polar and parametric curves, automatic animated parameter sliders, pan/zoom, roots and intersections, and 3D surfaces. The first-curve inspector computes a value, numerical slope, signed area over editable bounds, and an optional tangent. A 21-row value table has editable start/step and CSV export. Graph expressions are saved on this device.
+
+Settings persist appearance (daylight/midnight), accent, notebook density, decimal precision, animations, and graph grid visibility. Explore offers searchable example notebooks. Save and open notebooks from Settings, or use the notebook menu for history and exports.
+
+The visual audit script (`node tests/audit-ui.mjs`) captures the main screens at 1440 × 1000 and 390 × 844, plus dark mode and graph analysis. See [the audit record](docs/UI-AUDIT.md).
 
 Arithmetic, the bundled JavaScript algebra engine, and 2D graphing work offline immediately. Advanced SymPy operations download Python and SymPy from jsDelivr, so they require internet when opening the portable file; file origins do not reliably support the hosted app's offline cache. The interface reports when that engine is unavailable. A fully offline embedded SymPy runtime is not included.
 
