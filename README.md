@@ -2,6 +2,16 @@
 
 A browser-native computer algebra system that checks its own answers. Exact results come from **SymPy running in your browser** (WebAssembly, via Pyodide), every result that can be checked independently is checked, and the check is shown next to the answer. There is no server, no account and no telemetry.
 
+## Open the calculator
+
+Download the repository and **double-click the root `index.html`**. It is the compiled portable calculator: no terminal, server, installation, or account is required. You can also copy that file by itself.
+
+The opening screen offers four examples. **Calculate** is the working notebook, **Graph** opens plotting, and **Tools** reveals disciplines and specialist operations. Session export and preferences live under **Session & settings**. Search functions for commands and syntax examples.
+
+Arithmetic, the bundled JavaScript algebra engine, and 2D graphing work offline immediately. Advanced SymPy operations download Python and SymPy from jsDelivr, so they require internet when opening the portable file; file origins do not reliably support the hosted app's offline cache. The interface reports when that engine is unavailable. A fully offline embedded SymPy runtime is not included.
+
+For development, edit `src/`, then run `npm ci` and `npm run build:single` to regenerate the root `index.html`. Run `npm run test:portable` after installing Playwright Chromium to check direct file opening with the network disabled. The portable file is generated; do not edit it by hand.
+
 | | |
 |---|---|
 | **Trust** | 0 wrong answers on the [scoreboard](#scoreboard); results carry a **✓ verified** badge when an independent check confirms them, and say so when it does not |

@@ -273,12 +273,14 @@ for (const name of ENGINES) {
 
     test('UI: palette, sidebar toggle, unique ids, no page errors', async () => {
       assert.ok(await page.evaluate(() => { openPalette(); const n = document.querySelectorAll('.palette-item').length; closePalette(); return n; }) > 10);
-      await page.evaluate(() => toggleSidebar());
-      await page.waitForTimeout(400);
-      assert.equal(await page.evaluate(() => document.querySelector('.sidebar').getBoundingClientRect().width), 0);
+      assert.equal(await page.locator('#view-tab-panel').getAttribute('aria-expanded'), 'false');
       await page.click('#view-tab-panel');
       await page.waitForTimeout(400);
       assert.ok(await page.evaluate(() => document.querySelector('.sidebar').getBoundingClientRect().width) > 200);
+      assert.equal(await page.locator('#view-tab-panel').getAttribute('aria-expanded'), 'true');
+      await page.click('#view-tab-panel');
+      await page.waitForTimeout(400);
+      assert.equal(await page.evaluate(() => document.querySelector('.sidebar').getBoundingClientRect().width), 0);
       const dup = await page.evaluate(() => { const c = {}; document.querySelectorAll('[id]').forEach(e => c[e.id] = (c[e.id] || 0) + 1); return Object.keys(c).filter(k => c[k] > 1); });
       assert.deepEqual(dup, []);
       assert.deepEqual(app.errors, []);

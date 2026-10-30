@@ -161,6 +161,7 @@ function toggleSidebar() {
   const sb = document.querySelector('.sidebar');
   sb.classList.toggle('collapsed');
   $('view-tab-panel').classList.toggle('on', !sb.classList.contains('collapsed'));
+  $('view-tab-panel').setAttribute('aria-expanded', String(!sb.classList.contains('collapsed')));
 }
 
 // Workspace definitions panel
@@ -251,18 +252,22 @@ function buildWelcomeNode() {
   const w = document.createElement('div');
   w.className = 'welcome'; w.id = 'welcome';
   w.innerHTML = `<div class="welcome-mark">∑</div>
-    <div class="welcome-title">A precision instrument for <em>symbolic mathematics.</em></div>
-    <div class="welcome-sub">Type any expression below and press Enter. Exact answers come from SymPy running in your browser; click any part of a result to keep working on it.</div>
+    <div class="welcome-title">Big ideas. <em>Room to think.</em></div>
+    <div class="welcome-sub">Start with a calculation, an equation, or a function. Press Enter to see the answer. Open Graph to explore curves, or Tools when you need more.</div>
     <div class="welcome-grid" id="welcome-grid"></div>
     <div class="welcome-tip"><span><kbd>Enter</kbd> run</span><span><kbd>Shift</kbd>+<kbd>Enter</kbd> newline</span><span><kbd>⌘</kbd>+<kbd>K</kbd> palette</span><span><kbd>Tab</kbd> complete</span></div>`;
   return w;
 }
 function buildWelcomeGrid() {
-  const all = [];
-  Object.entries(MODES).forEach(([k, m]) => m.ex.forEach(ex => all.push({ mode: k, modeLabel: m.label, ...ex })));
-  const sample = all.sort(() => Math.random() - 0.5).slice(0, 6);
+  const sample = [
+    { mode: 'algebra', label: 'Calculate', expr: 'sqrt(144) + 2^3', desc: 'Start with something simple' },
+    { mode: 'solve', label: 'Solve an equation', expr: 'solve(x^2 - 5*x + 6 = 0, x)', desc: 'Find the values of x' },
+    { mode: 'algebra', label: 'Factor', expr: 'factor(x^2 - 9)', desc: 'Explore an exact expression' },
+    { mode: 'calculus', label: 'Calculus', expr: 'integrate(x^2, x)', desc: 'Find an antiderivative' },
+  ];
   const el = $('welcome-grid');
-  if (el) el.innerHTML = sample.map(s => `<div class="wcell" data-ex="${escH(s.expr)}" data-mode="${s.mode}"><div class="wcell-tag">${escH(s.modeLabel)}</div><div class="wcell-expr">${escH(s.expr)}</div><div class="wcell-desc">${escH(s.desc)}</div></div>`).join('');
+  if (el) el.innerHTML = sample.map(s => `<button type="button" class="wcell" data-ex="${escH(s.expr)}" data-mode="${s.mode}"><span class="wcell-tag">${escH(s.label)}</span><span class="wcell-expr">${escH(s.expr)}</span><span class="wcell-desc">${escH(s.desc)}</span></button>`).join('') +
+    `<details class="syntax-help"><summary>Used a CAS calculator before? Start here</summary><p>Use ^ for powers, * for multiplication, pi for π, and parentheses for function arguments.</p><p><code>solve(x^2 = 4, x)</code> · <code>factor(x^2 - 1)</code><br><code>diff(sin(x), x)</code> · <code>integrate(x^2, x)</code><br><code>f(x) := x^2</code> defines a function. Choose Rad or Deg for angles.</p><p>These commands follow familiar CAS conventions; syntax varies between calculator brands. Search functions for supported commands and examples.</p><p>Basic calculation and 2D graphing work without internet. Advanced symbolic tools download the exact engine when a connection is available.</p></details>`;
 }
 let palItems = [], palIdx = 0;
 function openPalette() { $('palette').classList.add('on'); $('palette-input').value = ''; $('palette-input').focus(); filterPalette(); }
